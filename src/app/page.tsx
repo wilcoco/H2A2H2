@@ -63,7 +63,7 @@ export default function Home() {
   return (
     <div className="min-h-screen h-screen grid grid-rows-[auto_1fr]">
       <header className="border-b border-gray-200/60 p-3 flex items-center justify-between">
-        <h1 className="text-base font-semibold">Knowledge Builder</h1>
+        <h1 className="text-base font-semibold">업무 지식 편집기</h1>
         <div className="text-xs text-gray-500">MVP · 3-panels</div>
       </header>
       <div className="grid grid-cols-1 md:grid-cols-[280px_1fr_360px] gap-4 p-4 overflow-hidden">
