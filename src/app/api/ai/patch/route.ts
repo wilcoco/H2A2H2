@@ -110,7 +110,7 @@ Constraints:
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
-    } catch (e) {
+    } catch {
       // Fallback minimal patch: add node with provided info
       const id = `n_${Date.now()}`;
       parsed = {

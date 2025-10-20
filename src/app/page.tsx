@@ -33,7 +33,7 @@ const initialEdges: GraphEdge[] = [];
 export default function Home() {
   const [nodes, setNodes] = useState<GraphNode[]>(initialNodes);
   const [edges, setEdges] = useState<GraphEdge[]>(initialEdges);
-  const [works, setWorks] = useState<Work[]>(initialWorks);
+  const [works] = useState<Work[]>(initialWorks);
   const [selectedWorkId, setSelectedWorkId] = useState<string | undefined>();
 
   function applyPatch(patch: LlmPatch) {
