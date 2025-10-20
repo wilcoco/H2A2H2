@@ -17,6 +17,8 @@ export default function RightChat({ nodes, edges, onProposePatch }: Props) {
   const [type, setType] = useState<NodeType>("concept");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadingAsk, setLoadingAsk] = useState(false);
+  const [history, setHistory] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
 
   async function proposePatch() {
     if (!prompt.trim() && !title.trim()) {
@@ -45,9 +47,50 @@ export default function RightChat({ nodes, edges, onProposePatch }: Props) {
     }
   }
 
+  async function ask() {
+    if (!prompt.trim()) {
+      setError("Enter a prompt to ask.");
+      return;
+    }
+    try {
+      setLoadingAsk(true);
+      setError(null);
+      const res = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: prompt.trim(), history }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || "Chat failed");
+      }
+      const data = (await res.json()) as { answer?: string };
+      const answer = data.answer ?? "";
+      if (answer) {
+        setHistory((h) => [...h, { role: "user", content: prompt.trim() }, { role: "assistant", content: answer }]);
+        setPrompt("");
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setLoadingAsk(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <h2 className="text-lg font-semibold">AI Q&A</h2>
+      <div className="flex flex-col gap-2 max-h-64 overflow-auto rounded border border-gray-200/60 p-2 bg-white/40 dark:bg-gray-900/40">
+        {history.length === 0 && (
+          <div className="text-xs text-gray-500">질문을 입력하고 Ask를 누르면 응답이 여기에 표시됩니다.</div>
+        )}
+        {history.map((m, i) => (
+          <div key={i} className={`text-sm ${m.role === "assistant" ? "text-gray-900" : "text-gray-700"}`}>
+            <span className="font-medium mr-1">{m.role === "assistant" ? "AI" : "You"}:</span>
+            <span>{m.content}</span>
+          </div>
+        ))}
+      </div>
       <div className="flex flex-col gap-2">
         <textarea
           className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60"
@@ -56,6 +99,15 @@ export default function RightChat({ nodes, edges, onProposePatch }: Props) {
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
         />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={ask}
+            className="rounded bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+            disabled={loadingAsk || prompt.trim().length === 0}
+          >
+            {loadingAsk ? "Asking..." : "Ask"}
+          </button>
+        </div>
         <div className="flex items-center gap-2">
           <select
             value={type}
