@@ -4,6 +4,7 @@ import { z } from "zod";
 
 // Runtime node to allow using OpenAI SDK
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const NodeType = z.enum(["concept", "claim", "evidence", "source", "qa"]);
 
@@ -38,7 +39,7 @@ const LlmPatch = z.object({
 });
 
 const RequestSchema = z.object({
-  prompt: z.string().min(1),
+  prompt: z.string().optional().default(""),
   title: z.string().optional(),
   type: NodeType.optional(),
   nodes: z.array(GraphNode).optional().default([]),
@@ -47,17 +48,37 @@ const RequestSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    if (!process.env.OPENAI_API_KEY) {
-      return NextResponse.json(
-        { error: "OPENAI_API_KEY is not set" },
-        { status: 500 }
-      );
-    }
-
     const json = await req.json();
     const input = RequestSchema.parse(json);
 
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const buildFallback = () => {
+      const id = `n_${Date.now()}`;
+      const desc = input.prompt || input.title || "New node";
+      const body = {
+        id,
+        description: desc,
+        ops: [
+          {
+            op: "add_node" as const,
+            node: {
+              id,
+              type: input.type ?? "concept",
+              title: input.title ?? "New node",
+              content: input.prompt || undefined,
+            },
+          },
+        ],
+      };
+      return LlmPatch.parse(body);
+    };
+
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      // No API key in env → return minimal local patch so UI can still function
+      return NextResponse.json(buildFallback());
+    }
+
+    const client = new OpenAI({ apiKey });
 
     const system = `You generate graph editing proposals for a knowledge graph.
 Return ONLY a JSON object matching this TypeScript type exactly, with no markdown:
@@ -94,44 +115,33 @@ Constraints:
         },
       ],
     };
-
-    // Use Chat Completions with JSON mode
-    const completion = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: system },
-        user,
-      ],
-      temperature: 0.2,
-    });
-
-    const text = completion.choices?.[0]?.message?.content ?? "";
-    let parsed: unknown;
+    
     try {
-      parsed = JSON.parse(text);
-    } catch {
-      // Fallback minimal patch: add node with provided info
-      const id = `n_${Date.now()}`;
-      parsed = {
-        id,
-        description: input.prompt,
-        ops: [
-          {
-            op: "add_node",
-            node: {
-              id,
-              type: input.type ?? "concept",
-              title: input.title ?? "New node",
-              content: input.prompt,
-            },
-          },
+      // Use Chat Completions with JSON mode
+      const completion = await client.chat.completions.create({
+        model: "gpt-4o-mini",
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: system },
+          user,
         ],
-      };
-    }
+        temperature: 0.2,
+      });
 
-    const patch = LlmPatch.parse(parsed);
-    return NextResponse.json(patch);
+      const text = completion.choices?.[0]?.message?.content ?? "";
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        return NextResponse.json(buildFallback());
+      }
+
+      const patch = LlmPatch.parse(parsed);
+      return NextResponse.json(patch);
+    } catch {
+      // On any OpenAI API error, degrade gracefully
+      return NextResponse.json(buildFallback());
+    }
   } catch (err) {
     console.error("/api/ai/patch error", err);
     return NextResponse.json({ error: "Bad Request" }, { status: 400 });

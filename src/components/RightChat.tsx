@@ -19,13 +19,17 @@ export default function RightChat({ nodes, edges, onProposePatch }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   async function proposePatch() {
+    if (!prompt.trim() && !title.trim()) {
+      setError("Enter a prompt or a title.");
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
       const res = await fetch("/api/ai/patch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, title, type, nodes, edges }),
+        body: JSON.stringify({ prompt: prompt.trim(), title: title.trim() || undefined, type, nodes, edges }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -73,7 +77,7 @@ export default function RightChat({ nodes, edges, onProposePatch }: Props) {
           <button
             onClick={proposePatch}
             className="rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-            disabled={!title || loading}
+            disabled={(prompt.trim().length === 0 && title.trim().length === 0) || loading}
           >
             {loading ? "Proposing..." : "Propose"}
           </button>
