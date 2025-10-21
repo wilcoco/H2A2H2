@@ -153,23 +153,34 @@ Constraints:
       }
 
       let patch = LlmPatch.parse(parsed);
-      // Auto-link logical flow if model omitted edges
       if (input.mode === "from_answer") {
-        const addedNodes = patch.ops.filter((op) => op.op === "add_node").map((op) => (op as any).node as z.infer<typeof GraphNode>);
-        const existingAddEdges = patch.ops.filter((op) => op.op === "add_edge").map((op) => (op as any).edge as z.infer<typeof GraphEdge>);
+        type GraphNodeT = z.infer<typeof GraphNode>;
+        type GraphEdgeT = z.infer<typeof GraphEdge>;
+        type PatchOpT = z.infer<typeof PatchOp>;
+
+        const addedNodes: GraphNodeT[] = [];
+        const existingAddEdges: GraphEdgeT[] = [];
+        for (const op of patch.ops) {
+          if (op.op === "add_node") addedNodes.push(op.node);
+          else if (op.op === "add_edge") existingAddEdges.push(op.edge);
+        }
         const anyEdge = existingAddEdges.length > 0;
         const premises = addedNodes.filter((n) => n.type === "premise");
         const inferences = addedNodes.filter((n) => n.type === "inference");
         const conclusions = addedNodes.filter((n) => n.type === "conclusion");
         const makeKey = (e: { sourceId: string; targetId: string; type: string }) => `${e.sourceId}->${e.targetId}:${e.type}`;
         const seen = new Set(existingAddEdges.map(makeKey));
-        const newOps: z.infer<typeof PatchOp>[] = [];
+        const newOps: PatchOpT[] = [];
         let edgeCounter = 0;
         const pushEdge = (src: string, dst: string) => {
           const key = `${src}->${dst}:infers`;
           if (seen.has(key)) return;
           const id = `e_${Date.now()}_${edgeCounter++}`;
-          newOps.push({ op: "add_edge", edge: { id, sourceId: src, targetId: dst, type: "infers" } } as any);
+          const addEdgeOp: PatchOpT = {
+            op: "add_edge" as const,
+            edge: { id, sourceId: src, targetId: dst, type: "infers" as const },
+          };
+          newOps.push(addEdgeOp);
           seen.add(key);
         };
         // If model provided no edges, or provided some but missed obvious P→I→C, we add minimal safe links
