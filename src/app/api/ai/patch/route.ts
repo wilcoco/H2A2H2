@@ -40,6 +40,8 @@ const LlmPatch = z.object({
 
 const RequestSchema = z.object({
   prompt: z.string().optional().default(""),
+  answer: z.string().optional(),
+  mode: z.enum(["from_prompt", "from_answer"]).optional().default("from_prompt"),
   title: z.string().optional(),
   type: NodeType.optional(),
   nodes: z.array(GraphNode).optional().default([]),
@@ -53,7 +55,7 @@ export async function POST(req: NextRequest) {
 
     const buildFallback = () => {
       const id = `n_${Date.now()}`;
-      const desc = input.prompt || input.title || "New node";
+      const desc = input.answer || input.prompt || input.title || "New node";
       const body = {
         id,
         description: desc,
@@ -62,9 +64,9 @@ export async function POST(req: NextRequest) {
             op: "add_node" as const,
             node: {
               id,
-              type: input.type ?? "concept",
+              type: input.type ?? (input.answer ? "qa" : "concept"),
               title: input.title ?? "New node",
-              content: input.prompt || undefined,
+              content: input.answer || input.prompt || undefined,
             },
           },
         ],
@@ -100,12 +102,14 @@ Constraints:
 - Do not hallucinate connections to non-existing node ids.
 `;
 
+    const flavor = input.mode === "from_answer" ? `Source is the assistant's answer text provided below. Identify key concepts, claims, evidence, and optional sources. Create 1-5 operations. Prefer adding nodes with meaningful titles and minimal content; add edges when clear logical relations exist.` : `Source is the user's prompt/instructions. Create a small, safe patch (1-3 ops).`;
+
     const user = {
       role: "user" as const,
       content: [
         {
           type: "text" as const,
-          text: `User prompt: ${input.prompt}\nTitle: ${input.title ?? "(none)"}\nType: ${input.type ?? "(unspecified)"}\nExisting nodes: ${input.nodes
+          text: `${flavor}\nMode: ${input.mode}\nUser prompt: ${input.prompt}\nAnswer: ${input.answer ?? "(none)"}\nTitle: ${input.title ?? "(none)"}\nType: ${input.type ?? "(unspecified)"}\nExisting nodes: ${input.nodes
             .slice(0, 20)
             .map((n) => `${n.id}:${n.type}:${n.title}`)
             .join(", ")}\nExisting edges: ${input.edges

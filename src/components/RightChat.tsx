@@ -19,6 +19,8 @@ export default function RightChat({ nodes, edges, onProposePatch }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [loadingAsk, setLoadingAsk] = useState(false);
   const [history, setHistory] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [generatingPatch, setGeneratingPatch] = useState(false);
+  const [proposedPatch, setProposedPatch] = useState<LlmPatch | null>(null);
 
   async function proposePatch() {
     if (!prompt.trim() && !title.trim()) {
@@ -69,12 +71,38 @@ export default function RightChat({ nodes, edges, onProposePatch }: Props) {
       if (answer) {
         setHistory((h) => [...h, { role: "user", content: prompt.trim() }, { role: "assistant", content: answer }]);
         setPrompt("");
+        // auto conceptualize: generate a patch from the answer and show preview
+        try {
+          setGeneratingPatch(true);
+          const pres = await fetch("/api/ai/patch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode: "from_answer", answer, nodes, edges }),
+          });
+          if (pres.ok) {
+            const p = (await pres.json()) as LlmPatch;
+            setProposedPatch(p);
+          }
+        } finally {
+          setGeneratingPatch(false);
+        }
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setLoadingAsk(false);
     }
+  }
+
+  function acceptProposed() {
+    if (proposedPatch) {
+      onProposePatch(proposedPatch);
+      setProposedPatch(null);
+    }
+  }
+
+  function discardProposed() {
+    setProposedPatch(null);
   }
 
   return (
@@ -91,6 +119,31 @@ export default function RightChat({ nodes, edges, onProposePatch }: Props) {
           </div>
         ))}
       </div>
+      {generatingPatch && (
+        <div className="text-xs text-gray-500">답변을 지식 그래프로 구조화하는 중...</div>
+      )}
+      {proposedPatch && (
+        <div className="rounded border border-blue-200 p-2 bg-blue-50 dark:bg-blue-950/20">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium">Proposed changes</h3>
+            <div className="flex gap-2">
+              <button onClick={discardProposed} className="text-xs px-2 py-1 rounded border border-gray-300">Discard</button>
+              <button onClick={acceptProposed} className="text-xs px-2 py-1 rounded bg-blue-600 text-white">Apply</button>
+            </div>
+          </div>
+          <ul className="mt-2 space-y-1 text-xs">
+            {proposedPatch.ops.map((op, idx) => (
+              <li key={idx} className="font-mono">
+                {op.op === "add_node" && `add_node: ${op.node.id} [${op.node.type}] ${op.node.title}`}
+                {op.op === "update_node" && `update_node: ${op.id}`}
+                {op.op === "remove_node" && `remove_node: ${op.id}`}
+                {op.op === "add_edge" && `add_edge: ${op.edge.id} ${op.edge.sourceId}->${op.edge.targetId} [${op.edge.type}]`}
+                {op.op === "remove_edge" && `remove_edge: ${op.id}`}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="flex flex-col gap-2">
         <textarea
           className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60"
