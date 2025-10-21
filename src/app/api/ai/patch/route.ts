@@ -212,6 +212,57 @@ Constraints:
           patch = { ...patch, ops: [...patch.ops, ...newOps] };
         }
       }
+      // Add QA anchor node and link question -> answer structure if missing
+      if (input.mode === "from_answer") {
+        type GraphNodeT = z.infer<typeof GraphNode>;
+        type GraphEdgeT = z.infer<typeof GraphEdge>;
+        type PatchOpT = z.infer<typeof PatchOp>;
+
+        const ops = patch.ops;
+        const addNodeOps = ops.filter((op) => op.op === "add_node") as Extract<PatchOpT, { op: "add_node" }>[];
+        const addEdgeOps = ops.filter((op) => op.op === "add_edge") as Extract<PatchOpT, { op: "add_edge" }> [];
+
+        const hasQa = addNodeOps.some((o) => o.node.type === "qa");
+        let qaId: string | null = null;
+        const newOps: PatchOpT[] = [];
+        if (!hasQa && (input.prompt?.trim() || input.title?.trim())) {
+          qaId = `q_${Date.now()}`;
+          const qaTitle = input.title?.trim() || (input.prompt?.trim()?.slice(0, 40) ?? "Question");
+          const qaContent = input.prompt?.trim();
+          const qaNode: GraphNodeT = { id: qaId, type: "qa", title: qaTitle, content: qaContent };
+          newOps.push({ op: "add_node" as const, node: qaNode });
+        } else {
+          const existingQa = addNodeOps.find((o) => o.node.type === "qa");
+          qaId = existingQa?.node.id ?? null;
+        }
+
+        if (qaId) {
+          const priority: Array<GraphNodeT["type"]> = ["conclusion", "inference", "premise", "claim", "concept"];
+          const targets: GraphNodeT[] = [];
+          for (const t of priority) {
+            const cand = addNodeOps.filter((o) => o.node.type === t).map((o) => o.node);
+            if (cand.length) {
+              targets.push(...cand.slice(0, 5));
+              // Prefer linking to the first available category and stop if found
+              break;
+            }
+          }
+          const makeKey = (e: GraphEdgeT) => `${e.sourceId}->${e.targetId}:${e.type}`;
+          const seen = new Set(addEdgeOps.map((o) => makeKey(o.edge)));
+          let idx = 0;
+          for (const t of targets) {
+            const key = `${qaId}->${t.id}:relates_to`;
+            if (seen.has(key)) continue;
+            const edge: GraphEdgeT = { id: `e_${Date.now()}_qa_${idx++}`, sourceId: qaId, targetId: t.id, type: "relates_to" };
+            newOps.push({ op: "add_edge" as const, edge });
+            seen.add(key);
+          }
+        }
+
+        if (newOps.length) {
+          patch = { ...patch, ops: [...patch.ops, ...newOps] };
+        }
+      }
       if (!patch.description) {
         const human = (op: z.infer<typeof PatchOp>) => {
           if (op.op === "add_node") return `노드 추가: [${op.node.type}] ${op.node.title}`;

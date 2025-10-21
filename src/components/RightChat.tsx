@@ -69,10 +69,11 @@ export default function RightChat({ nodes, edges, onProposePatch }: Props) {
     try {
       setLoadingAsk(true);
       setError(null);
+      const question = prompt.trim();
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: prompt.trim(), history }),
+        body: JSON.stringify({ prompt: question, history }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -81,7 +82,7 @@ export default function RightChat({ nodes, edges, onProposePatch }: Props) {
       const data = (await res.json()) as { answer?: string };
       const answer = data.answer ?? "";
       if (answer) {
-        setHistory((h) => [...h, { role: "user", content: prompt.trim() }, { role: "assistant", content: answer }]);
+        setHistory((h) => [...h, { role: "user", content: question }, { role: "assistant", content: answer }]);
         setPrompt("");
         // auto conceptualize: generate a patch from the answer and show preview
         try {
@@ -89,7 +90,7 @@ export default function RightChat({ nodes, edges, onProposePatch }: Props) {
           const pres = await fetch("/api/ai/patch", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ mode: "from_answer", answer, nodes, edges }),
+            body: JSON.stringify({ mode: "from_answer", answer, prompt: question, nodes, edges }),
           });
           if (pres.ok) {
             const p = (await pres.json()) as LlmPatch;
@@ -119,7 +120,7 @@ export default function RightChat({ nodes, edges, onProposePatch }: Props) {
       const pres = await fetch("/api/ai/patch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "from_answer", answer: prompt.trim(), title: title.trim() || undefined, nodes, edges }),
+        body: JSON.stringify({ mode: "from_answer", answer: prompt.trim(), prompt: prompt.trim(), title: title.trim() || undefined, nodes, edges }),
       });
       if (!pres.ok) {
         const err = await pres.json().catch(() => ({}));

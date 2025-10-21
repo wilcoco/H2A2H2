@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { GraphNode, GraphEdge, NodeType, EdgeType } from "@/types/graph";
 import * as dagre from "dagre";
 
@@ -34,6 +34,11 @@ function GraphCanvas({
 }) {
   const nodeW = 200;
   const nodeH = 56;
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [scale, setScale] = useState<number>(1);
+  const [tx, setTx] = useState<number>(0);
+  const [ty, setTy] = useState<number>(0);
+  const isPanningRef = useRef(false);
   const g = useMemo(() => {
     const graph = new dagre.graphlib.Graph();
     graph.setGraph({ rankdir: "LR", nodesep: 30, ranksep: 80 });
@@ -87,8 +92,37 @@ function GraphCanvas({
     return false;
   };
 
+  const onWheel = (e: React.WheelEvent<SVGSVGElement>) => {
+    e.preventDefault();
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const zoom = Math.exp(-e.deltaY * 0.0015);
+    const newScale = Math.min(3, Math.max(0.3, scale * zoom));
+    const sx = (mx - tx) / scale;
+    const sy = (my - ty) / scale;
+    setTx(mx - sx * newScale);
+    setTy(my - sy * newScale);
+    setScale(newScale);
+  };
+
+  const onBgPointerDown = (e: React.PointerEvent<SVGRectElement>) => {
+    isPanningRef.current = true;
+    try { (e.currentTarget as unknown as Element & { setPointerCapture: (id: number) => void }).setPointerCapture(e.pointerId); } catch {}
+  };
+  const onBgPointerMove = (e: React.PointerEvent<SVGRectElement>) => {
+    if (!isPanningRef.current) return;
+    setTx((prev) => prev + e.movementX);
+    setTy((prev) => prev + e.movementY);
+  };
+  const onBgPointerUp = (e: React.PointerEvent<SVGRectElement>) => {
+    isPanningRef.current = false;
+    try { (e.currentTarget as unknown as Element & { releasePointerCapture: (id: number) => void }).releasePointerCapture(e.pointerId); } catch {}
+  };
+
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-[520px]">
+    <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="w-full h-[520px]" onWheel={onWheel}>
       <defs>
         {(["supports", "refutes", "relates_to", "cites", "infers"] as EdgeType[]).map((t) => (
           <marker key={t} id={markerId(t)} viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -96,6 +130,8 @@ function GraphCanvas({
           </marker>
         ))}
       </defs>
+      <rect x={0} y={0} width={W} height={H} fill="transparent" onPointerDown={onBgPointerDown} onPointerMove={onBgPointerMove} onPointerUp={onBgPointerUp} />
+      <g transform={`translate(${tx},${ty}) scale(${scale})`}>
       {edges
         .filter((e) => pos.has(e.sourceId) && pos.has(e.targetId))
         .map((e) => {
@@ -134,6 +170,7 @@ function GraphCanvas({
           </g>
         );
       })}
+      </g>
     </svg>
   );
 }
