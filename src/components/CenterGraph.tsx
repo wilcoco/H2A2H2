@@ -1,6 +1,6 @@
 "use client";
 
-import type { GraphNode, GraphEdge } from "@/types/graph";
+import type { GraphNode, GraphEdge, NodeType } from "@/types/graph";
 
 type Props = {
   nodes: GraphNode[];
@@ -9,6 +9,75 @@ type Props = {
   onInvestEdge?: (id: string, delta: number) => void;
 };
 
+function GraphCanvas({ nodes, edges }: { nodes: GraphNode[]; edges: GraphEdge[] }) {
+  const allTypes: NodeType[] = [
+    "premise",
+    "inference",
+    "conclusion",
+    "claim",
+    "concept",
+    "evidence",
+    "source",
+    "qa",
+  ];
+  const colTypes = allTypes.filter((t) => nodes.some((n) => n.type === t));
+  const byType: Record<string, GraphNode[]> = {};
+  for (const t of colTypes) byType[t] = nodes.filter((n) => n.type === t);
+  const maxRows = colTypes.reduce((m, t) => Math.max(m, byType[t].length || 0), 1);
+  const W = 960;
+  const padding = 32;
+  const span = W - padding * 2;
+  const colX = (col: number) => padding + (span * col) / Math.max(1, colTypes.length - 1);
+  const rowH = 74;
+  const H = padding + maxRows * rowH + padding;
+  const nodeW = 180;
+  const nodeH = 44;
+  const pos = new Map<string, { x: number; y: number; t: NodeType; title: string; type: NodeType }>();
+  colTypes.forEach((t, ci) => {
+    const arr = byType[t] || [];
+    arr.forEach((n, ri) => {
+      const x = colX(ci);
+      const y = padding + rowH * (ri + 0.5);
+      pos.set(n.id, { x, y, t, title: n.title, type: n.type });
+    });
+  });
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-96">
+      <defs>
+        <marker id="arrow-center" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb" />
+        </marker>
+      </defs>
+      {edges
+        .filter((e) => pos.has(e.sourceId) && pos.has(e.targetId))
+        .map((e) => {
+          const s = pos.get(e.sourceId)!;
+          const t = pos.get(e.targetId)!;
+          return (
+            <line
+              key={e.id}
+              x1={s.x + nodeW / 2}
+              y1={s.y}
+              x2={t.x - nodeW / 2}
+              y2={t.y}
+              stroke="#2563eb"
+              strokeWidth={1.6}
+              markerEnd="url(#arrow-center)"
+              opacity={0.9}
+            />
+          );
+        })}
+      {Array.from(pos.entries()).map(([id, p]) => (
+        <g key={id}>
+          <rect x={p.x - nodeW / 2} y={p.y - nodeH / 2} width={nodeW} height={nodeH} rx={6} ry={6} fill="#fff" stroke="#111827" strokeWidth={1.2} />
+          <text x={p.x - nodeW / 2 + 8} y={p.y - 4} fontSize={12} className="fill-gray-900">{p.title}</text>
+          <text x={p.x - nodeW / 2 + 8} y={p.y + 14} fontSize={10} className="fill-gray-600 uppercase">{p.type}</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
 export default function CenterGraph({ nodes, edges, onInvestNode, onInvestEdge }: Props) {
   return (
     <div className="flex flex-col gap-4">
@@ -16,6 +85,11 @@ export default function CenterGraph({ nodes, edges, onInvestNode, onInvestEdge }
         <h2 className="text-lg font-semibold">Knowledge Graph</h2>
         <div className="text-xs text-gray-500">{nodes.length} nodes · {edges.length} edges</div>
       </header>
+
+      <section className="rounded border border-gray-200/60 p-3">
+        <h3 className="text-sm font-medium mb-2">Graph</h3>
+        <GraphCanvas nodes={nodes} edges={edges} />
+      </section>
 
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="rounded border border-gray-200/60 p-3">
