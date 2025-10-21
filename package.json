@@ -13,7 +13,8 @@
     "openai": "6.5.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "zod": "4.1.12"
+    "zod": "4.1.12",
+    "dagre": "0.8.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
@@ -21,6 +22,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/dagre": "^0.7.52",
     "eslint": "^9",
     "eslint-config-next": "15.5.6",
     "tailwindcss": "^4",

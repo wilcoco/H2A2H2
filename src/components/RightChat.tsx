@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { LlmPatch, GraphNode, GraphEdge, NodeType } from "@/types/graph";
+import type { LlmPatch, GraphNode, GraphEdge, NodeType, EdgeType } from "@/types/graph";
 
 type LogicType = "premise" | "inference" | "conclusion";
 
@@ -154,50 +154,73 @@ export default function RightChat({ nodes, edges, onProposePatch }: Props) {
       else if (op.op === "add_edge") addedEdges.push(op.edge);
     }
 
-    const cols: LogicType[] = ["premise", "inference", "conclusion"];
+    const allTypes: NodeType[] = [
+      "premise",
+      "inference",
+      "conclusion",
+      "claim",
+      "concept",
+      "evidence",
+      "source",
+      "qa",
+    ];
+    const present = new Set<NodeType>(addedNodes.map((n) => n.type));
+    const cols: NodeType[] = allTypes.filter((t) => present.has(t));
     const colX = (col: number, W: number) => {
       const padding = 24;
       const span = W - padding * 2;
       return padding + (span * col) / (cols.length - 1);
     };
 
-    const byType: Record<LogicType, GraphNode[]> = { premise: [], inference: [], conclusion: [] };
-    for (const n of addedNodes) {
-      if (n.type === "premise" || n.type === "inference" || n.type === "conclusion") {
-        byType[n.type].push(n);
-      }
-    }
+    const byType = new Map<NodeType, GraphNode[]>();
+    cols.forEach((t) => byType.set(t, addedNodes.filter((n) => n.type === t)));
 
-    const maxRows = Math.max(1, byType.premise.length, byType.inference.length, byType.conclusion.length);
+    const maxRows = Math.max(1, ...cols.map((t) => (byType.get(t)?.length ?? 0)));
     const W = 360;
     const rowH = 44;
     const H = 24 + maxRows * rowH + 24;
 
-    const pos = new Map<string, { x: number; y: number; t: LogicType; title: string }>();
-    cols.forEach((t: LogicType, ci: number) => {
-      const arr: GraphNode[] = byType[t];
-      arr.forEach((n: GraphNode, idx: number) => {
+    const pos = new Map<string, { x: number; y: number; t: NodeType; title: string }>();
+    cols.forEach((t, ci) => {
+      const arr = byType.get(t) ?? [];
+      arr.forEach((n, idx) => {
         const y = 24 + rowH * (idx + 0.5);
         pos.set(n.id, { x: colX(ci, W), y, t, title: n.title });
       });
     });
+
+    const colorFor = (t: EdgeType) => {
+      if (t === "supports") return "#16a34a";
+      if (t === "refutes") return "#dc2626";
+      if (t === "cites") return "#7c3aed";
+      if (t === "relates_to") return "#6b7280";
+      return "#2563eb";
+    };
 
     const radius = 8;
 
     return (
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-40">
         <defs>
-          <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb" />
-          </marker>
+          {(["supports","refutes","relates_to","cites","infers"] as EdgeType[]).map((t) => (
+            <marker key={t} id={`arrow-mini-${t}`} viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill={colorFor(t)} />
+            </marker>
+          ))}
         </defs>
         {addedEdges
           .filter((e) => pos.has(e.sourceId) && pos.has(e.targetId))
           .map((e) => {
             const s = pos.get(e.sourceId)!;
             const t = pos.get(e.targetId)!;
+            const stroke = colorFor(e.type);
+            const midx = (s.x + t.x) / 2;
+            const midy = (s.y + t.y) / 2;
             return (
-              <line key={e.id} x1={s.x} y1={s.y} x2={t.x} y2={t.y} stroke="#2563eb" strokeWidth={1.5} markerEnd="url(#arrow)" opacity={0.9} />
+              <g key={e.id}>
+                <line x1={s.x} y1={s.y} x2={t.x} y2={t.y} stroke={stroke} strokeWidth={1.2} markerEnd={`url(#arrow-mini-${e.type})`} opacity={0.9} />
+                <text x={midx} y={midy - 3} fontSize={9} textAnchor="middle" fill={stroke}>{e.type}</text>
+              </g>
             );
           })}
         {[...pos.entries()].map(([id, p]) => (
