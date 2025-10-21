@@ -3,13 +3,24 @@
 import { useState } from "react";
 import type { LlmPatch, GraphNode, GraphEdge, NodeType } from "@/types/graph";
 
+type LogicType = "premise" | "inference" | "conclusion";
+
 type Props = {
   nodes: GraphNode[];
   edges: GraphEdge[];
   onProposePatch: (patch: LlmPatch) => void;
 };
 
-const NODE_TYPES: NodeType[] = ["concept", "claim", "evidence", "source", "qa"];
+const NODE_TYPES: NodeType[] = [
+  "concept",
+  "claim",
+  "evidence",
+  "source",
+  "qa",
+  "premise",
+  "inference",
+  "conclusion",
+];
 
 export default function RightChat({ nodes, edges, onProposePatch }: Props) {
   const [prompt, setPrompt] = useState("");
@@ -21,6 +32,7 @@ export default function RightChat({ nodes, edges, onProposePatch }: Props) {
   const [history, setHistory] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
   const [generatingPatch, setGeneratingPatch] = useState(false);
   const [proposedPatch, setProposedPatch] = useState<LlmPatch | null>(null);
+  const [loadingConcept, setLoadingConcept] = useState(false);
 
   async function proposePatch() {
     if (!prompt.trim() && !title.trim()) {
@@ -94,6 +106,35 @@ export default function RightChat({ nodes, edges, onProposePatch }: Props) {
     }
   }
 
+  async function conceptualize() {
+    if (!prompt.trim()) {
+      setError("Paste text to conceptualize.");
+      return;
+    }
+    try {
+      setLoadingConcept(true);
+      setError(null);
+      setProposedPatch(null);
+      setGeneratingPatch(true);
+      const pres = await fetch("/api/ai/patch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "from_answer", answer: prompt.trim(), title: title.trim() || undefined, nodes, edges }),
+      });
+      if (!pres.ok) {
+        const err = await pres.json().catch(() => ({}));
+        throw new Error(err?.error || "Conceptualize failed");
+      }
+      const p = (await pres.json()) as LlmPatch;
+      setProposedPatch(p);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setGeneratingPatch(false);
+      setLoadingConcept(false);
+    }
+  }
+
   function acceptProposed() {
     if (proposedPatch) {
       onProposePatch(proposedPatch);
@@ -103,6 +144,72 @@ export default function RightChat({ nodes, edges, onProposePatch }: Props) {
 
   function discardProposed() {
     setProposedPatch(null);
+  }
+
+  function PatchPreviewGraph({ patch }: { patch: LlmPatch }) {
+    const addedNodes: GraphNode[] = [];
+    const addedEdges: GraphEdge[] = [];
+    for (const op of patch.ops) {
+      if (op.op === "add_node") addedNodes.push(op.node);
+      else if (op.op === "add_edge") addedEdges.push(op.edge);
+    }
+
+    const cols: LogicType[] = ["premise", "inference", "conclusion"];
+    const colX = (col: number, W: number) => {
+      const padding = 24;
+      const span = W - padding * 2;
+      return padding + (span * col) / (cols.length - 1);
+    };
+
+    const byType: Record<LogicType, GraphNode[]> = { premise: [], inference: [], conclusion: [] };
+    for (const n of addedNodes) {
+      if (n.type === "premise" || n.type === "inference" || n.type === "conclusion") {
+        byType[n.type].push(n);
+      }
+    }
+
+    const maxRows = Math.max(1, byType.premise.length, byType.inference.length, byType.conclusion.length);
+    const W = 360;
+    const rowH = 44;
+    const H = 24 + maxRows * rowH + 24;
+
+    const pos = new Map<string, { x: number; y: number; t: LogicType; title: string }>();
+    cols.forEach((t: LogicType, ci: number) => {
+      const arr: GraphNode[] = byType[t];
+      arr.forEach((n: GraphNode, idx: number) => {
+        const y = 24 + rowH * (idx + 0.5);
+        pos.set(n.id, { x: colX(ci, W), y, t, title: n.title });
+      });
+    });
+
+    const radius = 8;
+
+    return (
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-40">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb" />
+          </marker>
+        </defs>
+        {addedEdges
+          .filter((e) => pos.has(e.sourceId) && pos.has(e.targetId))
+          .map((e) => {
+            const s = pos.get(e.sourceId)!;
+            const t = pos.get(e.targetId)!;
+            return (
+              <line key={e.id} x1={s.x} y1={s.y} x2={t.x} y2={t.y} stroke="#2563eb" strokeWidth={1.5} markerEnd="url(#arrow)" opacity={0.9} />
+            );
+          })}
+        {[...pos.entries()].map(([id, p]) => (
+          <g key={id}>
+            <circle cx={p.x} cy={p.y} r={radius} fill="#fff" stroke="#111827" strokeWidth={1.5} />
+            <text x={p.x + 12} y={p.y + 4} fontSize={10} className="fill-gray-800">
+              {p.title}
+            </text>
+          </g>
+        ))}
+      </svg>
+    );
   }
 
   return (
@@ -131,17 +238,45 @@ export default function RightChat({ nodes, edges, onProposePatch }: Props) {
               <button onClick={acceptProposed} className="text-xs px-2 py-1 rounded bg-blue-600 text-white">Apply</button>
             </div>
           </div>
-          <ul className="mt-2 space-y-1 text-xs">
-            {proposedPatch.ops.map((op, idx) => (
-              <li key={idx} className="font-mono">
-                {op.op === "add_node" && `add_node: ${op.node.id} [${op.node.type}] ${op.node.title}`}
-                {op.op === "update_node" && `update_node: ${op.id}`}
-                {op.op === "remove_node" && `remove_node: ${op.id}`}
-                {op.op === "add_edge" && `add_edge: ${op.edge.id} ${op.edge.sourceId}->${op.edge.targetId} [${op.edge.type}]`}
-                {op.op === "remove_edge" && `remove_edge: ${op.id}`}
-              </li>
-            ))}
-          </ul>
+          {proposedPatch.description && (
+            <div className="mt-2 text-xs whitespace-pre-wrap text-gray-800 dark:text-gray-100">{proposedPatch.description}</div>
+          )}
+          <div className="mt-2">
+            <PatchPreviewGraph patch={proposedPatch} />
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            {(["premise","inference","conclusion"] as NodeType[]).map((t) => {
+              const added = proposedPatch.ops.reduce<GraphNode[]>((acc, op) => {
+                if (op.op === "add_node" && op.node.type === t) acc.push(op.node);
+                return acc;
+              }, []);
+              if (added.length === 0) return <div key={t} />;
+              return (
+                <div key={t} className="rounded border border-gray-200/60 bg-white/60 dark:bg-gray-900/40 p-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">{t}</div>
+                  <ul className="mt-1 space-y-1">
+                    {added.map((n) => (
+                      <li key={n.id} className="text-xs">{n.title}</li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+          <details className="mt-2">
+            <summary className="text-xs font-medium cursor-pointer">Operations</summary>
+            <ul className="mt-2 space-y-1 text-xs">
+              {proposedPatch.ops.map((op, idx) => (
+                <li key={idx} className="font-mono">
+                  {op.op === "add_node" && `add_node: ${op.node.id} [${op.node.type}] ${op.node.title}`}
+                  {op.op === "update_node" && `update_node: ${op.id}`}
+                  {op.op === "remove_node" && `remove_node: ${op.id}`}
+                  {op.op === "add_edge" && `add_edge: ${op.edge.id} ${op.edge.sourceId}->${op.edge.targetId} [${op.edge.type}]`}
+                  {op.op === "remove_edge" && `remove_edge: ${op.id}`}
+                </li>
+              ))}
+            </ul>
+          </details>
         </div>
       )}
       <div className="flex flex-col gap-2">
@@ -159,6 +294,13 @@ export default function RightChat({ nodes, edges, onProposePatch }: Props) {
             disabled={loadingAsk || prompt.trim().length === 0}
           >
             {loadingAsk ? "Asking..." : "Ask"}
+          </button>
+          <button
+            onClick={conceptualize}
+            className="rounded bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+            disabled={loadingConcept || prompt.trim().length === 0}
+          >
+            {loadingConcept ? "Conceptualizing..." : "Conceptualize"}
           </button>
         </div>
         <div className="flex items-center gap-2">

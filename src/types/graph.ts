@@ -1,19 +1,29 @@
-export type NodeType = "concept" | "claim" | "evidence" | "source" | "qa";
+export type NodeType =
+  | "concept"
+  | "claim"
+  | "evidence"
+  | "source"
+  | "qa"
+  | "premise"
+  | "inference"
+  | "conclusion";
 
 export interface GraphNode {
   id: string;
   type: NodeType;
   title: string;
   content?: string;
+  score?: number;
 }
 
-export type EdgeType = "supports" | "refutes" | "relates_to" | "cites";
+export type EdgeType = "supports" | "refutes" | "relates_to" | "cites" | "infers";
 
 export interface GraphEdge {
   id: string;
   sourceId: string;
   targetId: string;
   type: EdgeType;
+  score?: number;
 }
 
 export interface Work {

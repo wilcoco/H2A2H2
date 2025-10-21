@@ -6,7 +6,16 @@ import { z } from "zod";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const NodeType = z.enum(["concept", "claim", "evidence", "source", "qa"]);
+const NodeType = z.enum([
+  "concept",
+  "claim",
+  "evidence",
+  "source",
+  "qa",
+  "premise",
+  "inference",
+  "conclusion",
+]);
 
 const GraphNode = z.object({
   id: z.string(),
@@ -15,7 +24,7 @@ const GraphNode = z.object({
   content: z.string().optional(),
 });
 
-const EdgeType = z.enum(["supports", "refutes", "relates_to", "cites"]);
+const EdgeType = z.enum(["supports", "refutes", "relates_to", "cites", "infers"]);
 
 const GraphEdge = z.object({
   id: z.string(),
@@ -88,10 +97,10 @@ Return ONLY a JSON object matching this TypeScript type exactly, with no markdow
   id: string;
   description?: string;
   ops: (
-    | { op: "add_node"; node: { id: string; type: "concept"|"claim"|"evidence"|"source"|"qa"; title: string; content?: string } }
-    | { op: "update_node"; id: string; patch: Partial<{ id: string; type: "concept"|"claim"|"evidence"|"source"|"qa"; title: string; content?: string }> }
+    | { op: "add_node"; node: { id: string; type: "concept"|"claim"|"evidence"|"source"|"qa"|"premise"|"inference"|"conclusion"; title: string; content?: string } }
+    | { op: "update_node"; id: string; patch: Partial<{ id: string; type: "concept"|"claim"|"evidence"|"source"|"qa"|"premise"|"inference"|"conclusion"; title: string; content?: string }> }
     | { op: "remove_node"; id: string }
-    | { op: "add_edge"; edge: { id: string; sourceId: string; targetId: string; type: "supports"|"refutes"|"relates_to"|"cites" } }
+    | { op: "add_edge"; edge: { id: string; sourceId: string; targetId: string; type: "supports"|"refutes"|"relates_to"|"cites"|"infers" } }
     | { op: "remove_edge"; id: string }
   )[]
 }
@@ -100,9 +109,12 @@ Constraints:
 - If user provided title/type, use them for one add_node op.
 - Generate stable-ish id if user didn't provide (e.g., "n_" + random digits).
 - Do not hallucinate connections to non-existing node ids.
+- Always include a concise natural-language description summarizing the proposed changes for end users (<=120 words). If the user's language is Korean, write the description in Korean.
 `;
 
-    const flavor = input.mode === "from_answer" ? `Source is the assistant's answer text provided below. Identify key concepts, claims, evidence, and optional sources. Create 1-5 operations. Prefer adding nodes with meaningful titles and minimal content; add edges when clear logical relations exist.` : `Source is the user's prompt/instructions. Create a small, safe patch (1-3 ops).`;
+    const flavor = input.mode === "from_answer"
+      ? `Source is the assistant's answer text provided below. Decompose into logical units inspired by Chomskyan structure: use node types 'premise', 'inference', 'conclusion' when applicable; otherwise use concept/claim/evidence/source/qa. Connect logical flow with 'infers' edges (premise -> inference -> conclusion) and use supports/refutes/relates_to/cites where appropriate. Create 1-5 safe operations with clear titles and minimal content.`
+      : `Source is the user's prompt/instructions. Create a small, safe patch (1-3 ops).`;
 
     const user = {
       role: "user" as const,
@@ -140,7 +152,67 @@ Constraints:
         return NextResponse.json(buildFallback());
       }
 
-      const patch = LlmPatch.parse(parsed);
+      let patch = LlmPatch.parse(parsed);
+      // Auto-link logical flow if model omitted edges
+      if (input.mode === "from_answer") {
+        const addedNodes = patch.ops.filter((op) => op.op === "add_node").map((op) => (op as any).node as z.infer<typeof GraphNode>);
+        const existingAddEdges = patch.ops.filter((op) => op.op === "add_edge").map((op) => (op as any).edge as z.infer<typeof GraphEdge>);
+        const anyEdge = existingAddEdges.length > 0;
+        const premises = addedNodes.filter((n) => n.type === "premise");
+        const inferences = addedNodes.filter((n) => n.type === "inference");
+        const conclusions = addedNodes.filter((n) => n.type === "conclusion");
+        const makeKey = (e: { sourceId: string; targetId: string; type: string }) => `${e.sourceId}->${e.targetId}:${e.type}`;
+        const seen = new Set(existingAddEdges.map(makeKey));
+        const newOps: z.infer<typeof PatchOp>[] = [];
+        let edgeCounter = 0;
+        const pushEdge = (src: string, dst: string) => {
+          const key = `${src}->${dst}:infers`;
+          if (seen.has(key)) return;
+          const id = `e_${Date.now()}_${edgeCounter++}`;
+          newOps.push({ op: "add_edge", edge: { id, sourceId: src, targetId: dst, type: "infers" } } as any);
+          seen.add(key);
+        };
+        // If model provided no edges, or provided some but missed obvious P→I→C, we add minimal safe links
+        if (!anyEdge || (premises.length && conclusions.length && newOps.length === 0)) {
+          if (premises.length && inferences.length) {
+            for (const p of premises.slice(0, 3)) {
+              for (const i of inferences.slice(0, 2)) {
+                pushEdge(p.id, i.id);
+              }
+            }
+          }
+          if (inferences.length && conclusions.length) {
+            for (const i of inferences.slice(0, 3)) {
+              for (const c of conclusions.slice(0, 2)) {
+                pushEdge(i.id, c.id);
+              }
+            }
+          }
+          // Direct P→C if no inference nodes
+          if (!inferences.length && premises.length && conclusions.length) {
+            for (const p of premises.slice(0, 3)) {
+              for (const c of conclusions.slice(0, 3)) {
+                pushEdge(p.id, c.id);
+              }
+            }
+          }
+        }
+        if (newOps.length) {
+          patch = { ...patch, ops: [...patch.ops, ...newOps] };
+        }
+      }
+      if (!patch.description) {
+        const human = (op: z.infer<typeof PatchOp>) => {
+          if (op.op === "add_node") return `노드 추가: [${op.node.type}] ${op.node.title}`;
+          if (op.op === "update_node") return `노드 수정: ${op.id}`;
+          if (op.op === "remove_node") return `노드 삭제: ${op.id}`;
+          if (op.op === "add_edge") return `관계 추가: ${op.edge.sourceId} → ${op.edge.targetId} [${op.edge.type}]`;
+          if (op.op === "remove_edge") return `관계 삭제: ${op.id}`;
+          return "변경";
+        };
+        const desc = patch.ops.slice(0, 6).map(human).join("\n");
+        patch = { ...patch, description: desc };
+      }
       return NextResponse.json(patch);
     } catch {
       // On any OpenAI API error, degrade gracefully

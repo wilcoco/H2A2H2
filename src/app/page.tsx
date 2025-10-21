@@ -39,25 +39,48 @@ export default function Home() {
   function applyPatch(patch: LlmPatch) {
     let nextNodes = [...nodes];
     let nextEdges = [...edges];
-    for (const op of patch.ops) {
-      if (op.op === "add_node") {
-        if (!nextNodes.some((n) => n.id === op.node.id)) nextNodes.push(op.node);
-      } else if (op.op === "update_node") {
-        nextNodes = nextNodes.map((n) => (n.id === op.id ? { ...n, ...op.patch } : n));
-      } else if (op.op === "remove_node") {
-        nextNodes = nextNodes.filter((n) => n.id !== op.id);
-        nextEdges = nextEdges.filter((e) => e.sourceId !== op.id && e.targetId !== op.id);
-      } else if (op.op === "add_edge") {
-        const srcOk = nextNodes.some((n) => n.id === op.edge.sourceId);
-        const dstOk = nextNodes.some((n) => n.id === op.edge.targetId);
-        const dup = nextEdges.some((e) => e.id === op.edge.id);
-        if (srcOk && dstOk && !dup) nextEdges.push(op.edge);
-      } else if (op.op === "remove_edge") {
-        nextEdges = nextEdges.filter((e) => e.id !== op.id);
-      }
+
+    const removeEdgeOps = patch.ops.filter((op) => op.op === "remove_edge");
+    const removeNodeOps = patch.ops.filter((op) => op.op === "remove_node");
+    const addNodeOps = patch.ops.filter((op) => op.op === "add_node");
+    const updateNodeOps = patch.ops.filter((op) => op.op === "update_node");
+    const addEdgeOps = patch.ops.filter((op) => op.op === "add_edge");
+
+    // 1) remove edges first
+    for (const op of removeEdgeOps) {
+      nextEdges = nextEdges.filter((e) => e.id !== op.id);
     }
+    // 2) remove nodes (and detach their edges)
+    for (const op of removeNodeOps) {
+      nextNodes = nextNodes.filter((n) => n.id !== op.id);
+      nextEdges = nextEdges.filter((e) => e.sourceId !== op.id && e.targetId !== op.id);
+    }
+    // 3) add nodes
+    for (const op of addNodeOps) {
+      if (!nextNodes.some((n) => n.id === op.node.id)) nextNodes.push(op.node);
+    }
+    // 4) update nodes
+    for (const op of updateNodeOps) {
+      nextNodes = nextNodes.map((n) => (n.id === op.id ? { ...n, ...op.patch } : n));
+    }
+    // 5) add edges (after nodes exist)
+    for (const op of addEdgeOps) {
+      const srcOk = nextNodes.some((n) => n.id === op.edge.sourceId);
+      const dstOk = nextNodes.some((n) => n.id === op.edge.targetId);
+      const dup = nextEdges.some((e) => e.id === op.edge.id);
+      if (srcOk && dstOk && !dup) nextEdges.push(op.edge);
+    }
+
     setNodes(nextNodes);
     setEdges(nextEdges);
+  }
+
+  function investNode(id: string, delta: number) {
+    setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, score: (n.score ?? 0) + delta } : n)));
+  }
+
+  function investEdge(id: string, delta: number) {
+    setEdges((prev) => prev.map((e) => (e.id === id ? { ...e, score: (e.score ?? 0) + delta } : e)));
   }
 
   return (
@@ -76,7 +99,7 @@ export default function Home() {
         </aside>
 
         <main className="rounded border border-gray-200/60 p-3 overflow-auto">
-          <CenterGraph nodes={nodes} edges={edges} />
+          <CenterGraph nodes={nodes} edges={edges} onInvestNode={investNode} onInvestEdge={investEdge} />
         </main>
 
         <aside className="rounded border border-gray-200/60 p-3 overflow-auto">

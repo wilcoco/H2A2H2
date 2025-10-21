@@ -5,9 +5,11 @@ import type { GraphNode, GraphEdge } from "@/types/graph";
 type Props = {
   nodes: GraphNode[];
   edges: GraphEdge[];
+  onInvestNode?: (id: string, delta: number) => void;
+  onInvestEdge?: (id: string, delta: number) => void;
 };
 
-export default function CenterGraph({ nodes, edges }: Props) {
+export default function CenterGraph({ nodes, edges, onInvestNode, onInvestEdge }: Props) {
   return (
     <div className="flex flex-col gap-4">
       <header className="flex items-center justify-between">
@@ -28,6 +30,19 @@ export default function CenterGraph({ nodes, edges }: Props) {
                 {n.content && (
                   <p className="text-xs text-gray-600 mt-1 line-clamp-2">{n.content}</p>
                 )}
+                <div className="mt-2 flex items-center justify-between">
+                  <div className="text-[11px] text-gray-600">score: {n.score ?? 0}</div>
+                  <div className="flex gap-1">
+                    <button
+                      className="text-[10px] px-2 py-0.5 rounded border border-gray-300 hover:bg-gray-100"
+                      onClick={() => onInvestNode?.(n.id, +1)}
+                    >+1</button>
+                    <button
+                      className="text-[10px] px-2 py-0.5 rounded border border-gray-300 hover:bg-gray-100"
+                      onClick={() => onInvestNode?.(n.id, -1)}
+                    >-1</button>
+                  </div>
+                </div>
               </li>
             ))}
             {nodes.length === 0 && (
@@ -44,6 +59,19 @@ export default function CenterGraph({ nodes, edges }: Props) {
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-xs">{e.sourceId} → {e.targetId}</span>
                   <span className="text-[10px] px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800 uppercase tracking-wide">{e.type}</span>
+                </div>
+                <div className="mt-2 flex items-center justify-between">
+                  <div className="text-[11px] text-gray-600">score: {e.score ?? 0}</div>
+                  <div className="flex gap-1">
+                    <button
+                      className="text-[10px] px-2 py-0.5 rounded border border-gray-300 hover:bg-gray-100"
+                      onClick={() => onInvestEdge?.(e.id, +1)}
+                    >+1</button>
+                    <button
+                      className="text-[10px] px-2 py-0.5 rounded border border-gray-300 hover:bg-gray-100"
+                      onClick={() => onInvestEdge?.(e.id, -1)}
+                    >-1</button>
+                  </div>
                 </div>
               </li>
             ))}
