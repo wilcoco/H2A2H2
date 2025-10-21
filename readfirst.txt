@@ -1,0 +1,137 @@
+H2A2H2 – Knowledge Builder (Read First)
+
+Purpose
+- Meta‑Knowledge Ecology: AI answers are decomposed into logical units and verified by humans through lightweight “investment” (+/−) signals.
+- Chomskyan P→I→C: Premise → Inference → Conclusion structure is first‑class in the graph model.
+- Human verification: Users invest (+1/−1) in nodes/edges; scores represent aggregated feedback.
+
+Tech Stack
+- App: Next.js 15 + TypeScript (web/)
+- UI: React 19, Tailwind v4
+- AI: OpenAI SDK 6, Zod for schema validation
+- Graph layout: dagre (DAG layout, LR)
+- Runtime: Node 20+ (Next.js node runtime for API routes)
+
+Key Files
+- web/src/types/graph.ts
+  - NodeType = concept | claim | evidence | source | qa | premise | inference | conclusion
+  - EdgeType = supports | refutes | relates_to | cites | infers
+  - GraphNode { id, type, title, content?, score? }
+  - GraphEdge { id, sourceId, targetId, type, score? }
+- web/src/app/api/ai/patch/route.ts
+  - POST /api/ai/patch – returns LlmPatch { id, description?, ops[] }
+  - Request body: { prompt?, answer?, mode?, title?, type?, nodes[], edges[] }
+  - Modes:
+    - from_prompt: build small patch from user prompt/title
+    - from_answer: decompose assistant answer into P/I/C; add edges
+  - JSON mode type returned by LLM (simplified):
+    ops: add_node | update_node | remove_node | add_edge | remove_edge
+    node.type: includes premise|inference|conclusion in addition to existing types
+    edge.type: includes infers in addition to supports/refutes/relates_to/cites
+  - System constraints:
+    - Small, safe patches
+    - Don’t hallucinate unknown ids
+    - Include concise natural‑language description (Korean if user language is Korean)
+  - Server fallbacks / post‑processing:
+    - If OPENAI_API_KEY missing or JSON parse fails → return minimal local fallback patch
+    - Auto‑link P→I→C with infers if model omits obvious edges
+    - QA anchor & question→answer linking:
+      - If request has question prompt and no qa node, add qa node
+      - Add relates_to edges from qa → answer nodes
+        Priority: conclusion → inference → premise → claim → concept → evidence → source
+        Link multiple (capped) targets; normalize direction so qa is always the source
+    - If description missing, synthesize a short human summary from ops
+- web/src/app/page.tsx
+  - applyPatch() processes ops in a stable order:
+    remove_edge → remove_node → add_node → update_node → add_edge
+    (ensures edges apply after their nodes exist)
+  - investNode(id, delta), investEdge(id, delta) update score fields
+- web/src/components/RightChat.tsx
+  - AI Q&A panel with Ask and Conceptualize buttons
+  - On Ask: calls /api/ai/chat, then auto‑conceptualizes via /api/ai/patch (mode=from_answer)
+    Passes both answer and prompt so server can create qa anchor and link question→answer
+  - Proposed changes preview shows:
+    - Natural‑language description
+    - Mini graph preview (SVG): includes all node types; edges color‑coded and labeled
+    - Column summary of P/I/C nodes
+    - Operations list (collapsible)
+- web/src/components/CenterGraph.tsx
+  - Visual DAG graph (dagre) with:
+    - Edge labels and color coding
+    - Hover highlight (non‑adjacent dimming)
+    - Click to show details pane (node or edge)
+    - Zoom (wheel) and pan (drag background)
+    - Layout hints: qa nodes rank=min (left), conclusion nodes rank=max (right)
+  - Lists of Nodes and Edges with +1/−1 investment controls
+
+Dependencies
+- Added to web/package.json:
+  - dependencies: dagre, @types/dagre
+  - devDependencies: eslint, eslint-config-next, typescript, tailwind, @types/*
+
+Environment
+- OPENAI_API_KEY: required for full AI patch proposals
+  - If absent, /api/ai/patch returns minimal local fallback (node only)
+
+Edge Colors (CenterGraph & Mini Preview)
+- supports: #16a34a (green)
+- refutes: #dc2626 (red)
+- cites: #7c3aed (purple)
+- relates_to: #6b7280 (gray)
+- infers: #2563eb (blue)
+
+How to Run (Local)
+1) cd web
+2) npm install
+3) export OPENAI_API_KEY=... (or set in .env.local)
+4) npm run dev  → http://localhost:3000
+5) npm run build  (Railway also runs builds, with ESLint + type checks)
+
+Usage Flow
+- Ask flow:
+  - Enter question → Ask → AI answer → auto conceptualize patch
+  - Preview shows description + mini graph; click Apply to commit to center graph
+- Conceptualize flow:
+  - Paste text → Conceptualize → preview → Apply
+- Investment:
+  - In CenterGraph lists, use +1/−1 per node/edge (score displayed)
+
+Quality / Linting
+- ESLint: no-explicit-any enforced (do not use any)
+- Prefer strict typing and narrowing over casts
+- JSON mode: server validates with Zod; never allow free‑form strings
+
+Known Limitations
+- No DB persistence yet (in‑memory state); planned Postgres + pgvector + Drizzle
+- Layout: dagre LR; edges may cross (can add ELK/curved edges later)
+- Mini preview is compact (no drag/zoom); it includes all types but limited space
+- No auth; investments are local state only (MVP)
+
+Planned Next Steps
+- Persistence: Drizzle + Postgres (+pgvector) for nodes/edges/investments
+- Auth & investment rules: daily ±100 limit, prevent self‑investment
+- Layout: ELK or React Flow, curved edges, better routing, pinning
+- UX: legend/filters, hover tooltips, keyboard nav, accessibility
+- AI: stronger prompts for supports/refutes generation, automatic counter‑arguments
+
+Troubleshooting
+- LLM JSON parse failures → server fallback; check /api/ai/patch response in devtools
+- Missing edges in preview → server adds infers for P→I→C and relates_to from qa; ensure prompt passed
+- Build fails with no-explicit-any → remove casts, use typed unions/narrowing
+- IDE can’t find dagre types → run npm install in web/
+
+Change Log (high level)
+- Graph model extended: premise/inference/conclusion + infers
+- RightChat: natural‑language description, mini graph preview (all types), Ask + Conceptualize
+- Patch API: P→I→C autolink (infers), QA anchor + relates_to from question, direction normalization, description fallback
+- CenterGraph: DAG layout (dagre), edge color/labels, hover/click, zoom/pan, investment controls
+- applyPatch order stabilized; ESLint any removed; dependencies added
+
+Contributing
+- Use TypeScript with strict typing (no any)
+- Keep patches small and safe; avoid non‑deterministic ids where possible
+- If adding a new node/edge type, update:
+  - web/src/types/graph.ts
+  - Zod enums in web/src/app/api/ai/patch/route.ts
+  - Mini preview in web/src/components/RightChat.tsx
+  - Color/legend mapping in CenterGraph/RightChat as needed
