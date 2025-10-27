@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import LeftPanel from "@/components/LeftPanel";
 import CenterGraph from "@/components/CenterGraph";
 import RightChat from "@/components/RightChat";
 import type { GraphNode, GraphEdge, Work, LlmPatch } from "@/types/graph";
+import AuthModal from "@/components/AuthModal";
 
 const initialWorks: Work[] = [
   {
@@ -35,6 +36,19 @@ export default function Home() {
   const [edges, setEdges] = useState<GraphEdge[]>(initialEdges);
   const [works] = useState<Work[]>(initialWorks);
   const [selectedWorkId, setSelectedWorkId] = useState<string | undefined>();
+  const [user, setUser] = useState<{ email: string; name?: string } | null>(null);
+  const [authOpen, setAuthOpen] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const me = await fetch("/api/auth/me", { cache: "no-store" }).then((r) => r.json()).catch(() => ({ user: null }));
+        if (mounted && me?.user?.email) setUser({ email: me.user.email as string, name: me.user.name });
+      } catch {}
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   function applyPatch(patch: LlmPatch) {
     let nextNodes = [...nodes];
@@ -84,13 +98,32 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen h-screen grid grid-rows-[auto_1fr]">
-      <header className="border-b border-gray-200/60 p-3 flex items-center justify-between">
+    <div className="min-h-dvh grid grid-rows-[auto_1fr]">
+      <header className="border-b border-gray-200/60 p-3 md:p-4 flex items-center justify-between">
         <h1 className="text-base font-semibold">업무 지식 편집기</h1>
-        <div className="text-xs text-gray-500">MVP · 3-panels</div>
+        <div className="flex items-center gap-3">
+          <div className="text-xs text-gray-500 hidden sm:block">MVP · 3-panels</div>
+          {user ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-700">{user.name || user.email}</span>
+              <button
+                className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
+                onClick={async () => {
+                  await fetch("/api/auth/logout", { method: "POST" });
+                  setUser(null);
+                }}
+              >Sign out</button>
+            </div>
+          ) : (
+            <button
+              className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
+              onClick={() => setAuthOpen(true)}
+            >Sign in</button>
+          )}
+        </div>
       </header>
-      <div className="grid grid-cols-1 md:grid-cols-[280px_1fr_360px] gap-4 p-4 overflow-hidden">
-        <aside className="rounded border border-gray-200/60 p-3 overflow-auto">
+      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_360px] gap-3 md:gap-4 p-3 md:p-4 overflow-hidden">
+        <aside className="rounded border border-gray-200/60 p-3 md:p-3 overflow-auto">
           <LeftPanel
             works={works}
             selectedWorkId={selectedWorkId}
@@ -98,18 +131,25 @@ export default function Home() {
           />
         </aside>
 
-        <main className="rounded border border-gray-200/60 p-3 overflow-auto">
+        <main className="rounded border border-gray-200/60 p-2 md:p-3 overflow-auto">
           <CenterGraph nodes={nodes} edges={edges} onInvestNode={investNode} onInvestEdge={investEdge} />
         </main>
 
-        <aside className="rounded border border-gray-200/60 p-3 overflow-auto">
+        <aside className="rounded border border-gray-200/60 p-2 md:p-3 overflow-auto">
           <RightChat
             nodes={nodes}
             edges={edges}
+            user={user || undefined}
+            onRequireLogin={() => setAuthOpen(true)}
             onProposePatch={(p) => applyPatch(p)}
           />
         </aside>
       </div>
+      <AuthModal
+        open={authOpen}
+        onClose={() => setAuthOpen(false)}
+        onSignedIn={(u) => setUser(u)}
+      />
     </div>
   );
 }

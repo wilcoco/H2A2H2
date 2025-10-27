@@ -237,20 +237,18 @@ Constraints:
         }
 
         if (qaId) {
-          const priority: Array<GraphNodeT["type"]> = ["conclusion", "inference", "premise", "claim", "concept"];
+          const priority: Array<GraphNodeT["type"]> = ["conclusion", "inference", "premise", "claim", "concept", "evidence", "source"];
           const targets: GraphNodeT[] = [];
           for (const t of priority) {
             const cand = addNodeOps.filter((o) => o.node.type === t).map((o) => o.node);
-            if (cand.length) {
-              targets.push(...cand.slice(0, 5));
-              // Prefer linking to the first available category and stop if found
-              break;
-            }
+            if (cand.length) targets.push(...cand.slice(0, 4));
           }
+          // Cap total QA links to avoid noise
+          const maxLinks = 10;
           const makeKey = (e: GraphEdgeT) => `${e.sourceId}->${e.targetId}:${e.type}`;
           const seen = new Set(addEdgeOps.map((o) => makeKey(o.edge)));
           let idx = 0;
-          for (const t of targets) {
+          for (const t of targets.slice(0, maxLinks)) {
             const key = `${qaId}->${t.id}:relates_to`;
             if (seen.has(key)) continue;
             const edge: GraphEdgeT = { id: `e_${Date.now()}_qa_${idx++}`, sourceId: qaId, targetId: t.id, type: "relates_to" };
@@ -261,6 +259,29 @@ Constraints:
 
         if (newOps.length) {
           patch = { ...patch, ops: [...patch.ops, ...newOps] };
+        }
+      }
+      // Normalize direction: QA should be the source for 'relates_to' edges
+      {
+        type GraphNodeT = z.infer<typeof GraphNode>;
+        type PatchOpT = z.infer<typeof PatchOp>;
+        const addNodeOps = patch.ops.filter((op) => op.op === "add_node") as Extract<PatchOpT, { op: "add_node" }>[];
+        const qaIds = new Set<string>(addNodeOps.filter((o) => o.node.type === "qa").map((o) => o.node.id));
+        if (qaIds.size > 0) {
+          const normalized: PatchOpT[] = patch.ops.map((op) => {
+            if (op.op === "add_edge" && op.edge.type === "relates_to") {
+              const isSrcQA = qaIds.has(op.edge.sourceId);
+              const isTgtQA = qaIds.has(op.edge.targetId);
+              if (!isSrcQA && isTgtQA) {
+                return {
+                  op: "add_edge",
+                  edge: { id: op.edge.id, sourceId: op.edge.targetId, targetId: op.edge.sourceId, type: op.edge.type },
+                } as Extract<PatchOpT, { op: "add_edge" }>;
+              }
+            }
+            return op;
+          });
+          patch = { ...patch, ops: normalized };
         }
       }
       if (!patch.description) {

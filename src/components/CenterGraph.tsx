@@ -43,7 +43,12 @@ function GraphCanvas({
     const graph = new dagre.graphlib.Graph();
     graph.setGraph({ rankdir: "LR", nodesep: 30, ranksep: 80 });
     graph.setDefaultEdgeLabel(() => ({}));
-    for (const n of nodes) graph.setNode(n.id, { width: nodeW, height: nodeH });
+    for (const n of nodes) {
+      const attr: { width: number; height: number; rank?: "min" | "max" } = { width: nodeW, height: nodeH };
+      if (n.type === "qa") attr.rank = "min";
+      if (n.type === "conclusion") attr.rank = "max";
+      graph.setNode(n.id, (attr as unknown) as dagre.Node);
+    }
     for (const e of edges) graph.setEdge(e.sourceId, e.targetId, { id: e.id });
     dagre.layout(graph);
     return graph;
@@ -122,7 +127,7 @@ function GraphCanvas({
   };
 
   return (
-    <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="w-full h-[520px]" onWheel={onWheel}>
+    <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="w-full h-72 md:h-[520px]" onWheel={onWheel} style={{ touchAction: "none" }}>
       <defs>
         {(["supports", "refutes", "relates_to", "cites", "infers"] as EdgeType[]).map((t) => (
           <marker key={t} id={markerId(t)} viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">

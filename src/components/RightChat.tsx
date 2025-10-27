@@ -9,6 +9,8 @@ type Props = {
   nodes: GraphNode[];
   edges: GraphEdge[];
   onProposePatch: (patch: LlmPatch) => void;
+  user?: { email: string; name?: string };
+  onRequireLogin?: () => void;
 };
 
 const NODE_TYPES: NodeType[] = [
@@ -22,7 +24,7 @@ const NODE_TYPES: NodeType[] = [
   "conclusion",
 ];
 
-export default function RightChat({ nodes, edges, onProposePatch }: Props) {
+export default function RightChat({ nodes, edges, onProposePatch, user, onRequireLogin }: Props) {
   const [prompt, setPrompt] = useState("");
   const [title, setTitle] = useState("");
   const [type, setType] = useState<NodeType>("concept");
@@ -137,10 +139,13 @@ export default function RightChat({ nodes, edges, onProposePatch }: Props) {
   }
 
   function acceptProposed() {
-    if (proposedPatch) {
-      onProposePatch(proposedPatch);
-      setProposedPatch(null);
+    if (!proposedPatch) return;
+    if (!user) {
+      onRequireLogin?.();
+      return;
     }
+    onProposePatch(proposedPatch);
+    setProposedPatch(null);
   }
 
   function discardProposed() {
@@ -201,7 +206,7 @@ export default function RightChat({ nodes, edges, onProposePatch }: Props) {
     const radius = 8;
 
     return (
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-40">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-32 md:h-40">
         <defs>
           {(["supports","refutes","relates_to","cites","infers"] as EdgeType[]).map((t) => (
             <marker key={t} id={`arrow-mini-${t}`} viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -239,7 +244,7 @@ export default function RightChat({ nodes, edges, onProposePatch }: Props) {
   return (
     <div className="flex flex-col gap-4">
       <h2 className="text-lg font-semibold">AI Q&A</h2>
-      <div className="flex flex-col gap-2 max-h-64 overflow-auto rounded border border-gray-200/60 p-2 bg-white/40 dark:bg-gray-900/40">
+      <div className="flex flex-col gap-2 max-h-48 md:max-h-64 overflow-auto rounded border border-gray-200/60 p-2 bg-white/40 dark:bg-gray-900/40">
         {history.length === 0 && (
           <div className="text-xs text-gray-500">질문을 입력하고 Ask를 누르면 응답이 여기에 표시됩니다.</div>
         )}
@@ -259,7 +264,7 @@ export default function RightChat({ nodes, edges, onProposePatch }: Props) {
             <h3 className="text-sm font-medium">Proposed changes</h3>
             <div className="flex gap-2">
               <button onClick={discardProposed} className="text-xs px-2 py-1 rounded border border-gray-300">Discard</button>
-              <button onClick={acceptProposed} className="text-xs px-2 py-1 rounded bg-blue-600 text-white">Apply</button>
+              <button onClick={acceptProposed} className="text-xs px-2 py-1 rounded bg-blue-600 text-white">{user ? "Apply" : "Sign in to Apply"}</button>
             </div>
           </div>
           {proposedPatch.description && (
@@ -268,7 +273,7 @@ export default function RightChat({ nodes, edges, onProposePatch }: Props) {
           <div className="mt-2">
             <PatchPreviewGraph patch={proposedPatch} />
           </div>
-          <div className="mt-3 grid grid-cols-3 gap-2">
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
             {(["premise","inference","conclusion"] as NodeType[]).map((t) => {
               const added = proposedPatch.ops.reduce<GraphNode[]>((acc, op) => {
                 if (op.op === "add_node" && op.node.type === t) acc.push(op.node);
