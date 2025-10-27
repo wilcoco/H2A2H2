@@ -32,6 +32,10 @@ export interface Work {
   description?: string;
   investmentScore: number;
   nodeCount: number;
+  topic?: string;
+  isPublic?: boolean;
+  createdBy?: string;
+  createdAt?: string | Date;
 }
 
 export type PatchOp =

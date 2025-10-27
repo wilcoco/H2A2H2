@@ -52,6 +52,29 @@ export default function Home() {
     return () => { mounted = false; };
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/works", { cache: "no-store" });
+        if (!res.ok) return;
+        const json = await res.json();
+        if (mounted && Array.isArray(json?.works)) setWorks(json.works as Work[]);
+      } catch {}
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  async function searchReferences(query: string) {
+    try {
+      const url = "/api/works?search=" + encodeURIComponent(query);
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) return;
+      const json = await res.json();
+      if (Array.isArray(json?.works)) setWorks(json.works as Work[]);
+    } catch {}
+  }
+
   function applyPatch(patch: LlmPatch) {
     let nextNodes = [...nodes];
     let nextEdges = [...edges];
@@ -147,6 +170,7 @@ export default function Home() {
             edges={edges}
             user={user || undefined}
             onRequireLogin={() => setAuthOpen(true)}
+            onSearchReferences={searchReferences}
             onProposePatch={(p) => applyPatch(p)}
           />
         </aside>
@@ -159,17 +183,32 @@ export default function Home() {
       <PublishModal
         open={publishOpen}
         onClose={() => setPublishOpen(false)}
-        onPublish={(title, description) => {
-          const id = `w_${Date.now()}`;
-          const work: Work = {
-            id,
-            title: title.trim() || "Untitled",
-            description: description?.trim() || undefined,
-            investmentScore: 0,
-            nodeCount: nodes.length,
-          };
-          setWorks((prev) => [work, ...prev]);
-          setPublishOpen(false);
+        onPublish={async (title: string, description?: string, topic?: string, isPublic?: boolean) => {
+          try {
+            const res = await fetch("/api/works", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ title, description, topic, isPublic, graph: { nodes, edges } }),
+            });
+            if (res.ok) {
+              const json = await res.json();
+              if (json?.work) setWorks((prev) => [json.work as Work, ...prev]);
+            } else {
+              const id = `w_${Date.now()}`;
+              const work: Work = {
+                id,
+                title: title.trim() || "Untitled",
+                description: description?.trim() || undefined,
+                investmentScore: 0,
+                nodeCount: nodes.length,
+                topic: topic?.trim() || undefined,
+                isPublic: isPublic ?? true,
+              };
+              setWorks((prev) => [work, ...prev]);
+            }
+          } finally {
+            setPublishOpen(false);
+          }
         }}
       />
     </div>

@@ -11,6 +11,7 @@ type Props = {
   onProposePatch: (patch: LlmPatch) => void;
   user?: { email: string; name?: string };
   onRequireLogin?: () => void;
+  onSearchReferences?: (query: string) => void;
 };
 
 const NODE_TYPES: NodeType[] = [
@@ -24,7 +25,7 @@ const NODE_TYPES: NodeType[] = [
   "conclusion",
 ];
 
-export default function RightChat({ nodes, edges, onProposePatch, user, onRequireLogin }: Props) {
+export default function RightChat({ nodes, edges, onProposePatch, user, onRequireLogin, onSearchReferences }: Props) {
   const [prompt, setPrompt] = useState("");
   const [title, setTitle] = useState("");
   const [type, setType] = useState<NodeType>("concept");
@@ -98,6 +99,8 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
             const p = (await pres.json()) as LlmPatch;
             setProposedPatch(p);
           }
+          // refresh left references by question term
+          onSearchReferences?.(question);
         } finally {
           setGeneratingPatch(false);
         }
@@ -130,6 +133,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
       }
       const p = (await pres.json()) as LlmPatch;
       setProposedPatch(p);
+      onSearchReferences?.(prompt.trim());
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
