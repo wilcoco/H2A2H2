@@ -6,6 +6,7 @@ import CenterGraph from "@/components/CenterGraph";
 import RightChat from "@/components/RightChat";
 import type { GraphNode, GraphEdge, Work, LlmPatch } from "@/types/graph";
 import AuthModal from "@/components/AuthModal";
+import PublishModal from "@/components/PublishModal";
 
 const initialWorks: Work[] = [
   {
@@ -34,10 +35,11 @@ const initialEdges: GraphEdge[] = [];
 export default function Home() {
   const [nodes, setNodes] = useState<GraphNode[]>(initialNodes);
   const [edges, setEdges] = useState<GraphEdge[]>(initialEdges);
-  const [works] = useState<Work[]>(initialWorks);
+  const [works, setWorks] = useState<Work[]>(initialWorks);
   const [selectedWorkId, setSelectedWorkId] = useState<string | undefined>();
   const [user, setUser] = useState<{ email: string; name?: string } | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -107,6 +109,10 @@ export default function Home() {
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-700">{user.name || user.email}</span>
               <button
+                className="text-xs px-2 py-1 rounded border border-blue-600 text-blue-700 hover:bg-blue-50"
+                onClick={() => setPublishOpen(true)}
+              >Publish</button>
+              <button
                 className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
                 onClick={async () => {
                   await fetch("/api/auth/logout", { method: "POST" });
@@ -149,6 +155,22 @@ export default function Home() {
         open={authOpen}
         onClose={() => setAuthOpen(false)}
         onSignedIn={(u) => setUser(u)}
+      />
+      <PublishModal
+        open={publishOpen}
+        onClose={() => setPublishOpen(false)}
+        onPublish={(title, description) => {
+          const id = `w_${Date.now()}`;
+          const work: Work = {
+            id,
+            title: title.trim() || "Untitled",
+            description: description?.trim() || undefined,
+            investmentScore: 0,
+            nodeCount: nodes.length,
+          };
+          setWorks((prev) => [work, ...prev]);
+          setPublishOpen(false);
+        }}
       />
     </div>
   );
