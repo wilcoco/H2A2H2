@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState, useEffect } from "react";
 import type { GraphNode, GraphEdge, NodeType, EdgeType } from "@/types/graph";
 import * as dagre from "dagre";
 
@@ -9,6 +9,11 @@ type Props = {
   edges: GraphEdge[];
   onInvestNode?: (id: string, delta: number) => void;
   onInvestEdge?: (id: string, delta: number) => void;
+  onAddNode?: (n: { type: NodeType; title: string; content?: string }) => void;
+  onUpdateNode?: (id: string, patch: { title?: string; content?: string }) => void;
+  onRemoveNode?: (id: string) => void;
+  onAddEdge?: (e: { sourceId: string; targetId: string; type: EdgeType }) => void;
+  onRemoveEdge?: (id: string) => void;
 };
 
 function GraphCanvas({
@@ -180,10 +185,28 @@ function GraphCanvas({
   );
 }
 
-export default function CenterGraph({ nodes, edges, onInvestNode, onInvestEdge }: Props) {
+export default function CenterGraph({ nodes, edges, onInvestNode, onInvestEdge, onAddNode, onUpdateNode, onRemoveNode, onAddEdge, onRemoveEdge }: Props) {
   const [hoverNodeId, setHoverNodeId] = useState<string | null>(null);
   const [hoverEdgeId, setHoverEdgeId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [newNodeTitle, setNewNodeTitle] = useState("");
+  const [newNodeType, setNewNodeType] = useState<NodeType>("concept");
+  const [newNodeContent, setNewNodeContent] = useState("");
+  const [edgeSrc, setEdgeSrc] = useState("");
+  const [edgeTgt, setEdgeTgt] = useState("");
+  const [edgeType, setEdgeType] = useState<EdgeType>("supports");
+  const selNode = nodes.find((x) => x.id === selectedId) || null;
+  const selEdge = edges.find((x) => x.id === selectedId) || null;
+  const [editTitle, setEditTitle] = useState("");
+  const [editContent, setEditContent] = useState("");
+  
+  // sync editor when selection changes
+  useEffect(() => {
+    if (selNode) {
+      setEditTitle(selNode.title);
+      setEditContent(selNode.content ?? "");
+    }
+  }, [selectedId]);
   return (
     <div className="flex flex-col gap-4">
       <header className="flex items-center justify-between">
@@ -213,6 +236,14 @@ export default function CenterGraph({ nodes, edges, onInvestNode, onInvestEdge }
                   <div className="font-semibold">Node: {n.title}</div>
                   <div className="text-[11px] mt-1">type: {n.type}</div>
                   {n.content && <div className="mt-1">{n.content}</div>}
+                  <div className="mt-2 grid grid-cols-1 gap-2">
+                    <input className="rounded border p-1" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="Title" />
+                    <textarea className="rounded border p-1" rows={3} value={editContent} onChange={(e) => setEditContent(e.target.value)} placeholder="Content" />
+                    <div className="flex gap-2">
+                      <button className="text-[11px] px-2 py-1 rounded border" onClick={() => onUpdateNode?.(n.id, { title: editTitle, content: editContent })}>Save</button>
+                      <button className="text-[11px] px-2 py-1 rounded border border-red-300 text-red-700" onClick={() => onRemoveNode?.(n.id)}>Delete</button>
+                    </div>
+                  </div>
                 </div>
               );
               const e = edges.find((x) => x.id === selectedId);
@@ -221,6 +252,9 @@ export default function CenterGraph({ nodes, edges, onInvestNode, onInvestEdge }
                   <div className="font-semibold">Edge: {e.sourceId} → {e.targetId}</div>
                   <div className="text-[11px] mt-1">type: {e.type}</div>
                   <div className="text-[11px]">score: {e.score ?? 0}</div>
+                  <div className="mt-2">
+                    <button className="text-[11px] px-2 py-1 rounded border border-red-300 text-red-700" onClick={() => onRemoveEdge?.(e.id)}>Delete</button>
+                  </div>
                 </div>
               );
               return null;
@@ -261,6 +295,16 @@ export default function CenterGraph({ nodes, edges, onInvestNode, onInvestEdge }
               <li className="text-xs text-gray-500">No nodes yet.</li>
             )}
           </ul>
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2">
+            <select value={newNodeType} onChange={(e) => setNewNodeType(e.target.value as NodeType)} className="rounded border p-1 text-sm">
+              {(["concept","claim","evidence","source","qa","premise","inference","conclusion"] as NodeType[]).map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+            <input className="rounded border p-1 text-sm" placeholder="Title" value={newNodeTitle} onChange={(e) => setNewNodeTitle(e.target.value)} />
+            <input className="rounded border p-1 text-sm" placeholder="Content (optional)" value={newNodeContent} onChange={(e) => setNewNodeContent(e.target.value)} />
+            <button className="text-xs px-2 py-1 rounded bg-blue-600 text-white" onClick={() => { if (newNodeTitle.trim()) { onAddNode?.({ type: newNodeType, title: newNodeTitle.trim(), content: newNodeContent.trim() || undefined }); setNewNodeTitle(""); setNewNodeContent(""); } }}>Add node</button>
+          </div>
         </div>
 
         <div className="rounded border border-gray-200/60 p-3">

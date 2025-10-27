@@ -36,6 +36,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
   const [generatingPatch, setGeneratingPatch] = useState(false);
   const [proposedPatch, setProposedPatch] = useState<LlmPatch | null>(null);
   const [loadingConcept, setLoadingConcept] = useState(false);
+  const [autoApply, setAutoApply] = useState(true);
 
   async function proposePatch() {
     if (!prompt.trim() && !title.trim()) {
@@ -55,7 +56,15 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
         throw new Error(err?.error || "Request failed");
       }
       const patch = (await res.json()) as LlmPatch;
-      onProposePatch(patch);
+      setProposedPatch(patch);
+      if (autoApply) {
+        if (!user) {
+          onRequireLogin?.();
+        } else {
+          onProposePatch(patch);
+          setProposedPatch(null);
+        }
+      }
       setTitle("");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unknown error");
@@ -98,6 +107,14 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
           if (pres.ok) {
             const p = (await pres.json()) as LlmPatch;
             setProposedPatch(p);
+            if (autoApply) {
+              if (!user) {
+                onRequireLogin?.();
+              } else {
+                onProposePatch(p);
+                setProposedPatch(null);
+              }
+            }
           }
           // refresh left references by question term
           onSearchReferences?.(question);
@@ -133,6 +150,14 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
       }
       const p = (await pres.json()) as LlmPatch;
       setProposedPatch(p);
+      if (autoApply) {
+        if (!user) {
+          onRequireLogin?.();
+        } else {
+          onProposePatch(p);
+          setProposedPatch(null);
+        }
+      }
       onSearchReferences?.(prompt.trim());
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unknown error");
@@ -335,6 +360,10 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
           >
             {loadingConcept ? "Conceptualizing..." : "Conceptualize"}
           </button>
+          <label className="ml-auto flex items-center gap-1 text-xs text-gray-700">
+            <input type="checkbox" checked={autoApply} onChange={(e) => setAutoApply(e.target.checked)} />
+            Auto-apply
+          </label>
         </div>
         <div className="flex items-center gap-2">
           <select

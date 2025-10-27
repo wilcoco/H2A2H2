@@ -114,6 +114,34 @@ export default function Home() {
     setEdges(nextEdges);
   }
 
+  function addNode(n: { type: string; title: string; content?: string }) {
+    const id = `n_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const node: GraphNode = { id, type: n.type as any, title: n.title, content: n.content };
+    setNodes((prev) => [...prev, node]);
+  }
+
+  function updateNode(id: string, patch: { title?: string; content?: string }) {
+    setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, ...patch } : n)));
+  }
+
+  function removeNode(id: string) {
+    setNodes((prev) => prev.filter((n) => n.id !== id));
+    setEdges((prev) => prev.filter((e) => e.sourceId !== id && e.targetId !== id));
+  }
+
+  function addEdge(e: { sourceId: string; targetId: string; type: string }) {
+    if (!nodes.find((n) => n.id === e.sourceId)) return;
+    if (!nodes.find((n) => n.id === e.targetId)) return;
+    if (e.sourceId === e.targetId) return;
+    const id = `e_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const edge: GraphEdge = { id, sourceId: e.sourceId, targetId: e.targetId, type: e.type as any };
+    setEdges((prev) => [...prev, edge]);
+  }
+
+  function removeEdge(id: string) {
+    setEdges((prev) => prev.filter((e) => e.id !== id));
+  }
+
   function investNode(id: string, delta: number) {
     setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, score: (n.score ?? 0) + delta } : n)));
   }
@@ -161,7 +189,17 @@ export default function Home() {
         </aside>
 
         <main className="rounded border border-gray-200/60 p-2 md:p-3 overflow-auto">
-          <CenterGraph nodes={nodes} edges={edges} onInvestNode={investNode} onInvestEdge={investEdge} />
+          <CenterGraph
+            nodes={nodes}
+            edges={edges}
+            onInvestNode={investNode}
+            onInvestEdge={investEdge}
+            onAddNode={addNode}
+            onUpdateNode={updateNode}
+            onRemoveNode={removeNode}
+            onAddEdge={addEdge}
+            onRemoveEdge={removeEdge}
+          />
         </main>
 
         <aside className="rounded border border-gray-200/60 p-2 md:p-3 overflow-auto">
