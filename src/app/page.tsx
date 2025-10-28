@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import LeftPanel from "@/components/LeftPanel";
 import CenterGraph from "@/components/CenterGraph";
 import RightChat from "@/components/RightChat";
-import type { GraphNode, GraphEdge, Work, LlmPatch } from "@/types/graph";
+import type { GraphNode, GraphEdge, Work, LlmPatch, NodeType, EdgeType } from "@/types/graph";
 import AuthModal from "@/components/AuthModal";
 import PublishModal from "@/components/PublishModal";
 
@@ -110,9 +110,9 @@ export default function Home() {
     setEdges(nextEdges);
   }
 
-  function addNode(n: { type: string; title: string; content?: string }) {
+  function addNode(n: { type: NodeType; title: string; content?: string }) {
     const id = `n_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    const node: GraphNode = { id, type: n.type as any, title: n.title, content: n.content };
+    const node: GraphNode = { id, type: n.type, title: n.title, content: n.content };
     setNodes((prev) => [...prev, node]);
   }
 
@@ -123,15 +123,6 @@ export default function Home() {
   function removeNode(id: string) {
     setNodes((prev) => prev.filter((n) => n.id !== id));
     setEdges((prev) => prev.filter((e) => e.sourceId !== id && e.targetId !== id));
-  }
-
-  function addEdge(e: { sourceId: string; targetId: string; type: string }) {
-    if (!nodes.find((n) => n.id === e.sourceId)) return;
-    if (!nodes.find((n) => n.id === e.targetId)) return;
-    if (e.sourceId === e.targetId) return;
-    const id = `e_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    const edge: GraphEdge = { id, sourceId: e.sourceId, targetId: e.targetId, type: e.type as any };
-    setEdges((prev) => [...prev, edge]);
   }
 
   function removeEdge(id: string) {
@@ -193,7 +184,6 @@ export default function Home() {
             onAddNode={addNode}
             onUpdateNode={updateNode}
             onRemoveNode={removeNode}
-            onAddEdge={addEdge}
             onRemoveEdge={removeEdge}
           />
         </main>

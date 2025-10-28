@@ -12,7 +12,6 @@ type Props = {
   onAddNode?: (n: { type: NodeType; title: string; content?: string }) => void;
   onUpdateNode?: (id: string, patch: { title?: string; content?: string }) => void;
   onRemoveNode?: (id: string) => void;
-  onAddEdge?: (e: { sourceId: string; targetId: string; type: EdgeType }) => void;
   onRemoveEdge?: (id: string) => void;
 };
 
@@ -185,7 +184,7 @@ function GraphCanvas({
   );
 }
 
-export default function CenterGraph({ nodes, edges, onInvestNode, onInvestEdge, onAddNode, onUpdateNode, onRemoveNode, onAddEdge, onRemoveEdge }: Props) {
+export default function CenterGraph({ nodes, edges, onInvestNode, onInvestEdge, onAddNode, onUpdateNode, onRemoveNode, onRemoveEdge }: Props) {
   const [hoverNodeId, setHoverNodeId] = useState<string | null>(null);
   const [hoverEdgeId, setHoverEdgeId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
