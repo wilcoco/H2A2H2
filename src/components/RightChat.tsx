@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { LlmPatch, GraphNode, GraphEdge, NodeType, EdgeType } from "@/types/graph";
+import type { LlmPatch, GraphNode, GraphEdge, NodeType, EdgeType, Work } from "@/types/graph";
 
 type Props = {
   nodes: GraphNode[];
@@ -35,6 +35,9 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
   const [proposedPatch, setProposedPatch] = useState<LlmPatch | null>(null);
   const [loadingConcept, setLoadingConcept] = useState(false);
   const [autoApply, setAutoApply] = useState(true);
+  const [reuseLoading, setReuseLoading] = useState(false);
+  const [reuseFound, setReuseFound] = useState<Work[]>([]);
+  const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
 
   async function proposePatch() {
     if (!prompt.trim() && !title.trim()) {
@@ -76,10 +79,43 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
       setError("Enter a prompt to ask.");
       return;
     }
+    const question = prompt.trim();
+    // 1) Reuse pre-check
+    try {
+      setReuseLoading(true);
+      setPendingQuestion(question);
+      setError(null);
+      // trigger left references too
+      onSearchReferences?.(question);
+      const kres = await fetch("/api/ai/keywords", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: question, max: 6 }),
+      });
+      const kj = await kres.json().catch(() => ({ keywords: [] }));
+      const kws: string[] = Array.isArray(kj?.keywords) ? kj.keywords : [];
+      const url = "/api/works?kw=" + encodeURIComponent(kws.join(","));
+      const wres = await fetch(url, { cache: "no-store" });
+      const wj = await wres.json().catch(() => ({ works: [] }));
+      const works: Work[] = Array.isArray(wj?.works) ? (wj.works as Work[]) : [];
+      if (works.length > 0) {
+        setReuseFound(works.slice(0, 3));
+        setReuseLoading(false);
+        return; // show curated options first
+      }
+    } catch {
+      // ignore reuse errors and fall back to LLM
+    } finally {
+      setReuseLoading(false);
+    }
+    // 2) No reuse found → call LLM
+    await askLlmInternal(question);
+  }
+
+  async function askLlmInternal(question: string) {
     try {
       setLoadingAsk(true);
       setError(null);
-      const question = prompt.trim();
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -94,7 +130,6 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
       if (answer) {
         setHistory((h) => [...h, { role: "user", content: question }, { role: "assistant", content: answer }]);
         setPrompt("");
-        // auto conceptualize: generate a patch from the answer and show preview
         try {
           setGeneratingPatch(true);
           const pres = await fetch("/api/ai/patch", {
@@ -114,7 +149,6 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
               }
             }
           }
-          // refresh left references by question term
           onSearchReferences?.(question);
         } finally {
           setGeneratingPatch(false);
@@ -124,6 +158,49 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setLoadingAsk(false);
+    }
+  }
+
+  function buildPatchFromGraph(title: string, g: { nodes: GraphNode[]; edges: GraphEdge[] }): LlmPatch {
+    const existingNodeIds = new Set(nodes.map((n) => n.id));
+    const existingEdgeIds = new Set(edges.map((e) => e.id));
+    const addNodes: GraphNode[] = g.nodes.filter((n) => !existingNodeIds.has(n.id));
+    const nextNodeIds = new Set<string>([...existingNodeIds, ...addNodes.map((n) => n.id)]);
+    const addEdges: GraphEdge[] = g.edges.filter((e) => !existingEdgeIds.has(e.id) && nextNodeIds.has(e.sourceId) && nextNodeIds.has(e.targetId));
+    const ops: LlmPatch["ops"] = [];
+    for (const n of addNodes) ops.push({ op: "add_node", node: n });
+    for (const e of addEdges) ops.push({ op: "add_edge", edge: e });
+    return {
+      id: `reuse_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      description: `Reuse: imported ${addNodes.length} nodes and ${addEdges.length} edges from "${title}"`,
+      ops,
+    };
+  }
+
+  async function useWork(id: string, title: string) {
+    try {
+      setError(null);
+      const res = await fetch(`/api/works/${encodeURIComponent(id)}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || "Failed to load work");
+      }
+      const data = (await res.json()) as { graph: { nodes: GraphNode[]; edges: GraphEdge[] } };
+      const patch = buildPatchFromGraph(title, data.graph);
+      setProposedPatch(patch);
+      if (autoApply) {
+        if (!user) {
+          onRequireLogin?.();
+        } else {
+          onProposePatch(patch);
+          setProposedPatch(null);
+        }
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setReuseFound([]);
+      setPendingQuestion(null);
     }
   }
 
@@ -271,6 +348,34 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
   return (
     <div className="flex flex-col gap-4">
       <h2 className="text-lg font-semibold">AI Q&A</h2>
+      {reuseLoading && (
+        <div className="text-xs text-gray-500">유사한 공개 정리물을 찾는 중...</div>
+      )}
+      {reuseFound.length > 0 && (
+        <div className="rounded border border-emerald-200 p-2 bg-emerald-50 dark:bg-emerald-950/20">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium">유사한 정리 결과</h3>
+            <div className="flex gap-2">
+              <button className="text-xs px-2 py-1 rounded border border-gray-300" onClick={() => { const q = pendingQuestion || ""; setReuseFound([]); setPendingQuestion(null); if (q) void askLlmInternal(q); }}>Ask LLM instead</button>
+              <button className="text-xs px-2 py-1 rounded border border-gray-300" onClick={() => { setReuseFound([]); setPendingQuestion(null); }}>Dismiss</button>
+            </div>
+          </div>
+          <ul className="mt-2 space-y-2">
+            {reuseFound.map((w) => (
+              <li key={w.id} className="rounded border border-gray-200/60 p-2 bg-white/60 dark:bg-gray-900/40">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-medium">{w.title}</div>
+                    {w.description && <div className="text-xs text-gray-600 mt-0.5 line-clamp-2">{w.description}</div>}
+                  </div>
+                  <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white" onClick={() => void useWork(w.id, w.title)}>Use</button>
+                </div>
+                <div className="mt-1 text-[11px] text-gray-500">{w.nodeCount} nodes · score {w.investmentScore}</div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="flex flex-col gap-2 max-h-48 md:max-h-64 overflow-auto rounded border border-gray-200/60 p-2 bg-white/40 dark:bg-gray-900/40">
         {history.length === 0 && (
           <div className="text-xs text-gray-500">질문을 입력하고 Ask를 누르면 응답이 여기에 표시됩니다.</div>
