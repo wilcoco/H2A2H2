@@ -17,13 +17,24 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const question: string = (body?.question ?? "").toString();
     const answer: string | undefined = body?.answer ? String(body.answer) : undefined;
-    const summary: string | undefined = body?.summary ? String(body.summary) : undefined;
+    let summary: string | undefined = body?.summary ? String(body.summary) : undefined;
     const patch: any | undefined = body?.patch ?? undefined;
     const workId: string | undefined = body?.workId ? String(body.workId) : undefined;
     const createdBy: string | undefined = body?.createdBy ? String(body.createdBy) : undefined;
 
     const q = question.trim();
     if (!q) return NextResponse.json({ error: "Missing question" }, { status: 400 });
+
+    // server-side summary fallback
+    if (!summary) {
+      try {
+        if (patch?.description && typeof patch.description === "string") {
+          summary = String(patch.description).slice(0, 280);
+        } else if (answer) {
+          summary = answer.replace(/\s+/g, " ").slice(0, 280);
+        }
+      } catch {}
+    }
 
     const id = uuid();
     await withConn(async (c) => {

@@ -40,6 +40,9 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
   const [qaFound, setQaFound] = useState<QAEntry[]>([]);
   const [lastAnswer, setLastAnswer] = useState<string>("");
+  const [extendId, setExtendId] = useState<string | null>(null);
+  const [extendText, setExtendText] = useState<string>("");
+  const [extendLoading, setExtendLoading] = useState(false);
 
   async function useQA(id: string) {
     try {
@@ -79,6 +82,28 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unknown error");
+    }
+  }
+
+  async function submitExtend(entry: QAEntry) {
+    try {
+      if (!extendText.trim()) return;
+      setExtendLoading(true);
+      const res = await fetch("/api/qa/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: entry.question, summary: extendText.trim() }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || "Failed to share");
+      }
+      setExtendId(null);
+      setExtendText("");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setExtendLoading(false);
     }
   }
 
@@ -426,12 +451,38 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
             {qaFound.map((q) => (
               <li key={q.id} className="rounded border border-gray-200/60 p-2 bg-white/60 dark:bg-gray-900/40">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-medium">Q: {q.question}</div>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium truncate">Q: {q.question}</div>
                     {q.summary && <div className="text-xs text-gray-600 mt-0.5 line-clamp-2">{q.summary}</div>}
+                    {q.answer && (
+                      <details className="mt-1">
+                        <summary className="text-[11px] text-gray-600 cursor-pointer">View answer</summary>
+                        <div className="text-xs text-gray-700 mt-1 whitespace-pre-wrap max-h-32 overflow-auto">{q.answer}</div>
+                      </details>
+                    )}
                   </div>
-                  <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white" onClick={() => void useQA(q.id)}>Use</button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white" onClick={() => void useQA(q.id)}>Use</button>
+                    <button className="text-xs px-2 py-1 rounded border" onClick={() => { setExtendId(extendId === q.id ? null : q.id); if (extendId !== q.id) setExtendText(""); }}>Extend</button>
+                  </div>
                 </div>
+                {extendId === q.id && (
+                  <div className="mt-2">
+                    <textarea
+                      className="w-full rounded border border-gray-300 bg-white/90 p-2 text-xs outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60"
+                      rows={3}
+                      placeholder="Add additional summary/notes to share"
+                      value={extendText}
+                      onChange={(e) => setExtendText(e.target.value)}
+                    />
+                    <div className="mt-1 flex items-center gap-2">
+                      <button className="text-xs px-2 py-1 rounded bg-blue-600 text-white disabled:opacity-50" disabled={extendLoading || extendText.trim().length === 0} onClick={() => void submitExtend(q)}>
+                        {extendLoading ? "Sharing..." : "Share Update"}
+                      </button>
+                      <button className="text-xs px-2 py-1 rounded border" onClick={() => { setExtendId(null); setExtendText(""); }}>Cancel</button>
+                    </div>
+                  </div>
+                )}
               </li>
             ))}
           </ul>

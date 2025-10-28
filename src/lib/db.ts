@@ -59,5 +59,9 @@ export async function ensureTables() {
     `);
     await c.query(`create index if not exists qa_entries_question_idx on qa_entries (lower(question))`);
     await c.query(`create index if not exists qa_entries_created_at_idx on qa_entries (created_at)`);
+    // Optional acceleration via trigram indexes if available
+    try { await c.query(`create extension if not exists pg_trgm`); } catch {}
+    try { await c.query(`create index if not exists qa_entries_question_trgm on qa_entries using gin (lower(question) gin_trgm_ops)`); } catch {}
+    try { await c.query(`create index if not exists qa_entries_summary_trgm on qa_entries using gin (lower(coalesce(summary,'')) gin_trgm_ops)`); } catch {}
   });
 }
