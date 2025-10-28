@@ -1,0 +1,24 @@
+# Requirements (Agreements)
+
+- Audience: general users.
+- Three-pane UI:
+  - Left: public works (References), shown only when a right-side question triggers keyword search.
+  - Center: user-approved Knowledge Graph (not code), shareable.
+  - Right: AI Q&A with patch proposals or manual authoring.
+- Conceptualization:
+  - Prefer Chomskyan structure: premise → inference → conclusion (P→I→C).
+  - Node types: concept, claim, evidence, source, qa, premise, inference, conclusion.
+  - Edge types: supports, refutes, relates_to, cites, infers.
+  - Auto-apply: ON by default; if signed-in, patches are applied to center automatically.
+- References:
+  - Right question → POST /api/ai/keywords → GET /api/works?kw=...; show only then.
+- Publish:
+  - When published, snapshot (graph + topic/public) reflects into left list immediately.
+- Investment MVP:
+  - Nodes/edges have score; +/-1 controls in CenterGraph.
+  - Ranking weight based on aggregated investments.
+  - Recommended limits: ±100/day; self-invest on own work discouraged.
+- MVP: all 3 panes functional; concurrency target ~1000.
+- Deployment: GitHub → Railway; Root: web.
+- Licensing/Policy: follow Reddit policy baseline (to be refined).
+- Trust/Reputation: no separate metric for MVP.
