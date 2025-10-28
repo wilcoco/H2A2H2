@@ -52,27 +52,23 @@ export default function Home() {
     return () => { mounted = false; };
   }, []);
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const res = await fetch("/api/works", { cache: "no-store" });
-        if (!res.ok) return;
-        const json = await res.json();
-        if (mounted && Array.isArray(json?.works)) setWorks(json.works as Work[]);
-      } catch {}
-    })();
-    return () => { mounted = false; };
-  }, []);
+  // Left references will be populated only when RightChat triggers a search
 
   async function searchReferences(query: string) {
     try {
-      const url = "/api/works?search=" + encodeURIComponent(query);
+      const kres = await fetch("/api/ai/keywords", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: query, max: 6 }),
+      });
+      const kj = await kres.json().catch(() => ({ keywords: [] }));
+      const kws: string[] = Array.isArray(kj?.keywords) ? kj.keywords : [];
+      const url = "/api/works?kw=" + encodeURIComponent(kws.join(","));
       const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) return;
+      if (!res.ok) { setWorks([]); return; }
       const json = await res.json();
-      if (Array.isArray(json?.works)) setWorks(json.works as Work[]);
-    } catch {}
+      if (Array.isArray(json?.works)) setWorks(json.works as Work[]); else setWorks([]);
+    } catch { setWorks([]); }
   }
 
   function applyPatch(patch: LlmPatch) {

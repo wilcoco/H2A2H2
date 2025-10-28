@@ -47,8 +47,28 @@ export async function GET(req: NextRequest) {
   try {
     await ensureTables();
     const url = new URL(req.url);
+    const kw = url.searchParams.get("kw")?.trim();
     const search = url.searchParams.get("search")?.trim();
     const rows = await withConn(async (c) => {
+      if (kw && kw.length > 0) {
+        const terms = kw
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0)
+          .slice(0, 10);
+        if (terms.length > 0) {
+          const pats = terms.map((t) => `%${t}%`);
+          const titleExpr = `(${pats.map((_, i) => `title ilike $${i + 1}`).join(" or ")})`;
+          const descExpr = `(${pats.map((_, i) => `coalesce(description,'') ilike $${i + 1}`).join(" or ")})`;
+          const topicExpr = `(${pats.map((_, i) => `coalesce(topic,'') ilike $${i + 1}`).join(" or ")})`;
+          const sql = `select id, title, description, node_count, investment_score, created_by, created_at
+                       from works
+                       where is_public = true and ( ${titleExpr} or ${descExpr} or ${topicExpr} )
+                       order by created_at desc limit 100`;
+          const q = await c.query<Row>(sql, pats);
+          return q.rows;
+        }
+      }
       if (search && search.length > 0) {
         const q = await c.query<Row>(
           `select id, title, description, node_count, investment_score, created_by, created_at
