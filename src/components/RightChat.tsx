@@ -3,8 +3,6 @@
 import { useState } from "react";
 import type { LlmPatch, GraphNode, GraphEdge, NodeType, EdgeType } from "@/types/graph";
 
-type LogicType = "premise" | "inference" | "conclusion";
-
 type Props = {
   nodes: GraphNode[];
   edges: GraphEdge[];

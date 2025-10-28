@@ -192,11 +192,7 @@ export default function CenterGraph({ nodes, edges, onInvestNode, onInvestEdge, 
   const [newNodeTitle, setNewNodeTitle] = useState("");
   const [newNodeType, setNewNodeType] = useState<NodeType>("concept");
   const [newNodeContent, setNewNodeContent] = useState("");
-  const [edgeSrc, setEdgeSrc] = useState("");
-  const [edgeTgt, setEdgeTgt] = useState("");
-  const [edgeType, setEdgeType] = useState<EdgeType>("supports");
   const selNode = nodes.find((x) => x.id === selectedId) || null;
-  const selEdge = edges.find((x) => x.id === selectedId) || null;
   const [editTitle, setEditTitle] = useState("");
   const [editContent, setEditContent] = useState("");
   
@@ -206,7 +202,7 @@ export default function CenterGraph({ nodes, edges, onInvestNode, onInvestEdge, 
       setEditTitle(selNode.title);
       setEditContent(selNode.content ?? "");
     }
-  }, [selectedId]);
+  }, [selectedId, selNode]);
   return (
     <div className="flex flex-col gap-4">
       <header className="flex items-center justify-between">
