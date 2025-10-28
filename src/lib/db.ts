@@ -44,5 +44,20 @@ export async function ensureTables() {
     `);
     await c.query(`alter table works add column if not exists topic text`);
     await c.query(`alter table works add column if not exists is_public boolean not null default true`);
+    await c.query(`
+      create table if not exists qa_entries (
+        id text primary key,
+        question text not null,
+        norm_question text,
+        answer text,
+        summary text,
+        patch jsonb,
+        work_id text,
+        created_by text,
+        created_at timestamptz not null default now()
+      );
+    `);
+    await c.query(`create index if not exists qa_entries_question_idx on qa_entries (lower(question))`);
+    await c.query(`create index if not exists qa_entries_created_at_idx on qa_entries (created_at)`);
   });
 }

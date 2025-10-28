@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { LlmPatch, GraphNode, GraphEdge, NodeType, EdgeType, Work } from "@/types/graph";
+import type { LlmPatch, GraphNode, GraphEdge, NodeType, EdgeType, Work, QAEntry } from "@/types/graph";
 
 type Props = {
   nodes: GraphNode[];
@@ -38,12 +38,56 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
   const [reuseLoading, setReuseLoading] = useState(false);
   const [reuseFound, setReuseFound] = useState<Work[]>([]);
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
+  const [qaFound, setQaFound] = useState<QAEntry[]>([]);
+  const [lastAnswer, setLastAnswer] = useState<string>("");
+
+  async function useQA(id: string) {
+    try {
+      const res = await fetch(`/api/qa/${encodeURIComponent(id)}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || "Failed to load QA");
+      }
+      const q = (await res.json()) as { question: string; answer?: string; patch?: LlmPatch };
+      if (q.patch) {
+        setProposedPatch(q.patch);
+        if (autoApply) {
+          if (!user) onRequireLogin?.(); else { onProposePatch(q.patch); setProposedPatch(null); }
+        }
+      } else if (q.answer) {
+        // Fall back: conceptualize the stored answer
+        await askLlmInternal(q.answer);
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setQaFound([]);
+      setPendingQuestion(null);
+    }
+  }
+
+  async function shareQA() {
+    try {
+      const question = pendingQuestion || history.filter(h => h.role === "user").slice(-1)[0]?.content || prompt.trim();
+      const payload: any = { question };
+      if (lastAnswer) payload.answer = lastAnswer;
+      if (proposedPatch) payload.patch = proposedPatch;
+      const res = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || "Failed to share");
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    }
+  }
 
   async function proposePatch() {
     if (!prompt.trim() && !title.trim()) {
       setError("Enter a prompt or a title.");
       return;
     }
+
     try {
       setLoading(true);
       setError(null);
@@ -98,8 +142,13 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
       const wres = await fetch(url, { cache: "no-store" });
       const wj = await wres.json().catch(() => ({ works: [] }));
       const works: Work[] = Array.isArray(wj?.works) ? (wj.works as Work[]) : [];
-      if (works.length > 0) {
-        setReuseFound(works.slice(0, 3));
+      setReuseFound(works.slice(0, 3));
+      // Also query QA index
+      const qares = await fetch("/api/qa/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: question, limit: 5 }) });
+      const qaj = await qares.json().catch(() => ({ items: [] }));
+      const items: QAEntry[] = Array.isArray(qaj?.items) ? (qaj.items as QAEntry[]) : [];
+      setQaFound(items);
+      if (works.length > 0 || items.length > 0) {
         setReuseLoading(false);
         return; // show curated options first
       }
@@ -129,6 +178,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
       const answer = data.answer ?? "";
       if (answer) {
         setHistory((h) => [...h, { role: "user", content: question }, { role: "assistant", content: answer }]);
+        setLastAnswer(answer);
         setPrompt("");
         try {
           setGeneratingPatch(true);
@@ -351,13 +401,13 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
       {reuseLoading && (
         <div className="text-xs text-gray-500">유사한 공개 정리물을 찾는 중...</div>
       )}
-      {reuseFound.length > 0 && (
+      {(reuseFound.length > 0 || qaFound.length > 0) && (
         <div className="rounded border border-emerald-200 p-2 bg-emerald-50 dark:bg-emerald-950/20">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium">유사한 정리 결과</h3>
             <div className="flex gap-2">
-              <button className="text-xs px-2 py-1 rounded border border-gray-300" onClick={() => { const q = pendingQuestion || ""; setReuseFound([]); setPendingQuestion(null); if (q) void askLlmInternal(q); }}>Ask LLM instead</button>
-              <button className="text-xs px-2 py-1 rounded border border-gray-300" onClick={() => { setReuseFound([]); setPendingQuestion(null); }}>Dismiss</button>
+              <button className="text-xs px-2 py-1 rounded border border-gray-300" onClick={() => { const q = pendingQuestion || ""; setReuseFound([]); setQaFound([]); setPendingQuestion(null); if (q) void askLlmInternal(q); }}>Ask LLM instead</button>
+              <button className="text-xs px-2 py-1 rounded border border-gray-300" onClick={() => { setReuseFound([]); setQaFound([]); setPendingQuestion(null); }}>Dismiss</button>
             </div>
           </div>
           <ul className="mt-2 space-y-2">
@@ -371,6 +421,17 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
                   <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white" onClick={() => void useWork(w.id, w.title)}>Use</button>
                 </div>
                 <div className="mt-1 text-[11px] text-gray-500">{w.nodeCount} nodes · score {w.investmentScore}</div>
+              </li>
+            ))}
+            {qaFound.map((q) => (
+              <li key={q.id} className="rounded border border-gray-200/60 p-2 bg-white/60 dark:bg-gray-900/40">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-medium">Q: {q.question}</div>
+                    {q.summary && <div className="text-xs text-gray-600 mt-0.5 line-clamp-2">{q.summary}</div>}
+                  </div>
+                  <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white" onClick={() => void useQA(q.id)}>Use</button>
+                </div>
               </li>
             ))}
           </ul>
@@ -492,6 +553,13 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
             disabled={(prompt.trim().length === 0 && title.trim().length === 0) || loading}
           >
             {loading ? "Proposing..." : "Propose"}
+          </button>
+          <button
+            onClick={shareQA}
+            className="rounded border px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-100 disabled:opacity-50"
+            disabled={!lastAnswer && !proposedPatch}
+          >
+            Share Q&A
           </button>
         </div>
       </div>

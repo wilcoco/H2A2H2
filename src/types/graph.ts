@@ -38,6 +38,14 @@ export interface Work {
   createdAt?: string | Date;
 }
 
+export interface QAEntry {
+  id: string;
+  question: string;
+  answer?: string;
+  summary?: string;
+  workId?: string;
+}
+
 export type PatchOp =
   | { op: "add_node"; node: GraphNode }
   | { op: "update_node"; id: string; patch: Partial<GraphNode> }
