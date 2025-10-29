@@ -1,0 +1,85 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import type { QAEntry } from "@/types/graph";
+
+type Props = {
+  onSelectQA: (id: string) => void;
+  onAskAINow: (question: string) => void;
+};
+
+export default function LeftAsk({ onSelectQA, onAskAINow }: Props) {
+  const [q, setQ] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [items, setItems] = useState<QAEntry[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  async function search() {
+    const query = q.trim();
+    if (!query) { setItems([]); return; }
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await fetch("/api/qa/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, limit: 10 }),
+      });
+      const j = await res.json().catch(() => ({ items: [] }));
+      const its: QAEntry[] = Array.isArray(j?.items) ? (j.items as QAEntry[]) : [];
+      setItems(its);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const t = setTimeout(() => { void search(); }, 250);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="sticky top-0 bg-white dark:bg-gray-900 z-10 pb-2 border-b border-gray-100/60">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              const query = q.trim();
+              if (query) onAskAINow(query);
+            } else if (e.key === "Enter") {
+              e.preventDefault();
+              void search();
+            }
+          }}
+          placeholder="질문을 입력하세요"
+          className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60"
+        />
+      </div>
+      {error && <div className="text-xs text-red-600">{error}</div>}
+      {loading && <div className="text-xs text-gray-500">검색 중...</div>}
+      {!loading && items.length === 0 && q.trim().length > 0 && (
+        <div className="text-xs text-gray-700 space-y-2">
+          <div>유사한 Q&A가 없습니다.</div>
+          <button
+            className="text-xs px-2 py-1 rounded bg-emerald-600 text-white"
+            onClick={() => onAskAINow(q.trim())}
+          >지금 AI에게 묻기</button>
+        </div>
+      )}
+      <ul className="space-y-2">
+        {items.map((it) => (
+          <li key={it.id} className="rounded border border-gray-200/60 p-2 bg-white/60 dark:bg-gray-900/40 cursor-pointer hover:bg-gray-50" onClick={() => onSelectQA(it.id)}>
+            <div className="text-sm font-medium line-clamp-2">Q: {it.question}</div>
+            {it.summary && <div className="text-[11px] text-gray-600 mt-0.5 line-clamp-2">{it.summary}</div>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}

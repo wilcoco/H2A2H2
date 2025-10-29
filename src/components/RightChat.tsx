@@ -68,9 +68,6 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
         // Fall back: conceptualize the stored answer
         await askLlmInternal(q.answer);
       }
-      // load thread view for this QA
-      const rid = q.rootId || q.id || id;
-      if (rid) void loadThread(rid);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -94,6 +91,21 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setThreadLoading(false);
+    }
+  }
+
+  async function openFollowupsFor(id: string) {
+    try {
+      const res = await fetch(`/api/qa/${encodeURIComponent(id)}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || "Failed to load QA detail");
+      }
+      const q = await res.json();
+      const rid: string = q?.rootId || q?.id || id;
+      await loadThread(rid);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
     }
   }
 
@@ -635,7 +647,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white" onClick={() => void useQA(q.id)}>Use</button>
-                    <button className="text-xs px-2 py-1 rounded border" onClick={() => void loadThread(q.id)}>Follow-ups</button>
+                    <button className="text-xs px-2 py-1 rounded border" onClick={() => void openFollowupsFor(q.id)}>Follow-ups</button>
                     <button className="text-xs px-2 py-1 rounded border" onClick={() => { setExtendId(extendId === q.id ? null : q.id); if (extendId !== q.id) setExtendText(""); }}>Extend</button>
                   </div>
                 </div>

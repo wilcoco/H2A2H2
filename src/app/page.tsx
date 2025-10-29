@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import LeftPanel from "@/components/LeftPanel";
-import CenterGraph from "@/components/CenterGraph";
-import RightChat from "@/components/RightChat";
+import LeftAsk from "@/components/LeftAsk";
+import CenterQAViewer from "@/components/CenterQAViewer";
+import RightEditor from "@/components/RightEditor";
+import ThreadDrawer from "@/components/ThreadDrawer";
 import type { GraphNode, GraphEdge, Work, LlmPatch, NodeType, EdgeType } from "@/types/graph";
 import AuthModal from "@/components/AuthModal";
 import PublishModal from "@/components/PublishModal";
@@ -40,6 +41,10 @@ export default function Home() {
   const [user, setUser] = useState<{ email: string; name?: string } | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [selectedQaId, setSelectedQaId] = useState<string | null>(null);
+  const [centerQuestion, setCenterQuestion] = useState<string>("");
+  const [centerAiAnswer, setCenterAiAnswer] = useState<string>("");
+  const [threadOpen, setThreadOpen] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -52,24 +57,30 @@ export default function Home() {
     return () => { mounted = false; };
   }, []);
 
-  // Left references will be populated only when RightChat triggers a search
+  // Left references replaced by QA search; keep works for publish flow only.
 
-  async function searchReferences(query: string) {
+  async function askAiNow(question: string) {
     try {
-      const kres = await fetch("/api/ai/keywords", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: query, max: 6 }),
-      });
-      const kj = await kres.json().catch(() => ({ keywords: [] }));
-      const kws: string[] = Array.isArray(kj?.keywords) ? kj.keywords : [];
-      const url = "/api/works?kw=" + encodeURIComponent(kws.join(","));
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) { setWorks([]); return; }
-      const json = await res.json();
-      if (Array.isArray(json?.works)) setWorks(json.works as Work[]); else setWorks([]);
-    } catch { setWorks([]); }
+      setSelectedQaId(null);
+      setCenterQuestion(question);
+      setCenterAiAnswer("");
+      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: question, history: [] }) });
+      if (!res.ok) throw new Error("AI call failed");
+      const j = await res.json();
+      setCenterAiAnswer(String(j?.answer || ""));
+    } catch {}
   }
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      // Toggle thread drawer with 'f'
+      if (e.key.toLowerCase() === "f" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        setThreadOpen((v) => !v);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   function applyPatch(patch: LlmPatch) {
     let nextNodes = [...nodes];
@@ -166,39 +177,30 @@ export default function Home() {
           )}
         </div>
       </header>
-      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_360px] gap-3 md:gap-4 p-3 md:p-4 overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr_360px] gap-3 md:gap-4 p-3 md:p-4 overflow-hidden">
         <aside className="rounded border border-gray-200/60 p-3 md:p-3 overflow-auto">
-          <LeftPanel
-            works={works}
-            selectedWorkId={selectedWorkId}
-            onSelect={setSelectedWorkId}
+          <LeftAsk
+            onSelectQA={(id) => { setSelectedQaId(id); setCenterAiAnswer(""); }}
+            onAskAINow={(q) => void askAiNow(q)}
           />
         </aside>
 
         <main className="rounded border border-gray-200/60 p-2 md:p-3 overflow-auto">
-          <CenterGraph
-            nodes={nodes}
-            edges={edges}
-            onInvestNode={investNode}
-            onInvestEdge={investEdge}
-            onAddNode={addNode}
-            onUpdateNode={updateNode}
-            onRemoveNode={removeNode}
-            onRemoveEdge={removeEdge}
-          />
+          <CenterQAViewer qaId={selectedQaId || undefined} question={!selectedQaId ? centerQuestion : undefined} aiAnswer={!selectedQaId ? centerAiAnswer : undefined} onOpenThread={() => setThreadOpen(true)} />
         </main>
 
         <aside className="rounded border border-gray-200/60 p-2 md:p-3 overflow-auto">
-          <RightChat
-            nodes={nodes}
-            edges={edges}
+          <RightEditor
+            qaId={selectedQaId || undefined}
+            question={!selectedQaId ? centerQuestion : undefined}
+            aiAnswer={!selectedQaId ? centerAiAnswer : undefined}
             user={user || undefined}
             onRequireLogin={() => setAuthOpen(true)}
-            onSearchReferences={searchReferences}
-            onProposePatch={(p) => applyPatch(p)}
+            onShared={(newId: string) => setSelectedQaId(newId)}
           />
         </aside>
       </div>
+      <ThreadDrawer qaId={selectedQaId || undefined} open={threadOpen} onClose={() => setThreadOpen(false)} />
       <AuthModal
         open={authOpen}
         onClose={() => setAuthOpen(false)}
