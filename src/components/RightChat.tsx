@@ -44,6 +44,12 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
   const [extendId, setExtendId] = useState<string | null>(null);
   const [extendText, setExtendText] = useState<string>("");
   const [extendLoading, setExtendLoading] = useState(false);
+  const [threadRootId, setThreadRootId] = useState<string | null>(null);
+  const [threadTree, setThreadTree] = useState<any | null>(null);
+  const [threadLoading, setThreadLoading] = useState(false);
+  const [followupText, setFollowupText] = useState<Record<string, string>>({});
+  const [noteText, setNoteText] = useState<Record<string, string>>({});
+  const [voteBusy, setVoteBusy] = useState<Record<string, boolean>>({});
 
   async function useQA(id: string) {
     try {
@@ -52,7 +58,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
         const err = await res.json().catch(() => ({}));
         throw new Error(err?.error || "Failed to load QA");
       }
-      const q = (await res.json()) as { question: string; answer?: string; patch?: LlmPatch };
+      const q = (await res.json()) as { id?: string; rootId?: string; question: string; answer?: string; patch?: LlmPatch };
       if (q.patch) {
         setProposedPatch(q.patch);
         if (autoApply) {
@@ -62,11 +68,100 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
         // Fall back: conceptualize the stored answer
         await askLlmInternal(q.answer);
       }
+      // load thread view for this QA
+      const rid = q.rootId || q.id || id;
+      if (rid) void loadThread(rid);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setQaFound([]);
       setPendingQuestion(null);
+    }
+  }
+
+  async function loadThread(rootId: string) {
+    try {
+      setThreadLoading(true);
+      const res = await fetch(`/api/qa/thread?rootId=${encodeURIComponent(rootId)}&depth=3`, { cache: "no-store" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || "Failed to load thread");
+      }
+      const j = await res.json();
+      setThreadTree(j.root);
+      setThreadRootId(rootId);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setThreadLoading(false);
+    }
+  }
+
+  async function addFollowup(parentId: string) {
+    try {
+      const text = (followupText[parentId] || "").trim();
+      if (!text) return;
+      const res = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: text, parentId }) });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || "Failed to share follow-up");
+      }
+      setFollowupText((m) => ({ ...m, [parentId]: "" }));
+      if (threadRootId) await loadThread(threadRootId);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    }
+  }
+
+  async function aiAnswer(qaId: string, question: string) {
+    try {
+      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: question, history: [] }) });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || "Chat failed");
+      }
+      const data = await res.json();
+      const answer = String(data?.answer || "");
+      if (!answer) return;
+      const u = await fetch("/api/qa/answer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId, answer }) });
+      if (!u.ok) {
+        const err = await u.json().catch(() => ({}));
+        throw new Error(err?.error || "Save failed");
+      }
+      if (threadRootId) await loadThread(threadRootId);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    }
+  }
+
+  async function submitNote(qaId: string) {
+    try {
+      const content = (noteText[qaId] || "").trim();
+      if (!content) return;
+      const res = await fetch("/api/qa/note", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId, content }) });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || "Failed to save note");
+      }
+      setNoteText((m) => ({ ...m, [qaId]: "" }));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    }
+  }
+
+  async function sendVote(qaId: string, vote: 1 | -1, comment?: string) {
+    try {
+      setVoteBusy((m) => ({ ...m, [qaId]: true }));
+      const res = await fetch("/api/qa/feedback", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId, vote, comment }) });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || "Failed to vote");
+      }
+      if (threadRootId) await loadThread(threadRootId);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setVoteBusy((m) => ({ ...m, [qaId]: false }));
     }
   }
 
@@ -433,6 +528,54 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
     );
   }
 
+  function renderThread(node: any, depth: number) {
+    const qaId = node.id as string;
+    const follow = followupText[qaId] || "";
+    const note = noteText[qaId] || "";
+    return (
+      <div className="border-l pl-3 ml-1 my-2">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-sm font-medium">Q: {node.question}</div>
+            <div className="text-[11px] text-gray-600 mt-0.5">{node.hasAnswer ? "답변 있음" : "미답변"}</div>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <button className="text-[11px] px-2 py-1 rounded border" disabled={voteBusy[qaId]} onClick={() => void sendVote(qaId, 1)}>Helpful ({node.helpful || 0})</button>
+            <button className="text-[11px] px-2 py-1 rounded border" disabled={voteBusy[qaId]} onClick={() => void sendVote(qaId, -1)}>Not ({node.unhelpful || 0})</button>
+            {!node.hasAnswer && (
+              <button className="text-[11px] px-2 py-1 rounded border" onClick={() => void aiAnswer(qaId, node.question)}>AI 답변 생성</button>
+            )}
+          </div>
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            className="flex-1 rounded border border-gray-300 bg-white/90 p-1 text-xs dark:bg-gray-900/60"
+            placeholder="후속 질문 추가"
+            value={follow}
+            onChange={(e) => setFollowupText((m: Record<string, string>) => ({ ...m, [qaId]: e.target.value }))}
+          />
+          <button className="text-[11px] px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50" disabled={!follow.trim()} onClick={() => void addFollowup(qaId)}>추가</button>
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            className="flex-1 rounded border border-gray-300 bg-white/90 p-1 text-xs dark:bg-gray-900/60"
+            placeholder="수정 의견/요약 추가"
+            value={note}
+            onChange={(e) => setNoteText((m: Record<string, string>) => ({ ...m, [qaId]: e.target.value }))}
+          />
+          <button className="text-[11px] px-2 py-1 rounded bg-blue-600 text-white disabled:opacity-50" disabled={!note.trim()} onClick={() => void submitNote(qaId)}>저장</button>
+        </div>
+        {Array.isArray(node.children) && node.children.length > 0 && (
+          <div className="mt-2">
+            {node.children.map((ch: any) => (
+              <div key={ch.id}>{renderThread(ch, depth + 1)}</div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <h2 className="text-lg font-semibold">AI Q&A</h2>
@@ -446,6 +589,23 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
             <div className="flex gap-2">
               <button className="text-xs px-2 py-1 rounded border border-gray-300" onClick={() => { setReuseFound([]); setQaFound([]); setPendingQuestion(null); }}>Dismiss</button>
             </div>
+      {threadRootId && (
+        <div className="rounded border border-amber-200 p-2 bg-amber-50 dark:bg-amber-950/20">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium">후속 질문 마인드맵 (depth 3)</h3>
+            <div className="flex gap-2">
+              <button className="text-xs px-2 py-1 rounded border" onClick={() => { if (threadRootId) void loadThread(threadRootId); }}>Refresh</button>
+              <button className="text-xs px-2 py-1 rounded border" onClick={() => { setThreadRootId(null); setThreadTree(null); }}>Close</button>
+            </div>
+          </div>
+          {threadLoading && <div className="text-xs text-gray-500 mt-2">불러오는 중...</div>}
+          {threadTree && (
+            <div className="mt-2">
+              {renderThread(threadTree, 1)}
+            </div>
+          )}
+        </div>
+      )}
           </div>
           <ul className="mt-2 space-y-2">
             {reuseFound.map((w) => (
@@ -475,6 +635,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white" onClick={() => void useQA(q.id)}>Use</button>
+                    <button className="text-xs px-2 py-1 rounded border" onClick={() => void loadThread(q.id)}>Follow-ups</button>
                     <button className="text-xs px-2 py-1 rounded border" onClick={() => { setExtendId(extendId === q.id ? null : q.id); if (extendId !== q.id) setExtendText(""); }}>Extend</button>
                   </div>
                 </div>

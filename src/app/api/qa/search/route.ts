@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     const rows = await withConn(async (c) => {
       const r = await c.query(
         `select id, question, answer, summary, work_id from qa_entries 
-         where lower(question) like $1 or lower(coalesce(summary,'') ) like $1 
+         where lower(question) like $1 
          order by created_at desc limit $2`,
         [pattern, limit]
       );
