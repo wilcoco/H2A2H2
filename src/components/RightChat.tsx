@@ -39,6 +39,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
   const [reuseFound, setReuseFound] = useState<Work[]>([]);
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
   const [qaFound, setQaFound] = useState<QAEntry[]>([]);
+  const [qaDetail, setQaDetail] = useState<Record<string, { patch?: LlmPatch }>>({});
   const [lastAnswer, setLastAnswer] = useState<string>("");
   const [extendId, setExtendId] = useState<string | null>(null);
   const [extendText, setExtendText] = useState<string>("");
@@ -173,6 +174,18 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
       const qaj = await qares.json().catch(() => ({ items: [] }));
       const items: QAEntry[] = Array.isArray(qaj?.items) ? (qaj.items as QAEntry[]) : [];
       setQaFound(items);
+      // Prefetch details for patch preview
+      const detail: Record<string, { patch?: LlmPatch }> = {};
+      await Promise.all(items.map(async (it) => {
+        try {
+          const r = await fetch(`/api/qa/${encodeURIComponent(it.id)}`);
+          if (r.ok) {
+            const dj = await r.json();
+            if (dj?.patch) detail[it.id] = { patch: dj.patch as LlmPatch };
+          }
+        } catch {}
+      }));
+      setQaDetail(detail);
       if (works.length > 0 || items.length > 0) {
         setReuseLoading(false);
         return; // show curated options first
@@ -431,7 +444,6 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium">유사한 정리 결과</h3>
             <div className="flex gap-2">
-              <button className="text-xs px-2 py-1 rounded border border-gray-300" onClick={() => { const q = pendingQuestion || ""; setReuseFound([]); setQaFound([]); setPendingQuestion(null); if (q) void askLlmInternal(q); }}>Ask LLM instead</button>
               <button className="text-xs px-2 py-1 rounded border border-gray-300" onClick={() => { setReuseFound([]); setQaFound([]); setPendingQuestion(null); }}>Dismiss</button>
             </div>
           </div>
@@ -452,13 +464,13 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
               <li key={q.id} className="rounded border border-gray-200/60 p-2 bg-white/60 dark:bg-gray-900/40">
                 <div className="flex items-center justify-between">
                   <div className="min-w-0">
-                    <div className="text-sm font-medium truncate">Q: {q.question}</div>
-                    {q.summary && <div className="text-xs text-gray-600 mt-0.5 line-clamp-2">{q.summary}</div>}
-                    {q.answer && (
-                      <details className="mt-1">
-                        <summary className="text-[11px] text-gray-600 cursor-pointer">View answer</summary>
-                        <div className="text-xs text-gray-700 mt-1 whitespace-pre-wrap max-h-32 overflow-auto">{q.answer}</div>
-                      </details>
+                    <div className="text-sm font-medium">Q: {q.question}</div>
+                    {q.answer && <div className="text-xs text-gray-800 mt-1 whitespace-pre-wrap">A: {q.answer}</div>}
+                    {q.summary && <div className="text-xs text-gray-700 mt-1 whitespace-pre-wrap">Summary: {q.summary}</div>}
+                    {qaDetail[q.id]?.patch && (
+                      <div className="mt-2">
+                        <PatchPreviewGraph patch={qaDetail[q.id]!.patch!} />
+                      </div>
                     )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
@@ -575,6 +587,14 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
           >
             {loadingConcept ? "Conceptualizing..." : "Conceptualize"}
           </button>
+          {(reuseFound.length > 0 || qaFound.length > 0) && (
+            <button
+              onClick={() => { const q = pendingQuestion || prompt.trim(); if (q) void askLlmInternal(q); setReuseFound([]); setQaFound([]); setPendingQuestion(null); }}
+              className="rounded border px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-100"
+            >
+              LLM에 직접 질문
+            </button>
+          )}
           <label className="ml-auto flex items-center gap-1 text-xs text-gray-700">
             <input type="checkbox" checked={autoApply} onChange={(e) => setAutoApply(e.target.checked)} />
             Auto-apply
