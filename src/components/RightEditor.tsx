@@ -63,22 +63,16 @@ export default function RightEditor({ qaId, question, aiAnswer, user, onRequireL
     if (!qaId) return;
     try {
       setSaving(true);
-      // get question text
-      const r = await fetch(`/api/qa/${encodeURIComponent(qaId)}`);
-      const d = await r.json().catch(() => null);
-      const q = String(d?.question || "");
-      if (!q) { setError("원본 질문을 불러올 수 없습니다."); setSaving(false); return; }
-      const res = await fetch("/api/qa/share", {
+      const res = await fetch("/api/qa/answer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q, summary: summary.trim() || undefined })
+        body: JSON.stringify({ qaId, summary: summary.trim() || undefined })
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error || "Share failed");
+        throw new Error(err?.error || "Update failed");
       }
-      const j = await res.json();
-      if (j?.id) onShared(j.id as string);
+      onShared(qaId);
       setSummary("");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unknown error");

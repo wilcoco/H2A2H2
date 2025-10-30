@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureTables, withConn } from "@/lib/db";
+import { verifySession } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -20,7 +21,9 @@ export async function POST(req: NextRequest) {
     let summary: string | undefined = body?.summary ? String(body.summary) : undefined;
     const patch: any | undefined = body?.patch ?? undefined;
     const workId: string | undefined = body?.workId ? String(body.workId) : undefined;
-    const createdBy: string | undefined = body?.createdBy ? String(body.createdBy) : undefined;
+    const token = req.cookies.get("session")?.value;
+    const user = token ? await verifySession(token) : null;
+    const createdBy: string | undefined = user?.email ?? undefined;
     const parentId: string | undefined = body?.parentId ? String(body.parentId) : undefined;
     const intentL1: string | undefined = body?.intentL1 ? String(body.intentL1) : undefined;
     const intentL2: string | undefined = body?.intentL2 ? String(body.intentL2) : undefined;

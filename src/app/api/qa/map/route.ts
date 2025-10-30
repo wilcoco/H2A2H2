@@ -74,9 +74,14 @@ export async function GET(req: NextRequest) {
       myVote: n.my_vote === 1 ? 1 : n.my_vote === -1 ? -1 : 0,
     }));
 
-    const mapEdges = [...rels, ...synthetics]
-      .filter((e) => idSet.has(e.source_id) && idSet.has(e.target_id))
-      .map((e) => ({ sourceId: e.source_id, targetId: e.target_id, type: e.type, weight: e.weight, synthetic: !!e.synthetic }));
+    const merged = [...rels, ...synthetics].filter((e) => idSet.has(e.source_id) && idSet.has(e.target_id));
+    const byKey = new Map<string, { source_id: string; target_id: string; type: string; weight: number; synthetic: boolean }>();
+    for (const e of merged) {
+      const key = `${e.source_id}|${e.target_id}|${e.type}`;
+      const existing = byKey.get(key);
+      if (!existing || (existing.synthetic && !e.synthetic)) byKey.set(key, e);
+    }
+    const mapEdges = Array.from(byKey.values()).map((e) => ({ sourceId: e.source_id, targetId: e.target_id, type: e.type, weight: e.weight, synthetic: !!e.synthetic }));
 
     return NextResponse.json({ nodes: mapNodes, edges: mapEdges, rootId });
   } catch (e) {
