@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { QAEntry } from "@/types/graph";
 
 type Props = {
@@ -13,30 +13,42 @@ export default function LeftAsk({ onSelectQA, onAskAINow }: Props) {
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<QAEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const reqIdRef = useRef(0);
 
-  async function search() {
-    const query = q.trim();
-    if (!query) { setItems([]); return; }
+  async function search(next?: string) {
+    const query = (next ?? q).trim();
+    if (!query) { setItems([]); setLoading(false); abortRef.current?.abort(); reqIdRef.current++; return; }
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const myId = ++reqIdRef.current;
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
       const res = await fetch("/api/qa/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query, limit: 10 }),
+        signal: controller.signal,
       });
       const j = await res.json().catch(() => ({ items: [] }));
       const its: QAEntry[] = Array.isArray(j?.items) ? (j.items as QAEntry[]) : [];
-      setItems(its);
+      if (myId === reqIdRef.current) setItems(its);
     } catch (e: unknown) {
+      if ((e as any)?.name === "AbortError") return;
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
-      setLoading(false);
+      // Only the latest request can turn off loading
+      if (myId === reqIdRef.current) {
+        setLoading(false);
+        abortRef.current = null;
+      }
     }
   }
 
   useEffect(() => {
-    const t = setTimeout(() => { void search(); }, 250);
+    const t = setTimeout(() => { void search(q); }, 250);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
@@ -54,7 +66,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow }: Props) {
               if (query) onAskAINow(query);
             } else if (e.key === "Enter") {
               e.preventDefault();
-              void search();
+              void search(q);
             }
           }}
           placeholder="질문을 입력하세요"
