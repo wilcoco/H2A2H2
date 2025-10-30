@@ -1,6 +1,6 @@
-import { Pool, PoolClient } from "pg";
+import { Pool } from "pg";
 
-let _pool: Pool | null = null;
+let _pool: any = null;
 
 function getConnectionString(): string {
   const url = process.env.DATABASE_URL || process.env.POSTGRES_URL || "";
@@ -8,7 +8,7 @@ function getConnectionString(): string {
   return url;
 }
 
-export function getPool(): Pool {
+export function getPool(): any {
   if (_pool) return _pool;
   const isProd = process.env.NODE_ENV === "production";
   _pool = new Pool({
@@ -18,7 +18,7 @@ export function getPool(): Pool {
   return _pool;
 }
 
-export async function withConn<T>(fn: (c: PoolClient) => Promise<T>): Promise<T> {
+export async function withConn<T>(fn: (c: any) => Promise<T>): Promise<T> {
   const pool = getPool();
   const client = await pool.connect();
   try {
@@ -105,5 +105,20 @@ export async function ensureTables() {
     await c.query(`create index if not exists qa_relations_source_idx on qa_relations (source_id)`);
     await c.query(`create index if not exists qa_relations_target_idx on qa_relations (target_id)`);
     await c.query(`create index if not exists qa_relations_created_at_idx on qa_relations (created_at)`);
+
+    await c.query(`
+      create table if not exists qa_intents (
+        id text primary key,
+        child_id text not null,
+        parent_id text,
+        l1 text,
+        l2 text,
+        target_pic text,
+        created_by text,
+        created_at timestamptz not null default now()
+      );
+    `);
+    await c.query(`create index if not exists qa_intents_child_idx on qa_intents (child_id)`);
+    await c.query(`create index if not exists qa_intents_parent_idx on qa_intents (parent_id)`);
   });
 }

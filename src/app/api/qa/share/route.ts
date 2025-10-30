@@ -22,6 +22,9 @@ export async function POST(req: NextRequest) {
     const workId: string | undefined = body?.workId ? String(body.workId) : undefined;
     const createdBy: string | undefined = body?.createdBy ? String(body.createdBy) : undefined;
     const parentId: string | undefined = body?.parentId ? String(body.parentId) : undefined;
+    const intentL1: string | undefined = body?.intentL1 ? String(body.intentL1) : undefined;
+    const intentL2: string | undefined = body?.intentL2 ? String(body.intentL2) : undefined;
+    const targetPIC: string | undefined = body?.targetPIC ? String(body.targetPIC) : undefined;
 
     const q = question.trim();
     if (!q) return NextResponse.json({ error: "Missing question" }, { status: 400 });
@@ -52,6 +55,44 @@ export async function POST(req: NextRequest) {
          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
         [id, q, normalize(q), answer ?? null, summary ?? null, patch ?? null, workId ?? null, createdBy ?? null, parentId ?? null, rootId ?? id]
       );
+
+      if (parentId) {
+        const relationType = (() => {
+          const l2 = (intentL2 || "").toLowerCase();
+          const l1 = (intentL1 || "").toLowerCase();
+          if (l2) {
+            if (["clarify", "troubleshoot", "verify", "risk"].includes(l2)) return "clarifies";
+            if (["detail", "example", "summarize", "adapt", "localize"].includes(l2)) return "refines";
+            if (["justify", "metrics"].includes(l2)) return "depends_on";
+            if (["compare", "alternative", "reframe"].includes(l2)) return "alternative";
+            if (["implement", "plan"].includes(l2)) return "follows_from";
+          }
+          if (l1) {
+            if (["expansion"].includes(l1)) return "clarifies";
+            if (["contingency", "evidence", "attribution"].includes(l1)) return "depends_on";
+            if (["comparison"].includes(l1)) return "alternative";
+            if (["temporal", "sequence"].includes(l1)) return "follows_from";
+            if (["evaluation", "verification"].includes(l1)) return "clarifies";
+          }
+          return "clarifies";
+        })();
+        await c.query(
+          `insert into qa_relations (source_id, target_id, type, weight, created_by)
+           values ($1,$2,$3,$4,$5)
+           on conflict (source_id, target_id, type)
+           do update set weight = excluded.weight, created_by = excluded.created_by, created_at = now()`,
+          [parentId, id, relationType, 1, createdBy ?? null]
+        );
+
+        if (intentL1 || intentL2 || targetPIC) {
+          const intentId = "intent_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+          await c.query(
+            `insert into qa_intents (id, child_id, parent_id, l1, l2, target_pic, created_by)
+             values ($1,$2,$3,$4,$5,$6,$7)`,
+            [intentId, id, parentId, intentL1 ?? null, intentL2 ?? null, targetPIC ?? null, createdBy ?? null]
+          );
+        }
+      }
     });
 
     return NextResponse.json({ id });
