@@ -214,10 +214,11 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
           </div>
           <div className="flex items-center gap-2">
             <input
-              className="flex-1 rounded border border-gray-300 bg-white/90 p-1 text-xs dark:bg-gray-900/60"
+              className="w-full min-w-0 flex-1 rounded border border-gray-300 bg-white/90 p-1 text-xs dark:bg-gray-900/60"
               placeholder="후속 질문 추가"
               value={fval}
               onChange={(e) => setFollowupText((m) => ({ ...m, [fid]: e.target.value }))}
+              onKeyDown={(e) => { e.stopPropagation(); }}
             />
             <button className="text-[11px] px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50" disabled={!fval.trim()} onClick={() => void addFollowup(fid)}>추가</button>
           </div>

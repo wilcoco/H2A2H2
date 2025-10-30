@@ -27,6 +27,10 @@ export default function RightEditor({ qaId, question, aiAnswer, user, onRequireL
         e.preventDefault();
         if (qaId) void shareUpdate(); else void shareNew();
       } else if (!e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === "e") {
+        const target = e.target as HTMLElement | null;
+        const tag = target?.tagName?.toLowerCase();
+        const isTyping = tag === "input" || tag === "textarea" || tag === "select" || (!!target && (target as any).isContentEditable);
+        if (isTyping) return; // don't steal focus while user is typing elsewhere
         summaryRef.current?.focus();
       }
     }
