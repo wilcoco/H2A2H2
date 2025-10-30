@@ -25,6 +25,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow }: Props) {
     const myId = ++reqIdRef.current;
     setLoading(true);
     setError(null);
+    setItems([]);
     try {
       const res = await fetch("/api/qa/search", {
         method: "POST",
@@ -57,22 +58,29 @@ export default function LeftAsk({ onSelectQA, onAskAINow }: Props) {
   return (
     <div className="flex flex-col gap-3">
       <div className="sticky top-0 bg-white dark:bg-gray-900 z-10 pb-2 border-b border-gray-100/60">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              const query = q.trim();
-              if (query) onAskAINow(query);
-            } else if (e.key === "Enter") {
-              e.preventDefault();
-              void search(q);
-            }
-          }}
-          placeholder="질문을 입력하세요"
-          className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60"
-        />
+        <div className="flex items-center gap-2">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                const query = q.trim();
+                if (query) onAskAINow(query);
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                void search(q);
+              }
+            }}
+            placeholder="질문을 입력하세요"
+            className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60"
+          />
+          <button
+            className="text-xs px-2 py-2 rounded bg-emerald-600 text-white disabled:opacity-50"
+            disabled={q.trim().length === 0}
+            onClick={() => { const query = q.trim(); if (query) onAskAINow(query); }}
+          >AI에게 묻기</button>
+        </div>
       </div>
       {error && <div className="text-xs text-red-600">{error}</div>}
       {loading && <div className="text-xs text-gray-500">검색 중...</div>}
