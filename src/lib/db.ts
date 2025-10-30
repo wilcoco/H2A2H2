@@ -90,5 +90,20 @@ export async function ensureTables() {
       );
     `);
     await c.query(`create index if not exists qa_notes_qa_idx on qa_notes (qa_id)`);
+
+    await c.query(`
+      create table if not exists qa_relations (
+        source_id text not null,
+        target_id text not null,
+        type text not null,
+        weight smallint not null default 1,
+        created_by text,
+        created_at timestamptz not null default now(),
+        primary key (source_id, target_id, type)
+      );
+    `);
+    await c.query(`create index if not exists qa_relations_source_idx on qa_relations (source_id)`);
+    await c.query(`create index if not exists qa_relations_target_idx on qa_relations (target_id)`);
+    await c.query(`create index if not exists qa_relations_created_at_idx on qa_relations (created_at)`);
   });
 }

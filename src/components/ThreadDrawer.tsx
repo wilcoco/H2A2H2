@@ -26,6 +26,15 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [followupText, setFollowupText] = useState<Record<string, string>>({});
   const [busyVote, setBusyVote] = useState<Record<string, boolean>>({});
+  const [tab, setTab] = useState<"thread" | "map">("thread");
+  const [mLoading, setMLoading] = useState(false);
+  const [mError, setMError] = useState<string | null>(null);
+  const [mNodes, setMNodes] = useState<Array<{ id: string; question: string; hasAnswer: boolean; helpful: number; unhelpful: number; myVote: number }>>([]);
+  const [mEdges, setMEdges] = useState<Array<{ sourceId: string; targetId: string; type: string; weight: number; synthetic?: boolean }>>([]);
+  const [fromId, setFromId] = useState<string | null>(null);
+  const [toId, setToId] = useState<string | null>(null);
+  const [relType, setRelType] = useState<string>("follows_from");
+  const [connecting, setConnecting] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -49,6 +58,11 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
     void load();
     return () => { mounted = false; };
   }, [open, qaId]);
+
+  useEffect(() => {
+    if (tab === "map") void loadMap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, rootId]);
 
   async function sendVote(qaId: string, v: 1 | -1) {
     try {
@@ -97,6 +111,35 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
     } finally { setLoading(false); }
   }
 
+  async function loadMap() {
+    if (!rootId) return;
+    try {
+      setMLoading(true); setMError(null);
+      const r = await fetch(`/api/qa/map?rootId=${encodeURIComponent(rootId)}`, { cache: "no-store" });
+      if (!r.ok) throw new Error("Failed to load map");
+      const j = await r.json();
+      setMNodes(Array.isArray(j?.nodes) ? j.nodes : []);
+      setMEdges(Array.isArray(j?.edges) ? j.edges : []);
+    } catch (e: unknown) {
+      setMError(e instanceof Error ? e.message : "Unknown error");
+    } finally { setMLoading(false); }
+  }
+
+  async function connect() {
+    const s = fromId?.trim();
+    const t = toId?.trim();
+    const ty = relType.trim();
+    if (!s || !t || !ty || s === t) return;
+    try {
+      setConnecting(true);
+      const r = await fetch("/api/qa/relation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceId: s, targetId: t, type: ty, weight: 1 }) });
+      if (!r.ok) throw new Error("Connect failed");
+      setFromId(null); setToId(null);
+      await loadMap();
+    } catch {}
+    finally { setConnecting(false); }
+  }
+
   function NodeItem({ node }: { node: ThreadNode }) {
     const fid = node.id;
     const fval = followupText[fid] || "";
@@ -137,18 +180,74 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
     <div className={`fixed inset-y-0 right-0 w-full sm:w-[420px] transform ${open ? "translate-x-0" : "translate-x-full"} transition-transform duration-200 z-40`}>
       <div className="h-full bg-white dark:bg-gray-900 border-l border-gray-200/60 flex flex-col">
         <div className="p-2 border-b flex items-center justify-between">
-          <div className="text-sm font-semibold">Follow-ups Thread</div>
           <div className="flex items-center gap-2">
-            <button className="text-xs px-2 py-1 rounded border" onClick={() => void refresh()}>Refresh</button>
+            <button className={`text-xs px-2 py-1 rounded border ${tab === "thread" ? "bg-gray-100" : ""}`} onClick={() => setTab("thread")}>Thread</button>
+            <button className={`text-xs px-2 py-1 rounded border ${tab === "map" ? "bg-gray-100" : ""}`} onClick={() => setTab("map")}>Map</button>
+          </div>
+          <div className="flex items-center gap-2">
+            {tab === "thread" ? (
+              <button className="text-xs px-2 py-1 rounded border" onClick={() => void refresh()}>Refresh</button>
+            ) : (
+              <button className="text-xs px-2 py-1 rounded border" onClick={() => void loadMap()}>Refresh</button>
+            )}
             <button className="text-xs px-2 py-1 rounded border" onClick={onClose}>Close (F)</button>
           </div>
         </div>
-        <div className="p-2 overflow-auto flex-1">
-          {loading && <div className="text-xs text-gray-500">불러오는 중...</div>}
-          {error && <div className="text-xs text-red-600">{error}</div>}
-          {!loading && !error && tree && <NodeItem node={tree} />}
-          {!loading && !error && !tree && <div className="text-xs text-gray-500">스레드가 없습니다.</div>}
-        </div>
+        {tab === "thread" ? (
+          <div className="p-2 overflow-auto flex-1">
+            {loading && <div className="text-xs text-gray-500">불러오는 중...</div>}
+            {error && <div className="text-xs text-red-600">{error}</div>}
+            {!loading && !error && tree && <NodeItem node={tree} />}
+            {!loading && !error && !tree && <div className="text-xs text-gray-500">스레드가 없습니다.</div>}
+          </div>
+        ) : (
+          <div className="p-2 overflow-auto flex-1">
+            {mLoading && <div className="text-xs text-gray-500">맵 불러오는 중...</div>}
+            {mError && <div className="text-xs text-red-600">{mError}</div>}
+            {!mLoading && !mError && (
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <select className="text-xs border rounded px-2 py-1" value={relType} onChange={(e) => setRelType(e.target.value)}>
+                    <option value="follows_from">follows_from</option>
+                    <option value="refines">refines</option>
+                    <option value="clarifies">clarifies</option>
+                    <option value="depends_on">depends_on</option>
+                    <option value="alternative">alternative</option>
+                  </select>
+                  <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!fromId || !toId || connecting} onClick={() => void connect()}>{connecting ? "Connecting..." : "Connect"}</button>
+                  {(fromId || toId) && (
+                    <button className="text-xs px-2 py-1 rounded border" onClick={() => { setFromId(null); setToId(null); }}>Reset</button>
+                  )}
+                </div>
+                <div className="text-[11px] text-gray-600">노드 선택: 먼저 From, 그다음 To 선택</div>
+                <ul className="space-y-1">
+                  {mNodes.map((n) => (
+                    <li key={n.id} className="p-2 border rounded flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-xs font-medium line-clamp-1">{n.question}</div>
+                        <div className="text-[10px] text-gray-500">Helpful {n.helpful} · {n.hasAnswer ? "답변 있음" : "미답변"}</div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button className={`text-[11px] px-2 py-1 rounded border ${fromId === n.id ? "bg-gray-100" : ""}`} onClick={() => setFromId(n.id)}>From</button>
+                        <button className={`text-[11px] px-2 py-1 rounded border ${toId === n.id ? "bg-gray-100" : ""}`} onClick={() => setToId(n.id)}>To</button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                {mEdges.length > 0 && (
+                  <div className="mt-2">
+                    <div className="text-xs font-semibold mb-1">Existing relations</div>
+                    <ul className="space-y-1">
+                      {mEdges.slice(0, 20).map((e, i) => (
+                        <li key={i} className="text-[11px] text-gray-700">{e.sourceId} → {e.targetId} · {e.type}{e.synthetic ? " (auto)" : ""}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Props = {
   qaId?: string;
@@ -17,8 +17,23 @@ export default function RightEditor({ qaId, question, aiAnswer, user, onRequireL
   const [saving, setSaving] = useState(false);
   const [voteBusy, setVoteBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const summaryRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => { setError(null); }, [qaId, question, aiAnswer]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        if (qaId) void shareUpdate(); else void shareNew();
+      } else if (!e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === "e") {
+        summaryRef.current?.focus();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qaId, summary, question, aiAnswer]);
 
   async function shareNew() {
     const q = (question || "").trim();
@@ -120,6 +135,7 @@ export default function RightEditor({ qaId, question, aiAnswer, user, onRequireL
           placeholder="핵심 요약, 보완 내용, 결론 등을 작성하세요."
           value={summary}
           onChange={(e) => setSummary(e.target.value)}
+          ref={summaryRef}
         />
         <div className="mt-2 flex items-center gap-2">
           {qaId ? (
