@@ -29,7 +29,8 @@ export default function LeftAsk({ onSelectQA, onAskAINow }: Props) {
       const res = await fetch("/api/qa/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, limit: 10 }),
+        body: JSON.stringify({ query, limit: 10, strict: true }),
+        cache: "no-store",
         signal: controller.signal,
       });
       const j = await res.json().catch(() => ({ items: [] }));
