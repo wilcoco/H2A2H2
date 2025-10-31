@@ -8,12 +8,18 @@ type Props = {
   question?: string;
   aiAnswer?: string;
   onOpenThread?: () => void;
+  onShared?: (id: string) => void;
 };
 
-export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread }: Props) {
+export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread, onShared }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<any | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editSummary, setEditSummary] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [voteBusy, setVoteBusy] = useState(false);
+  const [newSummary, setNewSummary] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -35,6 +41,58 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread 
     void run();
     return () => { mounted = false; };
   }, [qaId]);
+
+  async function vote(v: 1 | -1) {
+    if (!qaId) return;
+    try {
+      setVoteBusy(true);
+      const res = await fetch("/api/qa/feedback", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId, vote: v }) });
+      if (!res.ok) throw new Error("Vote failed");
+      // refresh counts
+      const r = await fetch(`/api/qa/${encodeURIComponent(qaId)}`, { cache: "no-store" });
+      if (r.ok) setData(await r.json());
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setVoteBusy(false);
+    }
+  }
+
+  async function saveSummary() {
+    if (!qaId) return;
+    const s = editSummary.trim();
+    if (!s) return;
+    try {
+      setSaving(true);
+      const res = await fetch("/api/qa/answer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId, summary: s }) });
+      if (!res.ok) throw new Error("Update failed");
+      const r = await fetch(`/api/qa/${encodeURIComponent(qaId)}`, { cache: "no-store" });
+      if (r.ok) setData(await r.json());
+      setEditing(false);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function shareNew() {
+    const q = (question || "").trim();
+    const a = (aiAnswer || "").trim();
+    if (!q || !a) return;
+    try {
+      setSaving(true);
+      const res = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q, answer: a, summary: newSummary.trim() || undefined }) });
+      if (!res.ok) throw new Error("Share failed");
+      const j = await res.json();
+      const id = String(j?.id || "");
+      if (id) onShared?.(id);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   function PatchPreviewGraph({ patch }: { patch: LlmPatch }) {
     const addedNodes = patch.ops.filter(op => op.op === "add_node").map(op => (op as any).node);
@@ -96,12 +154,24 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread 
     return (
       <div className="flex flex-col gap-2">
         <div className="text-sm font-semibold">Q: {data.question}</div>
-        <div>
-          <button className="text-xs px-2 py-1 rounded border" onClick={() => onOpenThread?.()}>Follow-ups</button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button className="text-xs px-2 py-1 rounded border" onClick={() => onOpenThread?.()}>Thread</button>
+          <button className="text-xs px-2 py-1 rounded border" disabled={!qaId || voteBusy} onClick={() => void vote(1)}>Helpful ({data.helpful ?? 0})</button>
+          <button className="text-xs px-2 py-1 rounded border" disabled={!qaId || voteBusy} onClick={() => void vote(-1)}>Not ({data.unhelpful ?? 0})</button>
+          {!editing ? (
+            <button className="text-xs px-2 py-1 rounded border" onClick={() => { setEditing(true); setEditSummary(String(data.summary || "")); }}>Edit summary</button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button className="text-xs px-2 py-1 rounded bg-blue-600 text-white disabled:opacity-50" disabled={saving || !editSummary.trim()} onClick={() => void saveSummary()}>{saving ? "Saving..." : "Save"}</button>
+              <button className="text-xs px-2 py-1 rounded border" onClick={() => setEditing(false)}>Cancel</button>
+            </div>
+          )}
         </div>
         {data.answer && <div className="text-sm whitespace-pre-wrap">A: {data.answer}</div>}
-        {data.summary && <div className="text-xs text-gray-700 whitespace-pre-wrap">Summary: {data.summary}</div>}
-        <div className="text-[11px] text-gray-600">Helpful {data.helpful ?? 0} · Not {data.unhelpful ?? 0}</div>
+        {!editing && data.summary && <div className="text-xs text-gray-700 whitespace-pre-wrap">Summary: {data.summary}</div>}
+        {editing && (
+          <textarea className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" rows={4} value={editSummary} onChange={(e) => setEditSummary(e.target.value)} />
+        )}
         {patch && (
           <div className="mt-2">
             <PatchPreviewGraph patch={patch} />
@@ -116,7 +186,11 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread 
       <div className="flex flex-col gap-2">
         <div className="text-sm font-semibold">Q: {question}</div>
         <div className="text-sm whitespace-pre-wrap">AI Answer: {aiAnswer}</div>
-        <div className="text-[11px] text-gray-600">좌측에서 다른 Q&A를 클릭해 검증된 답변을 볼 수 있습니다.</div>
+        <div className="text-xs text-gray-600">요약을 작성하고 공유하면 지식 체계에 등록됩니다.</div>
+        <textarea className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" rows={4} placeholder="핵심 요약을 작성하세요" value={newSummary} onChange={(e) => setNewSummary(e.target.value)} />
+        <div className="flex items-center gap-2">
+          <button className="text-xs px-2 py-1 rounded bg-blue-600 text-white disabled:opacity-50" disabled={saving} onClick={() => void shareNew()}>{saving ? "Sharing..." : "Share Q&A"}</button>
+        </div>
       </div>
     );
   }

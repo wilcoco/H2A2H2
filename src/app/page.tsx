@@ -193,7 +193,13 @@ export default function Home() {
         </aside>
 
         <main className="rounded border border-gray-200/60 p-2 md:p-3 overflow-auto">
-          <CenterQAViewer qaId={selectedQaId || undefined} question={!selectedQaId ? centerQuestion : undefined} aiAnswer={!selectedQaId ? centerAiAnswer : undefined} onOpenThread={() => setThreadOpen(true)} />
+          <CenterQAViewer
+            qaId={selectedQaId || undefined}
+            question={!selectedQaId ? centerQuestion : undefined}
+            aiAnswer={!selectedQaId ? centerAiAnswer : undefined}
+            onOpenThread={() => setThreadOpen(true)}
+            onShared={(newId) => { setSelectedQaId(newId); setCenterAiAnswer(""); }}
+          />
         </main>
 
         <aside className="rounded border border-gray-200/60 p-2 md:p-3 overflow-auto">
