@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { QAEntry } from "@/types/graph";
 
 type Props = {
   qaId?: string;
@@ -9,9 +8,11 @@ type Props = {
   onTargetChange?: (id: string | null) => void;
   connectMode?: boolean;
   onConnectModeChange?: (v: boolean) => void;
+  pinnedIds?: string[];
+  onUnpin?: (id: string) => void;
 };
 
-export default function RightRelations({ qaId, targetId, onTargetChange, connectMode, onConnectModeChange }: Props) {
+export default function RightRelations({ qaId, targetId, onTargetChange, connectMode, onConnectModeChange, pinnedIds = [], onUnpin }: Props) {
   const [relType, setRelType] = useState<string>("follows_from");
   const [busy, setBusy] = useState(false);
   const [edges, setEdges] = useState<Array<{ sourceId: string; targetId: string; type: string; synthetic?: boolean }>>([]);
@@ -23,6 +24,7 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
   const [myItems, setMyItems] = useState<Array<{ id: string; question: string; summary?: string; helpful?: number; unhelpful?: number }>>([]);
   const myReqRef = useRef(0);
   const myAbortRef = useRef<AbortController | null>(null);
+  const [pinnedItems, setPinnedItems] = useState<Array<{ id: string; question: string; summary?: string }>>([]);
 
   useEffect(() => { setError(null); }, [qaId]);
 
@@ -61,6 +63,29 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
         const err = await res.json().catch(() => ({}));
         throw new Error(err?.error || "Connect failed");
       }
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const arr = await Promise.all(
+          (pinnedIds || []).map(async (id) => {
+            try {
+              const r = await fetch(`/api/qa/${encodeURIComponent(id)}`, { cache: "no-store" });
+              const j = await r.json();
+              return { id, question: String(j?.question || id), summary: j?.summary ? String(j.summary) : undefined };
+            } catch {
+              return { id, question: id };
+            }
+          })
+        );
+        if (active) setPinnedItems(arr);
+      } catch {
+        if (active) setPinnedItems([]);
+      }
+    })();
+    return () => { active = false; };
+  }, [JSON.stringify(pinnedIds)]);
       onTargetChange?.(null);
       setTarget(null);
       await refreshEdges();
@@ -136,6 +161,25 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
           {target && <button className="text-[11px] px-2 py-1 rounded border" onClick={() => onTargetChange?.(null)}>Clear</button>}
         </div>
       </div>
+      {pinnedItems.length > 0 && (
+        <div>
+          <div className="mt-2 text-xs text-gray-600">고정한 카드</div>
+          <ul className="mt-1 space-y-1 max-h-60 overflow-auto">
+            {pinnedItems.map((it) => (
+              <li key={it.id} className={`p-2 rounded border text-xs flex items-center justify-between gap-2 ${targetId === it.id ? "bg-gray-50" : ""}`}>
+                <div className="min-w-0">
+                  <div className="truncate">Q: {it.question}</div>
+                  {it.summary && <div className="text-[10px] text-gray-600 truncate">{it.summary}</div>}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button className="text-[11px] px-2 py-1 rounded border" onClick={() => onTargetChange?.(it.id)}>{targetId === it.id ? "선택됨" : "선택"}</button>
+                  <button className="text-[11px] px-2 py-1 rounded border" onClick={() => onUnpin?.(it.id)}>해제</button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {!!connectMode && (
         <div>
           <div className="mt-2 text-xs text-gray-600">내 질문에서 대상 선택</div>

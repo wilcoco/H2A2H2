@@ -9,9 +9,10 @@ type Props = {
   aiAnswer?: string;
   onOpenThread?: () => void;
   onShared?: (id: string) => void;
+  onPinned?: (id: string) => void;
 };
 
-export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread, onShared }: Props) {
+export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread, onShared, onPinned }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<any | null>(null);
@@ -126,7 +127,10 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
       if (!res.ok) throw new Error("Share failed");
       const j = await res.json();
       const id = String(j?.id || "");
-      if (id) onShared?.(id);
+      if (id) {
+        onShared?.(id);
+        onPinned?.(id);
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -198,6 +202,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
           <button className="text-xs px-2 py-1 rounded border" onClick={() => onOpenThread?.()}>Thread</button>
           <button className="text-xs px-2 py-1 rounded border" disabled={!qaId || voteBusy} onClick={() => void vote(1)}>Helpful ({data.helpful ?? 0})</button>
           <button className="text-xs px-2 py-1 rounded border" disabled={!qaId || voteBusy} onClick={() => void vote(-1)}>Not ({data.unhelpful ?? 0})</button>
+          <button className="text-xs px-2 py-1 rounded border" disabled={!qaId} onClick={() => { if (qaId) onPinned?.(qaId); }}>Save to Right</button>
           {!editing ? (
             <button className="text-xs px-2 py-1 rounded border" onClick={() => { setEditing(true); setEditSummary(String(data.summary || "")); }}>Edit summary</button>
           ) : (
@@ -251,7 +256,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
         <div className="text-xs text-gray-600">요약을 작성하고 공유하면 지식 체계에 등록됩니다.</div>
         <textarea className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" rows={4} placeholder="핵심 요약을 작성하세요" value={newSummary} onChange={(e) => setNewSummary(e.target.value)} />
         <div className="flex items-center gap-2">
-          <button className="text-xs px-2 py-1 rounded bg-blue-600 text-white disabled:opacity-50" disabled={saving} onClick={() => void shareNew()}>{saving ? "Sharing..." : "Share Q&A"}</button>
+          <button className="text-xs px-2 py-1 rounded bg-blue-600 text-white disabled:opacity-50" disabled={saving} onClick={() => void shareNew()}>{saving ? "Sharing..." : "Share & Save to Right"}</button>
         </div>
       </div>
     );

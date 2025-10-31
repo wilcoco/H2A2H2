@@ -47,6 +47,7 @@ export default function Home() {
   const [threadOpen, setThreadOpen] = useState(false);
   const [connectMode, setConnectMode] = useState(false);
   const [relTargetId, setRelTargetId] = useState<string | null>(null);
+  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -207,6 +208,7 @@ export default function Home() {
             aiAnswer={!selectedQaId ? centerAiAnswer : undefined}
             onOpenThread={() => setThreadOpen(true)}
             onShared={(newId: string) => { setSelectedQaId(newId); setCenterAiAnswer(""); }}
+            onPinned={(id: string) => setPinnedIds((prev) => (prev.includes(id) ? prev : [id, ...prev]))}
           />
         </main>
 
@@ -217,6 +219,8 @@ export default function Home() {
             onTargetChange={(id) => setRelTargetId(id)}
             connectMode={connectMode}
             onConnectModeChange={(v) => setConnectMode(v)}
+            pinnedIds={pinnedIds}
+            onUnpin={(id) => setPinnedIds((prev) => prev.filter((x) => x !== id))}
           />
         </aside>
       </div>
