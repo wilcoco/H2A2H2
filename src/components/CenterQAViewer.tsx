@@ -40,6 +40,10 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
       } finally {
         if (mounted) setLoading(false);
       }
+    }
+    void run();
+    return () => { mounted = false; };
+  }, [qaId]);
 
   async function saveNote() {
     const content = note.trim();
@@ -61,10 +65,6 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
       setSavingNote(false);
     }
   }
-    }
-    void run();
-    return () => { mounted = false; };
-  }, [qaId]);
 
   useEffect(() => {
     let active = true;
