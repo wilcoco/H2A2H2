@@ -98,12 +98,61 @@ export default function LeftAsk({ onSelectQA, onAskAINow }: Props) {
       )}
       <ul className="space-y-2">
         {items.map((it) => (
-          <li key={it.id} className="rounded border border-gray-200/60 p-2 bg-white/60 dark:bg-gray-900/40 cursor-pointer hover:bg-gray-50" onClick={() => onSelectQA(it.id)}>
-            <div className="text-sm font-medium line-clamp-2">Q: {it.question}</div>
-            {it.summary && <div className="text-[11px] text-gray-600 mt-0.5 line-clamp-2">{it.summary}</div>}
-          </li>
+          <SuggestItem key={it.id} it={it} onSelectQA={onSelectQA} />
         ))}
       </ul>
     </div>
+  );
+}
+
+function SuggestItem({ it, onSelectQA }: { it: QAEntry; onSelectQA: (id: string) => void }) {
+  const [loading, setLoading] = useState(true);
+  const [count, setCount] = useState<number | null>(null);
+  const [preview, setPreview] = useState<Array<{ id: string; question: string }>>([]);
+  const [expanded, setExpanded] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    (async () => {
+      try {
+        setLoading(true);
+        const r = await fetch(`/api/qa/map?qaId=${encodeURIComponent(it.id)}`, { cache: "no-store", signal: controller.signal });
+        const j = await r.json().catch(() => ({ nodes: [], edges: [] }));
+        const nodes: Array<{ id: string; question: string }> = Array.isArray(j?.nodes) ? j.nodes : [];
+        setCount(nodes.length || 0);
+        const pv = nodes.slice(Math.max(0, nodes.length - 3));
+        setPreview(pv);
+      } catch (e: any) {
+        if (e?.name === "AbortError") return;
+      } finally {
+        setLoading(false);
+      }
+    })();
+    return () => { controller.abort(); };
+  }, [it.id]);
+
+  return (
+    <li className="rounded border border-gray-200/60 p-2 bg-white/60 dark:bg-gray-900/40">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 cursor-pointer hover:opacity-90" onClick={() => onSelectQA(it.id)}>
+          <div className="text-sm font-medium line-clamp-2">Q: {it.question}</div>
+          {it.summary && <div className="text-[11px] text-gray-600 mt-0.5 line-clamp-2">{it.summary}</div>}
+        </div>
+        <div className="shrink-0 flex items-center gap-2">
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 border">Chain {loading ? "…" : (count ?? 0)}</span>
+          <button className="text-[11px] px-2 py-1 rounded border" onClick={() => setExpanded((v) => !v)}>{expanded ? "접기" : "보기"}</button>
+        </div>
+      </div>
+      {expanded && preview.length > 0 && (
+        <div className="mt-2 space-y-1">
+          {preview.map((n) => (
+            <div key={n.id} className="text-[12px] text-gray-700 truncate">→ {n.question}</div>
+          ))}
+        </div>
+      )}
+    </li>
   );
 }
