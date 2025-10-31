@@ -48,6 +48,7 @@ export default function Home() {
   const [connectMode, setConnectMode] = useState(false);
   const [relTargetId, setRelTargetId] = useState<string | null>(null);
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
+  const [graphRefreshKey, setGraphRefreshKey] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -198,6 +199,7 @@ export default function Home() {
             connectMode={connectMode}
             targetId={relTargetId}
             onPickTarget={(id) => setRelTargetId(id)}
+            refreshKey={graphRefreshKey}
           />
         </aside>
 
@@ -209,6 +211,8 @@ export default function Home() {
             onOpenThread={() => setThreadOpen(true)}
             onShared={(newId: string) => { setSelectedQaId(newId); setCenterAiAnswer(""); }}
             onPinned={(id: string) => setPinnedIds((prev) => (prev.includes(id) ? prev : [id, ...prev]))}
+            refreshKey={graphRefreshKey}
+            onSelectQA={(id) => { setSelectedQaId(id); setCenterAiAnswer(""); }}
           />
         </main>
 
@@ -221,6 +225,7 @@ export default function Home() {
             onConnectModeChange={(v) => setConnectMode(v)}
             pinnedIds={pinnedIds}
             onUnpin={(id) => setPinnedIds((prev) => prev.filter((x) => x !== id))}
+            onGraphChanged={() => setGraphRefreshKey((k) => k + 1)}
           />
         </aside>
       </div>

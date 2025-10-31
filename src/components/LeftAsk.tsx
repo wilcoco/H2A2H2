@@ -9,9 +9,10 @@ type Props = {
   connectMode?: boolean;
   targetId?: string | null;
   onPickTarget?: (id: string) => void;
+  refreshKey?: number;
 };
 
-export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId, onPickTarget }: Props) {
+export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId, onPickTarget, refreshKey }: Props) {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<QAEntry[]>([]);
@@ -56,7 +57,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
     const t = setTimeout(() => { void search(q); }, 250);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q]);
+  }, [q, refreshKey]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -101,14 +102,14 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
       )}
       <ul className="space-y-2">
         {items.map((it) => (
-          <SuggestItem key={it.id} it={it} onSelectQA={onSelectQA} connectMode={!!connectMode} targetId={targetId || null} onPickTarget={onPickTarget} />
+          <SuggestItem key={it.id} it={it} onSelectQA={onSelectQA} connectMode={!!connectMode} targetId={targetId || null} onPickTarget={onPickTarget} refreshKey={refreshKey || 0} />
         ))}
       </ul>
     </div>
   );
 }
 
-function SuggestItem({ it, onSelectQA, connectMode, targetId, onPickTarget }: { it: QAEntry; onSelectQA: (id: string) => void; connectMode: boolean; targetId: string | null; onPickTarget?: (id: string) => void }) {
+function SuggestItem({ it, onSelectQA, connectMode, targetId, onPickTarget, refreshKey }: { it: QAEntry; onSelectQA: (id: string) => void; connectMode: boolean; targetId: string | null; onPickTarget?: (id: string) => void; refreshKey: number }) {
   const [loading, setLoading] = useState(true);
   const [count, setCount] = useState<number | null>(null);
   const [preview, setPreview] = useState<Array<{ id: string; question: string }>>([]);
@@ -135,7 +136,7 @@ function SuggestItem({ it, onSelectQA, connectMode, targetId, onPickTarget }: { 
       }
     })();
     return () => { controller.abort(); };
-  }, [it.id]);
+  }, [it.id, refreshKey]);
 
   return (
     <li className="rounded border border-gray-200/60 p-2 bg-white/60 dark:bg-gray-900/40">

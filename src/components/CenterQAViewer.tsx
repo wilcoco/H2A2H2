@@ -10,9 +10,11 @@ type Props = {
   onOpenThread?: () => void;
   onShared?: (id: string) => void;
   onPinned?: (id: string) => void;
+  refreshKey?: number;
+  onSelectQA?: (id: string) => void;
 };
 
-export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread, onShared, onPinned }: Props) {
+export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread, onShared, onPinned, refreshKey, onSelectQA }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<any | null>(null);
@@ -24,6 +26,8 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
   const [note, setNote] = useState("");
   const [savingNote, setSavingNote] = useState(false);
   const [notes, setNotes] = useState<Array<{ id: string; userId?: string; content: string; createdAt: string }>>([]);
+  const [mapNodes, setMapNodes] = useState<Array<{ id: string; question: string }>>([]);
+  const [mapEdges, setMapEdges] = useState<Array<{ sourceId: string; targetId: string; type: string }>>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -45,6 +49,24 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
     void run();
     return () => { mounted = false; };
   }, [qaId]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (!qaId) { if (active) { setMapNodes([]); setMapEdges([]); } return; }
+      try {
+        const r = await fetch(`/api/qa/map?qaId=${encodeURIComponent(qaId)}`, { cache: "no-store" });
+        const j = await r.json().catch(() => ({ nodes: [], edges: [] }));
+        if (active) {
+          setMapNodes(Array.isArray(j?.nodes) ? j.nodes : []);
+          setMapEdges(Array.isArray(j?.edges) ? j.edges : []);
+        }
+      } catch {
+        if (active) { setMapNodes([]); setMapEdges([]); }
+      }
+    })();
+    return () => { active = false; };
+  }, [qaId, refreshKey]);
 
   async function saveNote() {
     const content = note.trim();
@@ -242,6 +264,27 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
         {patch && (
           <div className="mt-2">
             <PatchPreviewGraph patch={patch} />
+          </div>
+        )}
+        {mapEdges.length > 0 && (
+          <div className="mt-2">
+            <div className="text-xs text-gray-600 mb-1">연결된 질문</div>
+            <ul className="space-y-1">
+              {mapEdges
+                .filter((e: any) => e.sourceId === qaId || e.targetId === qaId)
+                .map((e: any, idx: number) => {
+                  const neighborId = e.sourceId === qaId ? e.targetId : e.sourceId;
+                  const neighbor = mapNodes.find((n) => n.id === neighborId);
+                  if (!neighbor) return null;
+                  const dir = e.sourceId === qaId ? "→" : "←";
+                  return (
+                    <li key={idx} className="text-[12px] flex items-center justify-between gap-2">
+                      <div className="min-w-0 truncate">{dir} {e.type} · Q: {neighbor.question}</div>
+                      <button className="text-[11px] px-2 py-1 rounded border shrink-0" onClick={() => onSelectQA?.(neighbor.id)}>보기</button>
+                    </li>
+                  );
+                })}
+            </ul>
           </div>
         )}
       </div>

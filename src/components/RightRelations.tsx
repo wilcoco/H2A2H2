@@ -10,9 +10,10 @@ type Props = {
   onConnectModeChange?: (v: boolean) => void;
   pinnedIds?: string[];
   onUnpin?: (id: string) => void;
+  onGraphChanged?: () => void;
 };
 
-export default function RightRelations({ qaId, targetId, onTargetChange, connectMode, onConnectModeChange, pinnedIds = [], onUnpin }: Props) {
+export default function RightRelations({ qaId, targetId, onTargetChange, connectMode, onConnectModeChange, pinnedIds = [], onUnpin, onGraphChanged }: Props) {
   const [relType, setRelType] = useState<string>("follows_from");
   const [busy, setBusy] = useState(false);
   const [edges, setEdges] = useState<Array<{ sourceId: string; targetId: string; type: string; synthetic?: boolean }>>([]);
@@ -70,6 +71,7 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
       setTarget(null);
       setSrcOverrideId(null);
       await refreshEdges();
+      onGraphChanged?.();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
