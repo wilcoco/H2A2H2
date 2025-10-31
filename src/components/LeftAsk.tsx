@@ -63,6 +63,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow }: Props) {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => {
+              if ((e as any).isComposing) return; // allow IME composition
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
                 const query = q.trim();
@@ -74,6 +75,8 @@ export default function LeftAsk({ onSelectQA, onAskAINow }: Props) {
             }}
             placeholder="질문을 입력하세요"
             className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60"
+            id="left-ask"
+            name="left-ask"
           />
           <button
             className="text-xs px-2 py-2 rounded bg-emerald-600 text-white disabled:opacity-50"

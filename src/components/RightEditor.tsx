@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { QAEntry } from "@/types/graph";
 
 type Props = {
   qaId?: string;
@@ -18,6 +19,12 @@ export default function RightEditor({ qaId, question, aiAnswer, user, onRequireL
   const [voteBusy, setVoteBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const summaryRef = useRef<HTMLTextAreaElement | null>(null);
+  const [relType, setRelType] = useState<string>("follows_from");
+  const [relQuery, setRelQuery] = useState<string>("");
+  const [relResults, setRelResults] = useState<QAEntry[]>([]);
+  const [relTargetId, setRelTargetId] = useState<string | null>(null);
+  const [relBusy, setRelBusy] = useState(false);
+  const relAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => { setError(null); }, [qaId, question, aiAnswer]);
 
@@ -38,6 +45,52 @@ export default function RightEditor({ qaId, question, aiAnswer, user, onRequireL
     return () => window.removeEventListener("keydown", onKey);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qaId, summary, question, aiAnswer]);
+
+  async function searchRel(q: string) {
+    const query = q.trim();
+    if (!query) { setRelResults([]); relAbortRef.current?.abort(); return; }
+    try {
+      relAbortRef.current?.abort();
+      const controller = new AbortController();
+      relAbortRef.current = controller;
+      const res = await fetch("/api/qa/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, limit: 8, strict: true }),
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      const j = await res.json().catch(() => ({ items: [] }));
+      const its: QAEntry[] = Array.isArray(j?.items) ? (j.items as QAEntry[]) : [];
+      setRelResults(its);
+    } catch (e: any) {
+      if (e?.name === "AbortError") return;
+    }
+  }
+
+  useEffect(() => {
+    const t = setTimeout(() => { void searchRel(relQuery); }, 250);
+    return () => clearTimeout(t);
+  }, [relQuery]);
+
+  async function connectRelation() {
+    if (!qaId || !relTargetId || !relType) return;
+    try {
+      setRelBusy(true);
+      const res = await fetch("/api/qa/relation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceId: qaId, targetId: relTargetId, type: relType, weight: 1 }) });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || "Connect failed");
+      }
+      setRelTargetId(null);
+      setRelQuery("");
+      setRelResults([]);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setRelBusy(false);
+    }
+  }
 
   async function shareNew() {
     const q = (question || "").trim();
@@ -168,6 +221,42 @@ export default function RightEditor({ qaId, question, aiAnswer, user, onRequireL
           <button className="text-xs px-3 py-2 rounded border" disabled={!qaId || voteBusy} onClick={() => void vote(1)}>Helpful</button>
           <button className="text-xs px-3 py-2 rounded border" disabled={!qaId || voteBusy} onClick={() => void vote(-1)}>Not helpful</button>
         </div>
+      </div>
+
+      <div>
+        <div className="text-xs text-gray-600 mb-1">질문 간 관계</div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <select className="text-xs border rounded px-2 py-1" value={relType} onChange={(e) => setRelType(e.target.value)}>
+            <option value="follows_from">follows_from</option>
+            <option value="refines">refines</option>
+            <option value="clarifies">clarifies</option>
+            <option value="depends_on">depends_on</option>
+            <option value="alternative">alternative</option>
+          </select>
+          <input
+            className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60"
+            placeholder="연결할 기존 질문 찾기"
+            value={relQuery}
+            onChange={(e) => setRelQuery(e.target.value)}
+            onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") e.preventDefault(); }}
+            id="rel-search"
+            name="rel-search"
+          />
+          <button className="text-xs px-3 py-2 rounded border disabled:opacity-50" disabled={!qaId || !relTargetId || relBusy} onClick={() => void connectRelation()}>{relBusy ? "Connecting..." : "Connect"}</button>
+        </div>
+        {relResults.length > 0 && (
+          <ul className="mt-2 space-y-1 max-h-40 overflow-auto">
+            {relResults.map((it) => (
+              <li key={it.id} className={`p-2 rounded border text-xs flex items-center justify-between gap-2 ${relTargetId === it.id ? "bg-gray-50" : ""}`}>
+                <div className="min-w-0 truncate">Q: {it.question}</div>
+                <button className="text-[11px] px-2 py-1 rounded border shrink-0" onClick={() => setRelTargetId(it.id)}>{relTargetId === it.id ? "선택됨" : "선택"}</button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {!qaId && (
+          <div className="text-[11px] text-gray-600 mt-1">먼저 Q&A를 공유하여 ID를 생성하세요.</div>
+        )}
       </div>
     </div>
   );

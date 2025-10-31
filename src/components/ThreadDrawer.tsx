@@ -24,11 +24,7 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
   const [tree, setTree] = useState<ThreadNode | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [followupText, setFollowupText] = useState<Record<string, string>>({});
   const [busyVote, setBusyVote] = useState<Record<string, boolean>>({});
-  const [intentL1, setIntentL1] = useState<Record<string, string>>({});
-  const [intentL2, setIntentL2] = useState<Record<string, string>>({});
-  const [targetPIC, setTargetPIC] = useState<Record<string, string>>({});
   const [tab, setTab] = useState<"thread" | "map">("thread");
   const [mLoading, setMLoading] = useState(false);
   const [mError, setMError] = useState<string | null>(null);
@@ -77,19 +73,6 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
     finally { setBusyVote((m) => ({ ...m, [qaId]: false })); }
   }
 
-  async function addFollowup(parentId: string) {
-    try {
-      const text = (followupText[parentId] || "").trim();
-      if (!text) return;
-      const l1 = (intentL1[parentId] || "").trim() || undefined;
-      const l2 = (intentL2[parentId] || "").trim() || undefined;
-      const pic = (targetPIC[parentId] || "").trim() || undefined;
-      const res = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: text, parentId, intentL1: l1, intentL2: l2, targetPIC: pic }) });
-      if (!res.ok) throw new Error("Share failed");
-      setFollowupText((m) => ({ ...m, [parentId]: "" }));
-      await refresh();
-    } catch {}
-  }
 
   async function aiAnswer(id: string, q: string) {
     try {
@@ -148,9 +131,8 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
 
   function NodeItem({ node }: { node: ThreadNode }) {
     const fid = node.id;
-    const fval = followupText[fid] || "";
     return (
-      <div className="border-l pl-3 ml-1 my-2">
+      <div className="border-l pl-3 ml-1 my-2 w-full min-w-0">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="text-sm font-medium">Q: {node.question}</div>
@@ -162,65 +144,6 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
             {!node.hasAnswer && (
               <button className="text-[11px] px-2 py-1 rounded border" onClick={() => void aiAnswer(fid, node.question)}>AI 답변 생성</button>
             )}
-          </div>
-        </div>
-        <div className="mt-2 grid grid-cols-1 gap-2">
-          <div className="flex items-center gap-2">
-            <select
-              className="text-[11px] border rounded px-2 py-1"
-              value={intentL1[fid] || ""}
-              onChange={(e) => setIntentL1((m) => ({ ...m, [fid]: e.target.value }))}
-            >
-              <option value="">L1(담화관계)</option>
-              <option value="expansion">expansion</option>
-              <option value="contingency">contingency</option>
-              <option value="comparison">comparison</option>
-              <option value="temporal">temporal</option>
-              <option value="evidence">evidence</option>
-              <option value="evaluation">evaluation</option>
-            </select>
-            <select
-              className="text-[11px] border rounded px-2 py-1"
-              value={intentL2[fid] || "clarify"}
-              onChange={(e) => setIntentL2((m) => ({ ...m, [fid]: e.target.value }))}
-            >
-              <option value="clarify">clarify</option>
-              <option value="detail">detail</option>
-              <option value="example">example</option>
-              <option value="justify">justify</option>
-              <option value="verify">verify</option>
-              <option value="compare">compare</option>
-              <option value="alternative">alternative</option>
-              <option value="adapt">adapt</option>
-              <option value="localize">localize</option>
-              <option value="implement">implement</option>
-              <option value="troubleshoot">troubleshoot</option>
-              <option value="summarize">summarize</option>
-              <option value="plan">plan</option>
-              <option value="risk">risk</option>
-              <option value="metrics">metrics</option>
-              <option value="reframe">reframe</option>
-            </select>
-            <select
-              className="text-[11px] border rounded px-2 py-1"
-              value={targetPIC[fid] || ""}
-              onChange={(e) => setTargetPIC((m) => ({ ...m, [fid]: e.target.value }))}
-            >
-              <option value="">Target</option>
-              <option value="premise">premise</option>
-              <option value="inference">inference</option>
-              <option value="conclusion">conclusion</option>
-            </select>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              className="w-full min-w-0 flex-1 rounded border border-gray-300 bg-white/90 p-1 text-xs dark:bg-gray-900/60"
-              placeholder="후속 질문 추가"
-              value={fval}
-              onChange={(e) => setFollowupText((m) => ({ ...m, [fid]: e.target.value }))}
-              onKeyDown={(e) => { e.stopPropagation(); }}
-            />
-            <button className="text-[11px] px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50" disabled={!fval.trim()} onClick={() => void addFollowup(fid)}>추가</button>
           </div>
         </div>
         {node.children?.length > 0 && (

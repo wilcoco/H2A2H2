@@ -73,6 +73,13 @@ export default function Home() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // Ignore when typing in fields or contenteditable
+      const tgt = e.target as HTMLElement | null;
+      const tag = tgt?.tagName?.toLowerCase();
+      const ae = (document.activeElement as HTMLElement | null);
+      const aTag = ae?.tagName?.toLowerCase();
+      const isTyping = tag === "input" || tag === "textarea" || tag === "select" || (!!tgt && (tgt as any).isContentEditable) || aTag === "input" || aTag === "textarea" || aTag === "select" || (!!ae && (ae as any).isContentEditable);
+      if (isTyping) return;
       // Toggle thread drawer with 'f'
       if (e.key.toLowerCase() === "f" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         setThreadOpen((v) => !v);
