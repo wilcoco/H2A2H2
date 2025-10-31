@@ -45,6 +45,8 @@ export default function Home() {
   const [centerQuestion, setCenterQuestion] = useState<string>("");
   const [centerAiAnswer, setCenterAiAnswer] = useState<string>("");
   const [threadOpen, setThreadOpen] = useState(false);
+  const [connectMode, setConnectMode] = useState(false);
+  const [relTargetId, setRelTargetId] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -56,6 +58,9 @@ export default function Home() {
     })();
     return () => { mounted = false; };
   }, []);
+
+  // When source changes, clear relation target to avoid stale selection
+  useEffect(() => { setRelTargetId(null); }, [selectedQaId]);
 
   // Left references replaced by QA search; keep works for publish flow only.
 
@@ -189,6 +194,9 @@ export default function Home() {
           <LeftAsk
             onSelectQA={(id) => { setSelectedQaId(id); setCenterAiAnswer(""); }}
             onAskAINow={(q) => void askAiNow(q)}
+            connectMode={connectMode}
+            targetId={relTargetId}
+            onPickTarget={(id) => setRelTargetId(id)}
           />
         </aside>
 
@@ -203,7 +211,13 @@ export default function Home() {
         </main>
 
         <aside className="rounded border border-gray-200/60 p-2 md:p-3 overflow-auto">
-          <RightRelations qaId={selectedQaId || undefined} />
+          <RightRelations
+            qaId={selectedQaId || undefined}
+            targetId={relTargetId}
+            onTargetChange={(id) => setRelTargetId(id)}
+            connectMode={connectMode}
+            onConnectModeChange={(v) => setConnectMode(v)}
+          />
         </aside>
       </div>
       <ThreadDrawer qaId={selectedQaId || undefined} open={threadOpen} onClose={() => setThreadOpen(false)} />

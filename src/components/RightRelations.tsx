@@ -5,40 +5,47 @@ import type { QAEntry } from "@/types/graph";
 
 type Props = {
   qaId?: string;
+  targetId?: string | null;
+  onTargetChange?: (id: string | null) => void;
+  connectMode?: boolean;
+  onConnectModeChange?: (v: boolean) => void;
 };
 
-export default function RightRelations({ qaId }: Props) {
+export default function RightRelations({ qaId, targetId, onTargetChange, connectMode, onConnectModeChange }: Props) {
   const [relType, setRelType] = useState<string>("follows_from");
-  const [query, setQuery] = useState<string>("");
-  const [results, setResults] = useState<QAEntry[]>([]);
-  const [targetId, setTargetId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [edges, setEdges] = useState<Array<{ sourceId: string; targetId: string; type: string; synthetic?: boolean }>>([]);
   const [error, setError] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+  const [source, setSource] = useState<{ id: string; question: string } | null>(null);
+  const [target, setTarget] = useState<{ id: string; question: string } | null>(null);
 
   useEffect(() => { setError(null); }, [qaId]);
 
   useEffect(() => {
-    const t = setTimeout(() => { void search(query); }, 250);
-    return () => clearTimeout(t);
-  }, [query]);
+    let active = true;
+    (async () => {
+      if (!qaId) { if (active) setSource(null); return; }
+      try {
+        const r = await fetch(`/api/qa/${encodeURIComponent(qaId)}`, { cache: "no-store" });
+        const j = await r.json();
+        if (active) setSource({ id: qaId, question: String(j?.question || "") });
+      } catch { if (active) setSource(null); }
+    })();
+    return () => { active = false; };
+  }, [qaId]);
 
-  async function search(q: string) {
-    const text = q.trim();
-    if (!text) { setResults([]); abortRef.current?.abort(); return; }
-    try {
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
-      const res = await fetch("/api/qa/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: text, limit: 10, strict: true }), cache: "no-store", signal: controller.signal });
-      const j = await res.json().catch(() => ({ items: [] }));
-      const its: QAEntry[] = Array.isArray(j?.items) ? (j.items as QAEntry[]) : [];
-      setResults(its);
-    } catch (e: any) {
-      if (e?.name === "AbortError") return;
-    }
-  }
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (!targetId) { if (active) setTarget(null); return; }
+      try {
+        const r = await fetch(`/api/qa/${encodeURIComponent(targetId)}`, { cache: "no-store" });
+        const j = await r.json();
+        if (active) setTarget({ id: targetId, question: String(j?.question || "") });
+      } catch { if (active) setTarget(null); }
+    })();
+    return () => { active = false; };
+  }, [targetId]);
 
   async function connect() {
     if (!qaId || !targetId || !relType) return;
@@ -49,7 +56,8 @@ export default function RightRelations({ qaId }: Props) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err?.error || "Connect failed");
       }
-      setTargetId(null); setQuery(""); setResults([]);
+      onTargetChange?.(null);
+      setTarget(null);
       await refreshEdges();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unknown error");
@@ -75,6 +83,9 @@ export default function RightRelations({ qaId }: Props) {
       <div className="text-sm font-semibold">질문 간 관계 편집</div>
       {error && <div className="text-xs text-red-600">{error}</div>}
       <div className="flex items-center gap-2 flex-wrap">
+        <label className="text-[11px] flex items-center gap-1">
+          <input type="checkbox" checked={!!connectMode} onChange={(e) => onConnectModeChange?.(e.target.checked)} /> 연결 모드
+        </label>
         <select className="text-xs border rounded px-2 py-1" value={relType} onChange={(e) => setRelType(e.target.value)}>
           <option value="follows_from">follows_from</option>
           <option value="refines">refines</option>
@@ -82,27 +93,17 @@ export default function RightRelations({ qaId }: Props) {
           <option value="depends_on">depends_on</option>
           <option value="alternative">alternative</option>
         </select>
-        <input
-          className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60"
-          placeholder="연결할 기존 질문 검색"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => { e.stopPropagation(); if ((e as any).isComposing) return; if (e.key === "Enter") e.preventDefault(); }}
-          id="rel-search-right"
-          name="rel-search-right"
-        />
         <button className="text-xs px-3 py-2 rounded border disabled:opacity-50" disabled={!qaId || !targetId || busy} onClick={() => void connect()}>{busy ? "Connecting..." : "Connect"}</button>
       </div>
-      {results.length > 0 && (
-        <ul className="mt-1 space-y-1 max-h-40 overflow-auto">
-          {results.map((it) => (
-            <li key={it.id} className={`p-2 rounded border text-xs flex items-center justify-between gap-2 ${targetId === it.id ? "bg-gray-50" : ""}`}>
-              <div className="min-w-0 truncate">Q: {it.question}</div>
-              <button className="text-[11px] px-2 py-1 rounded border shrink-0" onClick={() => setTargetId(it.id)}>{targetId === it.id ? "선택됨" : "선택"}</button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <div className="space-y-2">
+        <div className="text-xs text-gray-600">Source</div>
+        <div className="text-[12px] rounded border p-2 bg-white/60 dark:bg-gray-900/40 min-h-[40px]">{source ? (<div className="truncate">Q: {source.question}</div>) : ("선택된 질문이 없습니다.")}</div>
+        <div className="text-xs text-gray-600">Target</div>
+        <div className="text-[12px] rounded border p-2 bg-white/60 dark:bg-gray-900/40 min-h-[40px] flex items-center justify-between gap-2">
+          <div className="truncate">{target ? `Q: ${target.question}` : "좌측에서 항목의 '연결' 버튼으로 대상 선택"}</div>
+          {target && <button className="text-[11px] px-2 py-1 rounded border" onClick={() => onTargetChange?.(null)}>Clear</button>}
+        </div>
+      </div>
       {edges.length > 0 && (
         <div>
           <div className="text-xs text-gray-600">현재 질문의 기존 연결</div>

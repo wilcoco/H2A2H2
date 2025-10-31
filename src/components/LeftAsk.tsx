@@ -6,9 +6,12 @@ import type { QAEntry } from "@/types/graph";
 type Props = {
   onSelectQA: (id: string) => void;
   onAskAINow: (question: string) => void;
+  connectMode?: boolean;
+  targetId?: string | null;
+  onPickTarget?: (id: string) => void;
 };
 
-export default function LeftAsk({ onSelectQA, onAskAINow }: Props) {
+export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId, onPickTarget }: Props) {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<QAEntry[]>([]);
@@ -98,14 +101,14 @@ export default function LeftAsk({ onSelectQA, onAskAINow }: Props) {
       )}
       <ul className="space-y-2">
         {items.map((it) => (
-          <SuggestItem key={it.id} it={it} onSelectQA={onSelectQA} />
+          <SuggestItem key={it.id} it={it} onSelectQA={onSelectQA} connectMode={!!connectMode} targetId={targetId || null} onPickTarget={onPickTarget} />
         ))}
       </ul>
     </div>
   );
 }
 
-function SuggestItem({ it, onSelectQA }: { it: QAEntry; onSelectQA: (id: string) => void }) {
+function SuggestItem({ it, onSelectQA, connectMode, targetId, onPickTarget }: { it: QAEntry; onSelectQA: (id: string) => void; connectMode: boolean; targetId: string | null; onPickTarget?: (id: string) => void }) {
   const [loading, setLoading] = useState(true);
   const [count, setCount] = useState<number | null>(null);
   const [preview, setPreview] = useState<Array<{ id: string; question: string }>>([]);
@@ -144,6 +147,13 @@ function SuggestItem({ it, onSelectQA }: { it: QAEntry; onSelectQA: (id: string)
         <div className="shrink-0 flex items-center gap-2">
           <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 border">Chain {loading ? "…" : (count ?? 0)}</span>
           <button className="text-[11px] px-2 py-1 rounded border" onClick={() => setExpanded((v) => !v)}>{expanded ? "접기" : "보기"}</button>
+          {connectMode && (
+            <button
+              className={`text-[11px] px-2 py-1 rounded border ${targetId === it.id ? "bg-blue-600 text-white" : ""}`}
+              onClick={(e) => { e.stopPropagation(); onPickTarget?.(it.id); }}
+              title="이 항목을 연결 대상으로 지정"
+            >{targetId === it.id ? "선택됨" : "연결"}</button>
+          )}
         </div>
       </div>
       {expanded && preview.length > 0 && (
