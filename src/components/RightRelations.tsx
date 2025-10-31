@@ -24,7 +24,9 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
   const [myItems, setMyItems] = useState<Array<{ id: string; question: string; summary?: string; helpful?: number; unhelpful?: number }>>([]);
   const myReqRef = useRef(0);
   const myAbortRef = useRef<AbortController | null>(null);
-  const [pinnedItems, setPinnedItems] = useState<Array<{ id: string; question: string; summary?: string }>>([]);
+  const [pinnedItems, setPinnedItems] = useState<Array<{ id: string; question: string; summary?: string; answer?: string }>>([]);
+  const [srcOverrideId, setSrcOverrideId] = useState<string | null>(null);
+  const [srcOverride, setSrcOverride] = useState<{ id: string; question: string } | null>(null);
 
   useEffect(() => { setError(null); }, [qaId]);
 
@@ -55,14 +57,25 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
   }, [targetId]);
 
   async function connect() {
-    if (!qaId || !targetId || !relType) return;
+    const src = srcOverrideId || qaId;
+    if (!src || !targetId || !relType) return;
     try {
       setBusy(true); setError(null);
-      const res = await fetch("/api/qa/relation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceId: qaId, targetId, type: relType, weight: 1 }) });
+      const res = await fetch("/api/qa/relation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceId: src, targetId, type: relType, weight: 1 }) });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err?.error || "Connect failed");
       }
+      onTargetChange?.(null);
+      setTarget(null);
+      setSrcOverrideId(null);
+      await refreshEdges();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -73,9 +86,9 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
             try {
               const r = await fetch(`/api/qa/${encodeURIComponent(id)}`, { cache: "no-store" });
               const j = await r.json();
-              return { id, question: String(j?.question || id), summary: j?.summary ? String(j.summary) : undefined };
+              return { id, question: String(j?.question || id), summary: j?.summary ? String(j.summary) : undefined, answer: j?.answer ? String(j.answer) : undefined };
             } catch {
-              return { id, question: id };
+              return { id, question: id } as { id: string; question: string } as any;
             }
           })
         );
@@ -86,15 +99,19 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
     })();
     return () => { active = false; };
   }, [JSON.stringify(pinnedIds)]);
-      onTargetChange?.(null);
-      setTarget(null);
-      await refreshEdges();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Unknown error");
-    } finally {
-      setBusy(false);
-    }
-  }
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (!srcOverrideId) { if (active) setSrcOverride(null); return; }
+      try {
+        const r = await fetch(`/api/qa/${encodeURIComponent(srcOverrideId)}`, { cache: "no-store" });
+        const j = await r.json();
+        if (active) setSrcOverride({ id: srcOverrideId, question: String(j?.question || "") });
+      } catch { if (active) setSrcOverride(null); }
+    })();
+    return () => { active = false; };
+  }, [srcOverrideId]);
 
   async function refreshEdges() {
     if (!qaId) { setEdges([]); return; }
@@ -150,11 +167,15 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
           <option value="depends_on">depends_on</option>
           <option value="alternative">alternative</option>
         </select>
-        <button className="text-xs px-3 py-2 rounded border disabled:opacity-50" disabled={!qaId || !targetId || busy} onClick={() => void connect()}>{busy ? "Connecting..." : "Connect"}</button>
+        <button className="text-xs px-3 py-2 rounded border disabled:opacity-50" disabled={!((srcOverrideId || qaId) && targetId) || busy} onClick={() => void connect()}>{busy ? "Connecting..." : "Connect"}</button>
+        <button className="text-xs px-3 py-2 rounded border disabled:opacity-50" disabled={!((srcOverrideId || qaId) && targetId)} onClick={() => { if (targetId) { const s = targetId; const t = srcOverrideId || qaId!; setSrcOverrideId(s); onTargetChange?.(t); } }}>Swap</button>
       </div>
       <div className="space-y-2">
         <div className="text-xs text-gray-600">Source</div>
-        <div className="text-[12px] rounded border p-2 bg-white/60 dark:bg-gray-900/40 min-h-[40px]">{source ? (<div className="truncate">Q: {source.question}</div>) : ("선택된 질문이 없습니다.")}</div>
+        <div className="text-[12px] rounded border p-2 bg-white/60 dark:bg-gray-900/40 min-h-[40px] flex items-center justify-between gap-2">
+          <div className="truncate">{srcOverride ? `Q: ${srcOverride.question}` : (source ? `Q: ${source.question}` : "선택된 질문이 없습니다.")}</div>
+          {srcOverride && <button className="text-[11px] px-2 py-1 rounded border" onClick={() => setSrcOverrideId(null)}>Clear</button>}
+        </div>
         <div className="text-xs text-gray-600">Target</div>
         <div className="text-[12px] rounded border p-2 bg-white/60 dark:bg-gray-900/40 min-h-[40px] flex items-center justify-between gap-2">
           <div className="truncate">{target ? `Q: ${target.question}` : "좌측에서 항목의 '연결' 버튼으로 대상 선택"}</div>
@@ -169,10 +190,15 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
               <li key={it.id} className={`p-2 rounded border text-xs flex items-center justify-between gap-2 ${targetId === it.id ? "bg-gray-50" : ""}`}>
                 <div className="min-w-0">
                   <div className="truncate">Q: {it.question}</div>
-                  {it.summary && <div className="text-[10px] text-gray-600 truncate">{it.summary}</div>}
+                  {it.summary ? (
+                    <div className="text-[10px] text-gray-600 truncate">{it.summary}</div>
+                  ) : (it.answer ? (
+                    <div className="text-[10px] text-gray-600 truncate">A: {it.answer}</div>
+                  ) : null)}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <button className="text-[11px] px-2 py-1 rounded border" onClick={() => onTargetChange?.(it.id)}>{targetId === it.id ? "선택됨" : "선택"}</button>
+                  <button className={`text-[11px] px-2 py-1 rounded border ${srcOverrideId === it.id ? 'bg-blue-600 text-white' : ''}`} onClick={() => setSrcOverrideId(it.id)}>{srcOverrideId === it.id ? "Source" : "Set Source"}</button>
+                  <button className={`text-[11px] px-2 py-1 rounded border ${targetId === it.id ? 'bg-blue-600 text-white' : ''}`} onClick={() => onTargetChange?.(it.id)}>{targetId === it.id ? "Target" : "Set Target"}</button>
                   <button className="text-[11px] px-2 py-1 rounded border" onClick={() => onUnpin?.(it.id)}>해제</button>
                 </div>
               </li>
