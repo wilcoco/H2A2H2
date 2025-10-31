@@ -266,27 +266,28 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
             <PatchPreviewGraph patch={patch} />
           </div>
         )}
-        {mapEdges.length > 0 && (
-          <div className="mt-2">
-            <div className="text-xs text-gray-600 mb-1">연결된 질문</div>
+        <div className="mt-2">
+          <div className="text-xs text-gray-600 mb-1">연결(소스 → 타겟)</div>
+          <div className="text-[12px] text-gray-700 mb-1">Source: Q: {data.question}</div>
+          {mapEdges.filter((e: any) => e.sourceId === qaId).length > 0 ? (
             <ul className="space-y-1">
               {mapEdges
-                .filter((e: any) => e.sourceId === qaId || e.targetId === qaId)
+                .filter((e: any) => e.sourceId === qaId)
                 .map((e: any, idx: number) => {
-                  const neighborId = e.sourceId === qaId ? e.targetId : e.sourceId;
-                  const neighbor = mapNodes.find((n) => n.id === neighborId);
-                  if (!neighbor) return null;
-                  const dir = e.sourceId === qaId ? "→" : "←";
+                  const trg = mapNodes.find((n) => n.id === e.targetId);
+                  if (!trg) return null;
                   return (
                     <li key={idx} className="text-[12px] flex items-center justify-between gap-2">
-                      <div className="min-w-0 truncate">{dir} {e.type} · Q: {neighbor.question}</div>
-                      <button className="text-[11px] px-2 py-1 rounded border shrink-0" onClick={() => onSelectQA?.(neighbor.id)}>보기</button>
+                      <div className="min-w-0 truncate">{e.type} · Q: {trg.question}</div>
+                      <button className="text-[11px] px-2 py-1 rounded border shrink-0" onClick={() => onSelectQA?.(trg.id)}>보기</button>
                     </li>
                   );
                 })}
             </ul>
-          </div>
-        )}
+          ) : (
+            <div className="text-[11px] text-gray-600">연결된 타겟이 없습니다.</div>
+          )}
+        </div>
       </div>
     );
   }
