@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import LeftAsk from "@/components/LeftAsk";
 import CenterQAViewer from "@/components/CenterQAViewer";
-import RightEditor from "@/components/RightEditor";
 import ThreadDrawer from "@/components/ThreadDrawer";
+import RightRelations from "@/components/RightRelations";
 import type { GraphNode, GraphEdge, Work, LlmPatch, NodeType, EdgeType } from "@/types/graph";
 import AuthModal from "@/components/AuthModal";
 import PublishModal from "@/components/PublishModal";
@@ -198,19 +198,12 @@ export default function Home() {
             question={!selectedQaId ? centerQuestion : undefined}
             aiAnswer={!selectedQaId ? centerAiAnswer : undefined}
             onOpenThread={() => setThreadOpen(true)}
-            onShared={(newId) => { setSelectedQaId(newId); setCenterAiAnswer(""); }}
+            onShared={(newId: string) => { setSelectedQaId(newId); setCenterAiAnswer(""); }}
           />
         </main>
 
         <aside className="rounded border border-gray-200/60 p-2 md:p-3 overflow-auto">
-          <RightEditor
-            qaId={selectedQaId || undefined}
-            question={!selectedQaId ? centerQuestion : undefined}
-            aiAnswer={!selectedQaId ? centerAiAnswer : undefined}
-            user={user || undefined}
-            onRequireLogin={() => setAuthOpen(true)}
-            onShared={(newId: string) => setSelectedQaId(newId)}
-          />
+          <RightRelations qaId={selectedQaId || undefined} />
         </aside>
       </div>
       <ThreadDrawer qaId={selectedQaId || undefined} open={threadOpen} onClose={() => setThreadOpen(false)} />

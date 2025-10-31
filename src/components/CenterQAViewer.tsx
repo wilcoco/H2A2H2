@@ -20,6 +20,9 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
   const [saving, setSaving] = useState(false);
   const [voteBusy, setVoteBusy] = useState(false);
   const [newSummary, setNewSummary] = useState("");
+  const [note, setNote] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
+  const [notes, setNotes] = useState<Array<{ id: string; userId?: string; content: string; createdAt: string }>>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -37,9 +40,46 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
       } finally {
         if (mounted) setLoading(false);
       }
+
+  async function saveNote() {
+    const content = note.trim();
+    if (!qaId || !content) return;
+    try {
+      setSavingNote(true);
+      const res = await fetch("/api/qa/note", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId, content }) });
+      if (!res.ok) throw new Error("Note failed");
+      setNote("");
+      // refresh notes
+      const r = await fetch(`/api/qa/note?qaId=${encodeURIComponent(qaId)}`, { cache: "no-store" });
+      if (r.ok) {
+        const j = await r.json();
+        setNotes(Array.isArray(j?.notes) ? j.notes : []);
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setSavingNote(false);
+    }
+  }
     }
     void run();
     return () => { mounted = false; };
+  }, [qaId]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (!qaId) { if (active) setNotes([]); return; }
+      try {
+        const r = await fetch(`/api/qa/note?qaId=${encodeURIComponent(qaId)}`, { cache: "no-store" });
+        if (!r.ok) throw new Error("Notes failed");
+        const j = await r.json();
+        if (active) setNotes(Array.isArray(j?.notes) ? j.notes : []);
+      } catch {
+        if (active) setNotes([]);
+      }
+    })();
+    return () => { active = false; };
   }, [qaId]);
 
   async function vote(v: 1 | -1) {
@@ -172,6 +212,28 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
         {editing && (
           <textarea className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" rows={4} value={editSummary} onChange={(e) => setEditSummary(e.target.value)} />
         )}
+        <div className="mt-2">
+          <div className="text-xs text-gray-600 mb-1">노트</div>
+          <textarea
+            className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60"
+            rows={3}
+            placeholder="참고/근거/메모"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            id="center-note"
+            name="center-note"
+          />
+          <div className="mt-1">
+            <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!qaId || savingNote || !note.trim()} onClick={() => void saveNote()}>{savingNote ? "Saving..." : "저장"}</button>
+          </div>
+          {notes.length > 0 && (
+            <ul className="mt-2 space-y-1">
+              {notes.map((n) => (
+                <li key={n.id} className="text-[11px] text-gray-700 whitespace-pre-wrap border rounded p-2">{n.content}</li>
+              ))}
+            </ul>
+          )}
+        </div>
         {patch && (
           <div className="mt-2">
             <PatchPreviewGraph patch={patch} />
