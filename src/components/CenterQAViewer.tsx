@@ -27,7 +27,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
   const [note, setNote] = useState("");
   const [savingNote, setSavingNote] = useState(false);
   const [notes, setNotes] = useState<Array<{ id: string; userId?: string; content: string; createdAt: string }>>([]);
-  const [mapNodes, setMapNodes] = useState<Array<{ id: string; question: string }>>([]);
+  const [mapNodes, setMapNodes] = useState<Array<{ id: string; question: string; summary?: string; answer?: string }>>([]);
   const [mapEdges, setMapEdges] = useState<Array<{ sourceId: string; targetId: string; type: string }>>([]);
   const [publishing, setPublishing] = useState(false);
 
@@ -290,9 +290,33 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
             <PatchPreviewGraph patch={patch} />
           </div>
         )}
-        <div className="mt-2">
-          <div className="text-xs text-gray-600 mb-1">연결(소스 → 타겟)</div>
-          <div className="text-[12px] text-gray-700 mb-1">Source: Q: {data.question}</div>
+        <div className="mt-3">
+          <div className="text-xs text-gray-600 mb-1">연결(소스 → 현재)</div>
+          {mapEdges.filter((e: any) => e.targetId === qaId).length > 0 ? (
+            <ul className="space-y-1">
+              {mapEdges
+                .filter((e: any) => e.targetId === qaId)
+                .map((e: any, idx: number) => {
+                  const src = mapNodes.find((n) => n.id === e.sourceId);
+                  if (!src) return null;
+                  const snippet = src.answer || src.summary;
+                  return (
+                    <li key={`in-${idx}`} className="text-[12px] flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate">Q: {src.question} · {e.type}</div>
+                        {snippet && <div className="text-[11px] text-gray-600 truncate">A: {snippet}</div>}
+                      </div>
+                      <button className="text-[11px] px-2 py-1 rounded border shrink-0" onClick={() => onSelectQA?.(src.id)}>보기</button>
+                    </li>
+                  );
+                })}
+            </ul>
+          ) : (
+            <div className="text-[11px] text-gray-600">연결된 소스가 없습니다.</div>
+          )}
+        </div>
+        <div className="mt-3">
+          <div className="text-xs text-gray-600 mb-1">연결(현재 → 타겟)</div>
           {mapEdges.filter((e: any) => e.sourceId === qaId).length > 0 ? (
             <ul className="space-y-1">
               {mapEdges
@@ -300,9 +324,13 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
                 .map((e: any, idx: number) => {
                   const trg = mapNodes.find((n) => n.id === e.targetId);
                   if (!trg) return null;
+                  const snippet = trg.answer || trg.summary;
                   return (
-                    <li key={idx} className="text-[12px] flex items-center justify-between gap-2">
-                      <div className="min-w-0 truncate">{e.type} · Q: {trg.question}</div>
+                    <li key={`out-${idx}`} className="text-[12px] flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate">{e.type} · Q: {trg.question}</div>
+                        {snippet && <div className="text-[11px] text-gray-600 truncate">A: {snippet}</div>}
+                      </div>
                       <button className="text-[11px] px-2 py-1 rounded border shrink-0" onClick={() => onSelectQA?.(trg.id)}>보기</button>
                     </li>
                   );

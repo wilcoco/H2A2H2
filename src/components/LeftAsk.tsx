@@ -112,7 +112,9 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
 function SuggestItem({ it, onSelectQA, connectMode, targetId, onPickTarget, refreshKey }: { it: QAEntry; onSelectQA: (id: string) => void; connectMode: boolean; targetId: string | null; onPickTarget?: (id: string) => void; refreshKey: number }) {
   const [loading, setLoading] = useState(true);
   const [count, setCount] = useState<number | null>(null);
-  const [preview, setPreview] = useState<Array<{ id: string; question: string }>>([]);
+  const [preview, setPreview] = useState<Array<{ id: string; question: string; summary?: string }>>([]);
+  const [edges, setEdges] = useState<Array<{ sourceId: string; targetId: string; type: string }>>([]);
+  const [nodesById, setNodesById] = useState<Map<string, { id: string; question: string; summary?: string }>>(new Map());
   const [expanded, setExpanded] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -125,10 +127,15 @@ function SuggestItem({ it, onSelectQA, connectMode, targetId, onPickTarget, refr
         setLoading(true);
         const r = await fetch(`/api/qa/map?qaId=${encodeURIComponent(it.id)}`, { cache: "no-store", signal: controller.signal });
         const j = await r.json().catch(() => ({ nodes: [], edges: [] }));
-        const nodes: Array<{ id: string; question: string }> = Array.isArray(j?.nodes) ? j.nodes : [];
+        const nodes: Array<{ id: string; question: string; summary?: string }> = Array.isArray(j?.nodes) ? j.nodes : [];
         setCount(nodes.length || 0);
+        const map = new Map<string, { id: string; question: string; summary?: string }>();
+        nodes.forEach((n) => map.set(n.id, { id: n.id, question: n.question, summary: n.summary }));
+        setNodesById(map);
         const pv = nodes.slice(Math.max(0, nodes.length - 3));
         setPreview(pv);
+        const es: Array<{ sourceId: string; targetId: string; type: string }> = Array.isArray(j?.edges) ? j.edges : [];
+        setEdges(es);
       } catch (e: any) {
         if (e?.name === "AbortError") return;
       } finally {
@@ -157,11 +164,46 @@ function SuggestItem({ it, onSelectQA, connectMode, targetId, onPickTarget, refr
           )}
         </div>
       </div>
-      {expanded && preview.length > 0 && (
-        <div className="mt-2 space-y-1">
-          {preview.map((n) => (
-            <div key={n.id} className="text-[12px] text-gray-700 truncate">→ {n.question}</div>
-          ))}
+      {expanded && (
+        <div className="mt-2 space-y-2">
+          <div>
+            <div className="text-[11px] text-gray-600 mb-1">연결(현재 → 타겟)</div>
+            {edges.filter((e) => e.sourceId === it.id).length > 0 ? (
+              <ul className="space-y-1">
+                {edges.filter((e) => e.sourceId === it.id).slice(0, 5).map((e, idx) => {
+                  const trg = nodesById.get(e.targetId);
+                  if (!trg) return null;
+                  return (
+                    <li key={`out-${idx}`} className="text-[12px] text-gray-700 truncate">
+                      {e.type} · Q: {trg.question}
+                      {trg.summary && <span className="text-[11px] text-gray-500"> — {trg.summary}</span>}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <div className="text-[11px] text-gray-500">없음</div>
+            )}
+          </div>
+          <div>
+            <div className="text-[11px] text-gray-600 mb-1">연결(소스 → 현재)</div>
+            {edges.filter((e) => e.targetId === it.id).length > 0 ? (
+              <ul className="space-y-1">
+                {edges.filter((e) => e.targetId === it.id).slice(0, 5).map((e, idx) => {
+                  const src = nodesById.get(e.sourceId);
+                  if (!src) return null;
+                  return (
+                    <li key={`in-${idx}`} className="text-[12px] text-gray-700 truncate">
+                      Q: {src.question} · {e.type}
+                      {src.summary && <span className="text-[11px] text-gray-500"> — {src.summary}</span>}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <div className="text-[11px] text-gray-500">없음</div>
+            )}
+          </div>
         </div>
       )}
     </li>

@@ -26,24 +26,73 @@ export async function GET(req: NextRequest) {
 
     if (!rootId) return NextResponse.json({ error: "Missing rootId or qaId" }, { status: 400 });
 
-    // Load nodes with helpful aggregates and my vote
+    // Load nodes with helpful aggregates and my vote, filter by published or owner
     const nodes = await withConn(async (c) => {
       const r = await c.query(
-        `select q.id, q.parent_id, q.question, q.answer,
+        `select q.id, q.parent_id, q.question, q.answer, q.summary, q.created_by,
                 coalesce(sum(case when f.vote = 1 then 1 else 0 end),0) as helpful,
                 coalesce(sum(case when f.vote = -1 then 1 else 0 end),0) as unhelpful,
                 max(case when f.user_id = $2 then f.vote else null end) as my_vote
          from qa_entries q
          left join qa_feedback f on f.qa_id = q.id
-         where q.root_id = $1
+         where q.root_id = $1 and (q.published = true or q.created_by = $2)
          group by q.id
          order by q.created_at asc`,
         [rootId, userId]
       );
-      return r.rows as Array<{ id: string; parent_id: string | null; question: string; answer: string | null; helpful: string; unhelpful: string; my_vote: number | null }>;
+      return r.rows as Array<{ id: string; parent_id: string | null; question: string; answer: string | null; summary: string | null; created_by: string | null; helpful: string; unhelpful: string; my_vote: number | null }>;
     });
 
     const idSet = new Set(nodes.map((n) => n.id));
+
+    // Cross-root relations: always include edges touching the focused qaId, and load missing nodes
+    let crossRels: Array<{ source_id: string; target_id: string; type: string; weight: number; synthetic: boolean }> = [];
+    if (qaIdParam) {
+      const direct = await withConn(async (c) => {
+        const r = await c.query(
+          `select source_id, target_id, type, weight
+             from qa_relations
+            where source_id = $1 or target_id = $1`,
+          [qaIdParam]
+        );
+        return r.rows as Array<{ source_id: string; target_id: string; type: string; weight: number }>;
+      });
+      // Find nodes missing from current idSet
+      const missingIds = new Set<string>();
+      for (const e of direct) {
+        if (!idSet.has(e.source_id)) missingIds.add(e.source_id);
+        if (!idSet.has(e.target_id)) missingIds.add(e.target_id);
+      }
+      // Remove focus id if already present
+      missingIds.delete(qaIdParam);
+      // Load missing node details with visibility rules
+      if (missingIds.size > 0) {
+        const extra = await withConn(async (c) => {
+          const r = await c.query(
+            `select id, question, answer, summary
+               from qa_entries
+              where id = any($1) and (published = true or created_by = $2)`,
+            [Array.from(missingIds), userId]
+          );
+          return r.rows as Array<{ id: string; question: string; answer: string | null; summary: string | null }>;
+        });
+        for (const n of extra) {
+          idSet.add(n.id);
+          nodes.push({
+            id: n.id,
+            parent_id: null,
+            question: n.question,
+            answer: n.answer,
+            summary: n.summary,
+            created_by: null,
+            helpful: '0',
+            unhelpful: '0',
+            my_vote: 0,
+          } as any);
+        }
+      }
+      crossRels = direct.map((e) => ({ ...e, synthetic: false }));
+    }
 
     const rels = await withConn(async (c) => {
       const r = await c.query(
@@ -69,12 +118,14 @@ export async function GET(req: NextRequest) {
       id: n.id,
       question: n.question,
       hasAnswer: !!n.answer,
+      summary: n.summary ?? undefined,
+      answer: (n.answer ? String(n.answer).replace(/\s+/g, " ").slice(0, 200) : undefined),
       helpful: Number(n.helpful || 0),
       unhelpful: Number(n.unhelpful || 0),
       myVote: n.my_vote === 1 ? 1 : n.my_vote === -1 ? -1 : 0,
     }));
 
-    const merged = [...rels, ...synthetics].filter((e) => idSet.has(e.source_id) && idSet.has(e.target_id));
+    const merged = [...rels, ...synthetics, ...crossRels].filter((e) => idSet.has(e.source_id) && idSet.has(e.target_id));
     const byKey = new Map<string, { source_id: string; target_id: string; type: string; weight: number; synthetic: boolean }>();
     for (const e of merged) {
       const key = `${e.source_id}|${e.target_id}|${e.type}`;
