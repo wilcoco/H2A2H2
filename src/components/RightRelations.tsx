@@ -273,48 +273,54 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
         </div>
       )}
       {edges.length > 0 && (
-        <div className="space-y-2">
-          <div>
-            <div className="text-xs text-gray-600">연결(소스 → 현재)</div>
-            {edges.filter((e) => e.targetId === qaId).length > 0 ? (
-              <ul className="text-[11px] space-y-1">
-                {edges.filter((e) => e.targetId === qaId).map((e, i) => {
-                  const src = relNodes.get(e.sourceId);
-                  if (!src) return <li key={`in-${i}`} className="truncate">Q: {e.sourceId} · {e.type}</li>;
-                  const snippet = src.summary || src.answer;
-                  return (
-                    <li key={`in-${i}`} className="truncate">
-                      <div>Q: {src.question} · {e.type}</div>
-                      {snippet && <div className="text-[10px] text-gray-600 truncate">A: {snippet}</div>}
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <div className="text-[11px] text-gray-500">없음</div>
-            )}
+        !!connectMode ? (
+          <div className="space-y-2">
+            <div>
+              <div className="text-xs text-gray-600">연결(소스 → 현재)</div>
+              {edges.filter((e) => e.targetId === qaId).length > 0 ? (
+                <ul className="text-[11px] space-y-1">
+                  {edges.filter((e) => e.targetId === qaId).map((e, i) => {
+                    const src = relNodes.get(e.sourceId);
+                    if (!src) return <li key={`in-${i}`} className="truncate">Q: {e.sourceId} · {e.type}</li>;
+                    const snippet = src.summary || src.answer;
+                    return (
+                      <li key={`in-${i}`} className="truncate">
+                        <div>Q: {src.question} · {e.type}</div>
+                        {snippet && <div className="text-[10px] text-gray-600 truncate">A: {snippet}</div>}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <div className="text-[11px] text-gray-500">없음</div>
+              )}
+            </div>
+            <div>
+              <div className="text-xs text-gray-600">연결(현재 → 타겟)</div>
+              {edges.filter((e) => e.sourceId === qaId).length > 0 ? (
+                <ul className="text-[11px] space-y-1">
+                  {edges.filter((e) => e.sourceId === qaId).map((e, i) => {
+                    const trg = relNodes.get(e.targetId);
+                    if (!trg) return <li key={`out-${i}`} className="truncate">{e.type} · Q: {e.targetId}</li>;
+                    const snippet = trg.summary || trg.answer;
+                    return (
+                      <li key={`out-${i}`} className="truncate">
+                        <div>{e.type} · Q: {trg.question}</div>
+                        {snippet && <div className="text-[10px] text-gray-600 truncate">A: {snippet}</div>}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <div className="text-[11px] text-gray-500">없음</div>
+              )}
+            </div>
           </div>
-          <div>
-            <div className="text-xs text-gray-600">연결(현재 → 타겟)</div>
-            {edges.filter((e) => e.sourceId === qaId).length > 0 ? (
-              <ul className="text-[11px] space-y-1">
-                {edges.filter((e) => e.sourceId === qaId).map((e, i) => {
-                  const trg = relNodes.get(e.targetId);
-                  if (!trg) return <li key={`out-${i}`} className="truncate">{e.type} · Q: {e.targetId}</li>;
-                  const snippet = trg.summary || trg.answer;
-                  return (
-                    <li key={`out-${i}`} className="truncate">
-                      <div>{e.type} · Q: {trg.question}</div>
-                      {snippet && <div className="text-[10px] text-gray-600 truncate">A: {snippet}</div>}
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <div className="text-[11px] text-gray-500">없음</div>
-            )}
+        ) : (
+          <div className="text-[11px] text-gray-600">
+            {`연결 요약: 소스 ${edges.filter((e) => e.targetId === qaId).length} · 타겟 ${edges.filter((e) => e.sourceId === qaId).length}`}
           </div>
-        </div>
+        )
       )}
       {!qaId && <div className="text-[11px] text-gray-600">먼저 중앙에서 Q&A를 공유해 ID를 생성하세요.</div>}
     </div>
