@@ -12,9 +12,10 @@ type Props = {
   onPinned?: (id: string) => void;
   refreshKey?: number;
   onSelectQA?: (id: string) => void;
+  currentUserEmail?: string;
 };
 
-export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread, onShared, onPinned, refreshKey, onSelectQA }: Props) {
+export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread, onShared, onPinned, refreshKey, onSelectQA, currentUserEmail }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<any | null>(null);
@@ -28,6 +29,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
   const [notes, setNotes] = useState<Array<{ id: string; userId?: string; content: string; createdAt: string }>>([]);
   const [mapNodes, setMapNodes] = useState<Array<{ id: string; question: string }>>([]);
   const [mapEdges, setMapEdges] = useState<Array<{ sourceId: string; targetId: string; type: string }>>([]);
+  const [publishing, setPublishing] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -118,6 +120,21 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setVoteBusy(false);
+    }
+  }
+
+  async function togglePublish(next: boolean) {
+    if (!qaId) return;
+    try {
+      setPublishing(true);
+      const res = await fetch("/api/qa/publish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId, published: next }) });
+      if (!res.ok) throw new Error("Publish failed");
+      const r = await fetch(`/api/qa/${encodeURIComponent(qaId)}`, { cache: "no-store" });
+      if (r.ok) setData(await r.json());
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setPublishing(false);
     }
   }
 
@@ -225,6 +242,9 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
           <button className="text-xs px-2 py-1 rounded border" disabled={!qaId || voteBusy} onClick={() => void vote(1)}>Helpful ({data.helpful ?? 0})</button>
           <button className="text-xs px-2 py-1 rounded border" disabled={!qaId || voteBusy} onClick={() => void vote(-1)}>Not ({data.unhelpful ?? 0})</button>
           <button className="text-xs px-2 py-1 rounded border" disabled={!qaId} onClick={() => { if (qaId) onPinned?.(qaId); }}>Save to Right</button>
+          {currentUserEmail && data.createdBy === currentUserEmail && (
+            <button className="text-xs px-2 py-1 rounded border" disabled={!qaId || publishing} onClick={() => void togglePublish(!(data.published !== false))}>{publishing ? "..." : (data.published !== false ? "Unpublish" : "Publish")}</button>
+          )}
           {!editing ? (
             <button className="text-xs px-2 py-1 rounded border" onClick={() => { setEditing(true); setEditSummary(String(data.summary || "")); }}>Edit summary</button>
           ) : (
@@ -233,6 +253,10 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
               <button className="text-xs px-2 py-1 rounded border" onClick={() => setEditing(false)}>Cancel</button>
             </div>
           )}
+        </div>
+        <div className="flex items-center gap-2 text-[11px] text-gray-600">
+          <span className={`px-2 py-0.5 rounded-full border ${data.published !== false ? 'bg-green-50 border-green-200 text-green-700' : 'bg-yellow-50 border-yellow-200 text-yellow-700'}`}>{data.published !== false ? 'Published' : 'Draft'}</span>
+          {data.createdBy && <span>by {data.createdBy}</span>}
         </div>
         {data.answer && <div className="text-sm whitespace-pre-wrap">A: {data.answer}</div>}
         {!editing && data.summary && <div className="text-xs text-gray-700 whitespace-pre-wrap">Summary: {data.summary}</div>}

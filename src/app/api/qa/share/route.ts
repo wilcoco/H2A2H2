@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
     const intentL1: string | undefined = body?.intentL1 ? String(body.intentL1) : undefined;
     const intentL2: string | undefined = body?.intentL2 ? String(body.intentL2) : undefined;
     const targetPIC: string | undefined = body?.targetPIC ? String(body.targetPIC) : undefined;
+    const published: boolean = body?.published === true ? true : false;
 
     const q = question.trim();
     if (!q) return NextResponse.json({ error: "Missing question" }, { status: 400 });
@@ -54,9 +55,9 @@ export async function POST(req: NextRequest) {
     }
     await withConn(async (c) => {
       await c.query(
-        `insert into qa_entries (id, question, norm_question, answer, summary, patch, work_id, created_by, parent_id, root_id)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [id, q, normalize(q), answer ?? null, summary ?? null, patch ?? null, workId ?? null, createdBy ?? null, parentId ?? null, rootId ?? id]
+        `insert into qa_entries (id, question, norm_question, answer, summary, patch, work_id, created_by, parent_id, root_id, published)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [id, q, normalize(q), answer ?? null, summary ?? null, patch ?? null, workId ?? null, createdBy ?? null, parentId ?? null, rootId ?? id, published]
       );
 
       if (parentId) {

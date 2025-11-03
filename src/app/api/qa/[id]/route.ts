@@ -14,7 +14,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const userId = user?.email ?? null;
     const row = await withConn(async (c) => {
       const r = await c.query(
-        `select q.id, q.question, q.norm_question, q.answer, q.summary, q.patch, q.work_id, q.created_by, q.created_at, q.root_id,
+        `select q.id, q.question, q.norm_question, q.answer, q.summary, q.patch, q.work_id, q.created_by, q.created_at, q.root_id, q.published,
                 coalesce(sum(case when f.vote = 1 then 1 else 0 end),0) as helpful,
                 coalesce(sum(case when f.vote = -1 then 1 else 0 end),0) as unhelpful,
                 max(case when f.user_id = $2 then f.vote else null end) as my_vote
@@ -27,6 +27,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       return r.rows?.[0] ?? null;
     });
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (row.published === false && row.created_by !== userId) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
     return NextResponse.json({
       id: row.id,
       question: row.question,
@@ -38,6 +41,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       createdBy: row.created_by ?? undefined,
       createdAt: row.created_at,
       rootId: row.root_id ?? undefined,
+      published: row.published !== false,
       helpful: Number(row.helpful || 0),
       unhelpful: Number(row.unhelpful || 0),
       myVote: row.my_vote === 1 ? 1 : row.my_vote === -1 ? -1 : 0,

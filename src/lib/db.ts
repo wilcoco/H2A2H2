@@ -59,10 +59,12 @@ export async function ensureTables() {
     `);
     await c.query(`alter table qa_entries add column if not exists parent_id text`);
     await c.query(`alter table qa_entries add column if not exists root_id text`);
+    await c.query(`alter table qa_entries add column if not exists published boolean not null default true`);
     await c.query(`create index if not exists qa_entries_question_idx on qa_entries (lower(question))`);
     await c.query(`create index if not exists qa_entries_created_at_idx on qa_entries (created_at)`);
     await c.query(`create index if not exists qa_entries_parent_idx on qa_entries (parent_id)`);
     await c.query(`create index if not exists qa_entries_root_idx on qa_entries (root_id, created_at)`);
+    await c.query(`create index if not exists qa_entries_published_idx on qa_entries (published)`);
     // Optional acceleration via trigram indexes if available
     try { await c.query(`create extension if not exists pg_trgm`); } catch {}
     try { await c.query(`create index if not exists qa_entries_question_trgm on qa_entries using gin (lower(question) gin_trgm_ops)`); } catch {}
@@ -105,6 +107,17 @@ export async function ensureTables() {
     await c.query(`create index if not exists qa_relations_source_idx on qa_relations (source_id)`);
     await c.query(`create index if not exists qa_relations_target_idx on qa_relations (target_id)`);
     await c.query(`create index if not exists qa_relations_created_at_idx on qa_relations (created_at)`);
+
+    await c.query(`
+      create table if not exists qa_pins (
+        user_id text not null,
+        qa_id text not null,
+        created_at timestamptz not null default now(),
+        primary key (user_id, qa_id)
+      );
+    `);
+    await c.query(`create index if not exists qa_pins_user_idx on qa_pins (user_id)`);
+    await c.query(`create index if not exists qa_pins_qa_idx on qa_pins (qa_id)`);
 
     await c.query(`
       create table if not exists qa_intents (

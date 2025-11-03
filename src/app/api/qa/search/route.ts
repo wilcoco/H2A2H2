@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureTables, withConn } from "@/lib/db";
+import { verifySession } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,6 +9,9 @@ export async function POST(req: NextRequest) {
   try {
     await ensureTables();
     const body = await req.json().catch(() => ({}));
+    const token = (req as any).cookies?.get?.("session")?.value ?? undefined;
+    const user = token ? await verifySession(token) : null;
+    const userId = user?.email ?? null;
     const query: string = (body?.query ?? "").toString();
     const limit: number = Math.min(Math.max(Number(body?.limit ?? 5), 1), 10);
     const strict: boolean = !!body?.strict;
@@ -18,13 +22,14 @@ export async function POST(req: NextRequest) {
         rows = await withConn(async (c) => {
           // Try trigram similarity and simple LIKE matching
           const r = await c.query(
-            `select id, question, answer, summary, work_id
+            `select id, question, answer, summary, work_id, published, created_by
                from qa_entries
               where (
                 similarity(lower(question), $1) > 0.2
                 or lower(question) like ('%' || $1 || '%')
                 or lower(coalesce(summary, '')) like ('%' || $1 || '%')
               )
+              and (published = true or created_by = $3)
               order by greatest(
                        similarity(lower(question), $1),
                        case when lower(question) like ('%' || $1 || '%') then 0.9 else 0 end,
@@ -32,7 +37,7 @@ export async function POST(req: NextRequest) {
                      ) desc,
                        created_at desc
               limit $2`,
-            [q.toLowerCase(), limit]
+            [q.toLowerCase(), limit, userId]
           );
           return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string }>;
         });
@@ -40,13 +45,14 @@ export async function POST(req: NextRequest) {
         // Fallback to LIKE-only if pg_trgm/similarity is unavailable
         rows = await withConn(async (c) => {
           const r = await c.query(
-            `select id, question, answer, summary, work_id
+            `select id, question, answer, summary, work_id, published, created_by
                from qa_entries
-              where lower(question) like ('%' || $1 || '%')
-                 or lower(coalesce(summary,'')) like ('%' || $1 || '%')
+              where (lower(question) like ('%' || $1 || '%')
+                 or lower(coalesce(summary,'')) like ('%' || $1 || '%'))
+                and (published = true or created_by = $3)
               order by created_at desc
               limit $2`,
-            [q.toLowerCase(), limit]
+            [q.toLowerCase(), limit, userId]
           );
           return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string }>;
         });
@@ -57,8 +63,9 @@ export async function POST(req: NextRequest) {
       rows = await withConn(async (c) => {
         const r = await c.query(
           `select id, question, answer, summary, work_id from qa_entries
-           order by created_at desc limit $1`,
-          [limit]
+            where published = true or created_by = $2
+            order by created_at desc limit $1`,
+          [limit, userId]
         );
         return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string }>;
       });

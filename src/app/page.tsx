@@ -61,6 +61,22 @@ export default function Home() {
     return () => { mounted = false; };
   }, []);
 
+  // Hydrate pins when user changes
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        if (!user?.email) { if (active) setPinnedIds([]); return; }
+        const r = await fetch("/api/qa/pin", { cache: "no-store" });
+        if (!r.ok) { if (active) setPinnedIds([]); return; }
+        const j = await r.json();
+        const ids: string[] = Array.isArray(j?.ids) ? j.ids : [];
+        if (active) setPinnedIds(ids);
+      } catch { if (active) setPinnedIds([]); }
+    })();
+    return () => { active = false; };
+  }, [user?.email]);
+
   // When source changes, clear relation target to avoid stale selection
   useEffect(() => { setRelTargetId(null); }, [selectedQaId]);
 
@@ -210,9 +226,13 @@ export default function Home() {
             aiAnswer={!selectedQaId ? centerAiAnswer : undefined}
             onOpenThread={() => setThreadOpen(true)}
             onShared={(newId: string) => { setSelectedQaId(newId); setCenterAiAnswer(""); }}
-            onPinned={(id: string) => setPinnedIds((prev) => (prev.includes(id) ? prev : [id, ...prev]))}
+            onPinned={async (id: string) => {
+              setPinnedIds((prev) => (prev.includes(id) ? prev : [id, ...prev]));
+              try { await fetch("/api/qa/pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId: id }) }); } catch {}
+            }}
             refreshKey={graphRefreshKey}
             onSelectQA={(id) => { setSelectedQaId(id); setCenterAiAnswer(""); }}
+            currentUserEmail={user?.email}
           />
         </main>
 
@@ -224,7 +244,10 @@ export default function Home() {
             connectMode={connectMode}
             onConnectModeChange={(v) => setConnectMode(v)}
             pinnedIds={pinnedIds}
-            onUnpin={(id) => setPinnedIds((prev) => prev.filter((x) => x !== id))}
+            onUnpin={async (id) => {
+              setPinnedIds((prev) => prev.filter((x) => x !== id));
+              try { await fetch("/api/qa/pin", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId: id }) }); } catch {}
+            }}
             onGraphChanged={() => setGraphRefreshKey((k) => k + 1)}
           />
         </aside>
