@@ -83,6 +83,26 @@ export default function Home() {
 
   // Left references replaced by QA search; keep works for publish flow only.
 
+  function suggestRelTypeForNew(newQ: string): string {
+    const t = (newQ || "").toLowerCase();
+    const has = (arr: string[]) => arr.some((k) => t.includes(k));
+    if (has(["예:", "예시", "사례", "예를 들어", "요약", "정리", "적용", "로컬라이즈"])) return "elaborates";
+    if (has(["정의", "의미", "란", "오해", "명확"])) return "clarifies";
+    if (has(["먼저", "선행", "필요", "해야", "전제", "필수"])) return "prerequisite";
+    if (has(["종류", "유형", "세부", "특정"])) return "narrows";
+    return "precedes";
+  }
+
+  async function autoConnectPrevToCurrent(prevId: string | null, currId: string, newQ: string) {
+    try {
+      const src = (prevId || "").trim();
+      if (!src || src === currId) return;
+      const type = suggestRelTypeForNew(newQ);
+      await fetch("/api/qa/relation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceId: src, targetId: currId, type, weight: 1 }) });
+      setGraphRefreshKey((k) => k + 1);
+    } catch {}
+  }
+
   async function askAiNow(question: string) {
     try {
       setSelectedQaId(null);
@@ -238,6 +258,8 @@ export default function Home() {
               setRelTargetId(newId);
               // Update last viewed to the new one after defaulting
               setLastViewedQaId(newId);
+              // Auto-connect previous → current for visibility in Center panel
+              void autoConnectPrevToCurrent(prev ?? null, newId, centerQuestion);
             }}
             onPinned={async (id: string) => {
               setPinnedIds((prev) => (prev.includes(id) ? prev : [id, ...prev]));

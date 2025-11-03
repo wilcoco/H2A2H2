@@ -30,6 +30,8 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
   const [mapNodes, setMapNodes] = useState<Array<{ id: string; question: string; summary?: string; answer?: string }>>([]);
   const [mapEdges, setMapEdges] = useState<Array<{ sourceId: string; targetId: string; type: string }>>([]);
   const [publishing, setPublishing] = useState(false);
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [kwLoading, setKwLoading] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -51,6 +53,36 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
     void run();
     return () => { mounted = false; };
   }, [qaId]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        if (qaId && data) {
+          const text = String(data.summary || data.answer || data.question || "");
+          if (!text.trim()) { if (active) setKeywords([]); return; }
+          setKwLoading(true);
+          const r = await fetch("/api/ai/keywords", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, max: 8 }) });
+          const j = await r.json().catch(() => ({ keywords: [] }));
+          if (active) setKeywords(Array.isArray(j?.keywords) ? j.keywords : []);
+        } else if (!qaId && aiAnswer) {
+          const text = String(aiAnswer || "");
+          if (!text.trim()) { if (active) setKeywords([]); return; }
+          setKwLoading(true);
+          const r = await fetch("/api/ai/keywords", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, max: 8 }) });
+          const j = await r.json().catch(() => ({ keywords: [] }));
+          if (active) setKeywords(Array.isArray(j?.keywords) ? j.keywords : []);
+        } else {
+          if (active) setKeywords([]);
+        }
+      } catch {
+        if (active) setKeywords([]);
+      } finally {
+        if (active) setKwLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [qaId, data?.summary, data?.answer, data?.question, aiAnswer]);
 
   useEffect(() => {
     let active = true;
@@ -259,7 +291,21 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
           {data.createdBy && <span>by {data.createdBy}</span>}
         </div>
         {data.answer && <div className="text-sm whitespace-pre-wrap">A: {data.answer}</div>}
-        {!editing && data.summary && <div className="text-xs text-gray-700 whitespace-pre-wrap">Summary: {data.summary}</div>}
+        {(() => { const s = String(data.summary || "").trim(); const a = String(data.answer || "").trim(); const distinct = s && s !== a; return (!editing && distinct) ? (<div className="text-xs text-gray-700 whitespace-pre-wrap">Summary: {data.summary}</div>) : null; })()}
+        <div className="mt-2">
+          <div className="text-xs text-gray-600 mb-1">키워드</div>
+          {kwLoading ? (
+            <div className="text-[11px] text-gray-600">추출 중…</div>
+          ) : (keywords.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {keywords.map((k, i) => (
+                <span key={i} className="text-[11px] px-2 py-0.5 rounded-full border">{k}</span>
+              ))}
+            </div>
+          ) : (
+            <div className="text-[11px] text-gray-600">없음</div>
+          ))}
+        </div>
         {editing && (
           <textarea className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" rows={4} value={editSummary} onChange={(e) => setEditSummary(e.target.value)} />
         )}
@@ -349,7 +395,21 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
       <div className="flex flex-col gap-2">
         <div className="text-sm font-semibold">Q: {question}</div>
         <div className="text-sm whitespace-pre-wrap">AI Answer: {aiAnswer}</div>
-        <div className="text-xs text-gray-600">요약을 작성하고 공유하면 지식 체계에 등록됩니다.</div>
+        <div className="text-xs text-gray-600">요약 또는 키워드를 확인하고 공유하면 지식 체계에 등록됩니다.</div>
+        <div>
+          <div className="text-xs text-gray-600 mb-1">키워드</div>
+          {kwLoading ? (
+            <div className="text-[11px] text-gray-600">추출 중…</div>
+          ) : (keywords.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {keywords.map((k, i) => (
+                <span key={i} className="text-[11px] px-2 py-0.5 rounded-full border">{k}</span>
+              ))}
+            </div>
+          ) : (
+            <div className="text-[11px] text-gray-600">없음</div>
+          ))}
+        </div>
         <textarea className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" rows={4} placeholder="핵심 요약을 작성하세요" value={newSummary} onChange={(e) => setNewSummary(e.target.value)} />
         <div className="flex items-center gap-2">
           <button className="text-xs px-2 py-1 rounded bg-blue-600 text-white disabled:opacity-50" disabled={saving} onClick={() => void shareNew()}>{saving ? "Sharing..." : "Share & Save to Right"}</button>
