@@ -8,12 +8,13 @@ type Props = {
   onTargetChange?: (id: string | null) => void;
   connectMode?: boolean;
   onConnectModeChange?: (v: boolean) => void;
+  defaultSourceId?: string | null;
   pinnedIds?: string[];
   onUnpin?: (id: string) => void;
   onGraphChanged?: () => void;
 };
 
-export default function RightRelations({ qaId, targetId, onTargetChange, connectMode, onConnectModeChange, pinnedIds = [], onUnpin, onGraphChanged }: Props) {
+export default function RightRelations({ qaId, targetId, onTargetChange, connectMode, onConnectModeChange, defaultSourceId, pinnedIds = [], onUnpin, onGraphChanged }: Props) {
   const [relType, setRelType] = useState<string>("precedes");
   const [busy, setBusy] = useState(false);
   const [edges, setEdges] = useState<Array<{ sourceId: string; targetId: string; type: string; synthetic?: boolean }>>([]);
@@ -29,6 +30,7 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
   const [srcOverrideId, setSrcOverrideId] = useState<string | null>(null);
   const [srcOverride, setSrcOverride] = useState<{ id: string; question: string } | null>(null);
   const [relNodes, setRelNodes] = useState<Map<string, { id: string; question: string; summary?: string; answer?: string }>>(new Map());
+  const [autoType, setAutoType] = useState(true);
 
   useEffect(() => { setError(null); }, [qaId]);
 
@@ -45,6 +47,13 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
     return () => { active = false; };
   }, [qaId]);
 
+  // Apply default source override if provided by parent (e.g., previous question)
+  useEffect(() => {
+    if (defaultSourceId && !srcOverrideId) {
+      setSrcOverrideId(defaultSourceId);
+    }
+  }, [defaultSourceId]);
+
   useEffect(() => {
     let active = true;
     (async () => {
@@ -57,6 +66,21 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
     })();
     return () => { active = false; };
   }, [targetId]);
+
+  // Heuristic suggestion for relation type when both sides are known
+  useEffect(() => {
+    if (!autoType) return;
+    const s = (srcOverride?.question || source?.question || "").toLowerCase();
+    const t = (target?.question || "").toLowerCase();
+    if (!s || !t) return;
+    const has = (str: string, arr: string[]) => arr.some((k) => str.includes(k));
+    let suggestion = "precedes";
+    if (has(t, ["예:", "예시", "사례", "예를 들어", "요약", "정리", "적용", "로컬라이즈"])) suggestion = "elaborates";
+    else if (has(t, ["정의", "의미", "란", "오해", "명확"])) suggestion = "clarifies";
+    else if (has(t, ["먼저", "선행", "필요", "해야", "전제", "필수"])) suggestion = "prerequisite";
+    else if (t.length > s.length + 10 || has(t, ["종류", "유형", "세부", "특정"])) suggestion = "narrows";
+    setRelType(suggestion);
+  }, [autoType, srcOverride?.question, source?.question, target?.question]);
 
   async function connect() {
     const src = srcOverrideId || qaId;
@@ -195,7 +219,7 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
         <label className="text-[11px] flex items-center gap-1">
           <input type="checkbox" checked={!!connectMode} onChange={(e) => onConnectModeChange?.(e.target.checked)} /> 연결 모드
         </label>
-        <select className="text-xs border rounded px-2 py-1" value={relType} onChange={(e) => setRelType(e.target.value)}>
+        <select className="text-xs border rounded px-2 py-1" value={relType} onChange={(e) => { setRelType(e.target.value); setAutoType(false); }}>
           <option value="precedes">precedes</option>
           <option value="prerequisite">prerequisite</option>
           <option value="narrows">narrows</option>

@@ -49,6 +49,7 @@ export default function Home() {
   const [relTargetId, setRelTargetId] = useState<string | null>(null);
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [graphRefreshKey, setGraphRefreshKey] = useState(0);
+  const [defaultSourceId, setDefaultSourceId] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -77,8 +78,7 @@ export default function Home() {
     return () => { active = false; };
   }, [user?.email]);
 
-  // When source changes, clear relation target to avoid stale selection
-  useEffect(() => { setRelTargetId(null); }, [selectedQaId]);
+  // Removed: clearing target on source change to allow auto-defaulting (prev → current)
 
   // Left references replaced by QA search; keep works for publish flow only.
 
@@ -225,7 +225,13 @@ export default function Home() {
             question={!selectedQaId ? centerQuestion : undefined}
             aiAnswer={!selectedQaId ? centerAiAnswer : undefined}
             onOpenThread={() => setThreadOpen(true)}
-            onShared={(newId: string) => { setSelectedQaId(newId); setCenterAiAnswer(""); }}
+            onShared={(newId: string) => {
+              const prev = selectedQaId;
+              setSelectedQaId(newId);
+              setCenterAiAnswer("");
+              setRelTargetId(newId);
+              if (prev) setDefaultSourceId(prev);
+            }}
             onPinned={async (id: string) => {
               setPinnedIds((prev) => (prev.includes(id) ? prev : [id, ...prev]));
               try { await fetch("/api/qa/pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId: id }) }); } catch {}
@@ -243,6 +249,7 @@ export default function Home() {
             onTargetChange={(id) => setRelTargetId(id)}
             connectMode={connectMode}
             onConnectModeChange={(v) => setConnectMode(v)}
+            defaultSourceId={defaultSourceId}
             pinnedIds={pinnedIds}
             onUnpin={async (id) => {
               setPinnedIds((prev) => prev.filter((x) => x !== id));
