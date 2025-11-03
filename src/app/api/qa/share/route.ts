@@ -66,16 +66,16 @@ export async function POST(req: NextRequest) {
           const l1 = (intentL1 || "").toLowerCase();
           if (l2) {
             if (["clarify", "troubleshoot", "verify", "risk"].includes(l2)) return "clarifies";
-            if (["detail", "example", "summarize", "adapt", "localize"].includes(l2)) return "refines";
-            if (["justify", "metrics"].includes(l2)) return "depends_on";
+            if (["detail", "example", "summarize", "adapt", "localize"].includes(l2)) return "elaborates";
+            if (["justify", "metrics"].includes(l2)) return "prerequisite";
             if (["compare", "alternative", "reframe"].includes(l2)) return "alternative";
-            if (["implement", "plan"].includes(l2)) return "follows_from";
+            if (["implement", "plan"].includes(l2)) return "precedes";
           }
           if (l1) {
             if (["expansion"].includes(l1)) return "clarifies";
-            if (["contingency", "evidence", "attribution"].includes(l1)) return "depends_on";
+            if (["contingency", "evidence", "attribution"].includes(l1)) return "supports";
             if (["comparison"].includes(l1)) return "alternative";
-            if (["temporal", "sequence"].includes(l1)) return "follows_from";
+            if (["temporal", "sequence"].includes(l1)) return "precedes";
             if (["evaluation", "verification"].includes(l1)) return "clarifies";
           }
           return "clarifies";

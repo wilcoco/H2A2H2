@@ -106,7 +106,7 @@ export async function GET(req: NextRequest) {
 
     const synthetics = await withConn(async (c) => {
       const r = await c.query(
-        `select parent_id as source_id, id as target_id, 'follows_from' as type, 1 as weight, true as synthetic
+        `select parent_id as source_id, id as target_id, 'precedes' as type, 1 as weight, true as synthetic
            from qa_entries
           where root_id = $1 and parent_id is not null`,
         [rootId]
@@ -125,7 +125,17 @@ export async function GET(req: NextRequest) {
       myVote: n.my_vote === 1 ? 1 : n.my_vote === -1 ? -1 : 0,
     }));
 
-    const merged = [...rels, ...synthetics, ...crossRels].filter((e) => idSet.has(e.source_id) && idSet.has(e.target_id));
+    // Normalize legacy relation types → canonical
+    const canon = (t: string) => {
+      const s = (t || "").toLowerCase();
+      if (s === "follows_from") return "precedes";
+      if (s === "refines") return "elaborates";
+      if (s === "depends_on") return "prerequisite";
+      return s;
+    };
+    const normRels = rels.map((e) => ({ ...e, type: canon(e.type) }));
+    const normCross = crossRels.map((e) => ({ ...e, type: canon(e.type) }));
+    const merged = [...normRels, ...synthetics, ...normCross].filter((e) => idSet.has(e.source_id) && idSet.has(e.target_id));
     const byKey = new Map<string, { source_id: string; target_id: string; type: string; weight: number; synthetic: boolean }>();
     for (const e of merged) {
       const key = `${e.source_id}|${e.target_id}|${e.type}`;

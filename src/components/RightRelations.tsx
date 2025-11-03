@@ -14,7 +14,7 @@ type Props = {
 };
 
 export default function RightRelations({ qaId, targetId, onTargetChange, connectMode, onConnectModeChange, pinnedIds = [], onUnpin, onGraphChanged }: Props) {
-  const [relType, setRelType] = useState<string>("follows_from");
+  const [relType, setRelType] = useState<string>("precedes");
   const [busy, setBusy] = useState(false);
   const [edges, setEdges] = useState<Array<{ sourceId: string; targetId: string; type: string; synthetic?: boolean }>>([]);
   const [error, setError] = useState<string | null>(null);
@@ -196,10 +196,13 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
           <input type="checkbox" checked={!!connectMode} onChange={(e) => onConnectModeChange?.(e.target.checked)} /> 연결 모드
         </label>
         <select className="text-xs border rounded px-2 py-1" value={relType} onChange={(e) => setRelType(e.target.value)}>
-          <option value="follows_from">follows_from</option>
-          <option value="refines">refines</option>
+          <option value="precedes">precedes</option>
+          <option value="prerequisite">prerequisite</option>
+          <option value="narrows">narrows</option>
+          <option value="elaborates">elaborates</option>
           <option value="clarifies">clarifies</option>
-          <option value="depends_on">depends_on</option>
+          <option value="supports">supports</option>
+          <option value="refutes">refutes</option>
           <option value="alternative">alternative</option>
         </select>
         <button className="text-xs px-3 py-2 rounded border disabled:opacity-50" disabled={!((srcOverrideId || qaId) && targetId) || busy} onClick={() => void connect()}>{busy ? "Connecting..." : "Connect"}</button>

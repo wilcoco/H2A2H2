@@ -32,7 +32,7 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
   const [mEdges, setMEdges] = useState<Array<{ sourceId: string; targetId: string; type: string; weight: number; synthetic?: boolean }>>([]);
   const [fromId, setFromId] = useState<string | null>(null);
   const [toId, setToId] = useState<string | null>(null);
-  const [relType, setRelType] = useState<string>("follows_from");
+  const [relType, setRelType] = useState<string>("precedes");
   const [connecting, setConnecting] = useState(false);
 
   useEffect(() => {
@@ -187,10 +187,13 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <select className="text-xs border rounded px-2 py-1" value={relType} onChange={(e) => setRelType(e.target.value)}>
-                    <option value="follows_from">follows_from</option>
-                    <option value="refines">refines</option>
+                    <option value="precedes">precedes</option>
+                    <option value="prerequisite">prerequisite</option>
+                    <option value="narrows">narrows</option>
+                    <option value="elaborates">elaborates</option>
                     <option value="clarifies">clarifies</option>
-                    <option value="depends_on">depends_on</option>
+                    <option value="supports">supports</option>
+                    <option value="refutes">refutes</option>
                     <option value="alternative">alternative</option>
                   </select>
                   <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!fromId || !toId || connecting} onClick={() => void connect()}>{connecting ? "Connecting..." : "Connect"}</button>
