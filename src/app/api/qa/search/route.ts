@@ -5,6 +5,24 @@ import { verifySession } from "@/lib/auth";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function heuristic(text: string, max = 8): string[] {
+  const stop = new Set([
+    // English
+    "the","a","an","and","or","of","to","in","on","for","with","is","are","was","were","be","as","by","at","from","that","this","it","we","you","they","i","how","what","why","when","where",
+    // Korean (basic)
+    "은","는","이","가","을","를","에","의","도","과","와","들","에서","하다","했다","인가","인데","하면","하려고","어떻게","무엇","왜","언제","어디",
+  ]);
+  const tokens = (text || "")
+    .toLowerCase()
+    .replace(/[\p{P}\p{S}]/gu, " ")
+    .split(/\s+/)
+    .filter((t) => t.length >= 2 && !stop.has(t));
+  const freq = new Map<string, number>();
+  for (const t of tokens) freq.set(t, (freq.get(t) || 0) + 1);
+  const sorted = [...freq.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
+  return sorted.slice(0, max);
+}
+
 export async function POST(req: NextRequest) {
   try {
     await ensureTables();
@@ -77,7 +95,53 @@ export async function POST(req: NextRequest) {
       summary: r.summary ?? undefined,
       workId: r.work_id ?? undefined,
     }));
-    return NextResponse.json({ items });
+    // Keyword caching on first search
+    const ids = items.map((i) => i.id);
+    let keywords: Record<string, string[]> = {};
+    if (ids.length > 0) {
+      const existing = await withConn(async (c) => {
+        const r = await c.query(`select qa_id, keyword from qa_keywords where qa_id = any($1)`, [ids]);
+        return r.rows as Array<{ qa_id: string; keyword: string }>;
+      });
+      const have = new Map<string, string[]>();
+      for (const { qa_id, keyword } of existing) {
+        if (!have.has(qa_id)) have.set(qa_id, []);
+        have.get(qa_id)!.push(keyword);
+      }
+      const need = ids.filter((id) => !(have.get(id)?.length));
+      if (need.length) {
+        // Build texts from items
+        const byId = new Map(items.map((it) => [it.id, it] as const));
+        await withConn(async (c) => {
+          for (const id of need) {
+            const it = byId.get(id);
+            if (!it) continue;
+            const text = String(it.summary || it.answer || it.question || "");
+            const kws = heuristic(text, 8);
+            for (let i = 0; i < kws.length; i++) {
+              const kw = kws[i];
+              await c.query(
+                `insert into qa_keywords (qa_id, keyword, weight) values ($1,$2,$3)
+                 on conflict (qa_id, keyword) do update set weight = excluded.weight`,
+                [id, kw, Math.max(1, Math.min(9, i + 1))]
+              );
+            }
+          }
+        });
+      }
+      // Load all keywords for response (optional)
+      const loaded = await withConn(async (c) => {
+        const r = await c.query(`select qa_id, keyword from qa_keywords where qa_id = any($1)`, [ids]);
+        return r.rows as Array<{ qa_id: string; keyword: string }>;
+      });
+      const out = new Map<string, string[]>();
+      for (const { qa_id, keyword } of loaded) {
+        if (!out.has(qa_id)) out.set(qa_id, []);
+        out.get(qa_id)!.push(keyword);
+      }
+      keywords = Object.fromEntries(ids.map((id) => [id, (out.get(id) || []).slice(0, 8)]));
+    }
+    return NextResponse.json({ items, keywords });
   } catch (e) {
     return NextResponse.json({ error: "Search failed" }, { status: 500 });
   }

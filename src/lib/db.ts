@@ -133,5 +133,18 @@ export async function ensureTables() {
     `);
     await c.query(`create index if not exists qa_intents_child_idx on qa_intents (child_id)`);
     await c.query(`create index if not exists qa_intents_parent_idx on qa_intents (parent_id)`);
+
+    // Keywords cache for QAs
+    await c.query(`
+      create table if not exists qa_keywords (
+        qa_id text not null,
+        keyword text not null,
+        weight smallint not null default 1,
+        created_at timestamptz not null default now(),
+        primary key (qa_id, keyword)
+      );
+    `);
+    await c.query(`create index if not exists qa_keywords_qa_idx on qa_keywords (qa_id)`);
+    await c.query(`create index if not exists qa_keywords_kw_idx on qa_keywords (keyword)`);
   });
 }

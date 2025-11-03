@@ -59,12 +59,12 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
     (async () => {
       try {
         if (qaId && data) {
-          const text = String(data.summary || data.answer || data.question || "");
-          if (!text.trim()) { if (active) setKeywords([]); return; }
           setKwLoading(true);
-          const r = await fetch("/api/ai/keywords", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, max: 8 }) });
-          const j = await r.json().catch(() => ({ keywords: [] }));
-          if (active) setKeywords(Array.isArray(j?.keywords) ? j.keywords : []);
+          // Use cached QA keywords (populate on first request)
+          const r = await fetch("/api/qa/keywords", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId, max: 8 }) });
+          const j = await r.json().catch(() => ({ results: {} }));
+          const arr: string[] = Array.isArray(j?.results?.[qaId]) ? j.results[qaId] : [];
+          if (active) setKeywords(arr);
         } else if (!qaId && aiAnswer) {
           const text = String(aiAnswer || "");
           if (!text.trim()) { if (active) setKeywords([]); return; }
