@@ -31,6 +31,7 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
   const [srcOverride, setSrcOverride] = useState<{ id: string; question: string } | null>(null);
   const [relNodes, setRelNodes] = useState<Map<string, { id: string; question: string; summary?: string; answer?: string }>>(new Map());
   const [autoType, setAutoType] = useState(true);
+  const [manualSource, setManualSource] = useState(false);
 
   useEffect(() => { setError(null); }, [qaId]);
 
@@ -49,10 +50,10 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
 
   // Apply default source override if provided by parent (e.g., previous question)
   useEffect(() => {
-    if (defaultSourceId && !srcOverrideId) {
+    if (defaultSourceId && !manualSource && srcOverrideId !== defaultSourceId) {
       setSrcOverrideId(defaultSourceId);
     }
-  }, [defaultSourceId]);
+  }, [defaultSourceId, manualSource, srcOverrideId]);
 
   useEffect(() => {
     let active = true;
@@ -230,13 +231,13 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
           <option value="alternative">alternative</option>
         </select>
         <button className="text-xs px-3 py-2 rounded border disabled:opacity-50" disabled={!((srcOverrideId || qaId) && targetId) || busy} onClick={() => void connect()}>{busy ? "Connecting..." : "Connect"}</button>
-        <button className="text-xs px-3 py-2 rounded border disabled:opacity-50" disabled={!((srcOverrideId || qaId) && targetId)} onClick={() => { if (targetId) { const s = targetId; const t = srcOverrideId || qaId!; setSrcOverrideId(s); onTargetChange?.(t); } }}>Swap</button>
+        <button className="text-xs px-3 py-2 rounded border disabled:opacity-50" disabled={!((srcOverrideId || qaId) && targetId)} onClick={() => { if (targetId) { const s = targetId; const t = srcOverrideId || qaId!; setSrcOverrideId(s); setManualSource(true); onTargetChange?.(t); } }}>Swap</button>
       </div>
       <div className="space-y-2">
         <div className="text-xs text-gray-600">Source</div>
         <div className="text-[12px] rounded border p-2 bg-white/60 dark:bg-gray-900/40 min-h-[40px] flex items-center justify-between gap-2">
-          <div className="truncate">{srcOverride ? `Q: ${srcOverride.question}` : (source ? `Q: ${source.question}` : "선택된 질문이 없습니다.")}</div>
-          {srcOverride && <button className="text-[11px] px-2 py-1 rounded border" onClick={() => setSrcOverrideId(null)}>Clear</button>}
+          <div className="truncate">{srcOverrideId ? (srcOverride ? `Q: ${srcOverride.question}` : `Q: ${srcOverrideId}`) : (source ? `Q: ${source.question}` : "선택된 질문이 없습니다.")}</div>
+          {srcOverride && <button className="text-[11px] px-2 py-1 rounded border" onClick={() => { setSrcOverrideId(null); setManualSource(false); }}>Clear</button>}
         </div>
         <div className="text-xs text-gray-600">Target</div>
         <div className="text-[12px] rounded border p-2 bg-white/60 dark:bg-gray-900/40 min-h-[40px] flex items-center justify-between gap-2">
@@ -259,7 +260,7 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
                   ) : null)}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <button className={`text-[11px] px-2 py-1 rounded border ${srcOverrideId === it.id ? 'bg-blue-600 text-white' : ''}`} onClick={() => setSrcOverrideId(it.id)}>{srcOverrideId === it.id ? "Source" : "Set Source"}</button>
+                  <button className={`text-[11px] px-2 py-1 rounded border ${srcOverrideId === it.id ? 'bg-blue-600 text-white' : ''}`} onClick={() => { setSrcOverrideId(it.id); setManualSource(true); }}>{srcOverrideId === it.id ? "Source" : "Set Source"}</button>
                   <button className={`text-[11px] px-2 py-1 rounded border ${targetId === it.id ? 'bg-blue-600 text-white' : ''}`} onClick={() => onTargetChange?.(it.id)}>{targetId === it.id ? "Target" : "Set Target"}</button>
                   <button className="text-[11px] px-2 py-1 rounded border" onClick={() => onUnpin?.(it.id)}>해제</button>
                 </div>

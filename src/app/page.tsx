@@ -50,6 +50,7 @@ export default function Home() {
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [graphRefreshKey, setGraphRefreshKey] = useState(0);
   const [defaultSourceId, setDefaultSourceId] = useState<string | null>(null);
+  const [lastViewedQaId, setLastViewedQaId] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -210,7 +211,7 @@ export default function Home() {
       <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr_360px] gap-3 md:gap-4 p-3 md:p-4 overflow-hidden">
         <aside className="rounded border border-gray-200/60 p-3 md:p-3 overflow-auto">
           <LeftAsk
-            onSelectQA={(id) => { setSelectedQaId(id); setCenterAiAnswer(""); }}
+            onSelectQA={(id) => { setLastViewedQaId(id); setSelectedQaId(id); setCenterAiAnswer(""); }}
             onAskAINow={(q) => void askAiNow(q)}
             connectMode={connectMode}
             targetId={relTargetId}
@@ -226,18 +227,24 @@ export default function Home() {
             aiAnswer={!selectedQaId ? centerAiAnswer : undefined}
             onOpenThread={() => setThreadOpen(true)}
             onShared={(newId: string) => {
-              const prev = selectedQaId;
+              const prev = selectedQaId || lastViewedQaId;
+              if (prev) setDefaultSourceId(prev);
+              else {
+                const fallback = (pinnedIds || []).find((x) => x && x !== newId) || null;
+                if (fallback) setDefaultSourceId(fallback);
+              }
               setSelectedQaId(newId);
               setCenterAiAnswer("");
               setRelTargetId(newId);
-              if (prev) setDefaultSourceId(prev);
+              // Update last viewed to the new one after defaulting
+              setLastViewedQaId(newId);
             }}
             onPinned={async (id: string) => {
               setPinnedIds((prev) => (prev.includes(id) ? prev : [id, ...prev]));
               try { await fetch("/api/qa/pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId: id }) }); } catch {}
             }}
             refreshKey={graphRefreshKey}
-            onSelectQA={(id) => { setSelectedQaId(id); setCenterAiAnswer(""); }}
+            onSelectQA={(id) => { setLastViewedQaId(id); setSelectedQaId(id); setCenterAiAnswer(""); }}
             currentUserEmail={user?.email}
           />
         </main>
