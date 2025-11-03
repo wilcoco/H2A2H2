@@ -28,6 +28,7 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
   const [pinnedItems, setPinnedItems] = useState<Array<{ id: string; question: string; summary?: string; answer?: string }>>([]);
   const [srcOverrideId, setSrcOverrideId] = useState<string | null>(null);
   const [srcOverride, setSrcOverride] = useState<{ id: string; question: string } | null>(null);
+  const [relNodes, setRelNodes] = useState<Map<string, { id: string; question: string; summary?: string; answer?: string }>>(new Map());
 
   useEffect(() => { setError(null); }, [qaId]);
 
@@ -126,6 +127,38 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
   }
 
   useEffect(() => { void refreshEdges(); }, [qaId]);
+
+  // Load node details for related nodes to display human-friendly titles/snippets
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (!qaId) { if (active) setRelNodes(new Map()); return; }
+      const want = new Set<string>();
+      for (const e of edges) {
+        const otherId: string = e.sourceId === qaId ? e.targetId : e.sourceId;
+        if (otherId && otherId !== qaId && !relNodes.has(otherId)) want.add(otherId);
+      }
+      if (want.size === 0) return;
+      try {
+        const arr = await Promise.all(
+          Array.from(want).map(async (id) => {
+            try {
+              const r = await fetch(`/api/qa/${encodeURIComponent(id)}`, { cache: "no-store" });
+              const j = await r.json();
+              return { id, question: String(j?.question || id), summary: j?.summary ? String(j.summary) : undefined, answer: j?.answer ? String(j.answer) : undefined };
+            } catch {
+              return { id, question: id } as { id: string; question: string } as any;
+            }
+          })
+        );
+        if (!active) return;
+        const next = new Map(relNodes);
+        for (const it of arr) next.set(it.id, it);
+        setRelNodes(next);
+      } catch {}
+    })();
+    return () => { active = false; };
+  }, [qaId, JSON.stringify(edges)]);
 
   useEffect(() => {
     const t = setTimeout(() => { if (connectMode) void loadMine(myQ); }, 250);
@@ -240,13 +273,47 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
         </div>
       )}
       {edges.length > 0 && (
-        <div>
-          <div className="text-xs text-gray-600">현재 질문의 기존 연결</div>
-          <ul className="text-[11px] space-y-0.5">
-            {edges.map((e, i) => (
-              <li key={i}>{e.sourceId === qaId ? "→" : "←"} {e.type} {e.sourceId === qaId ? e.targetId : e.sourceId}{e.synthetic ? " (auto)" : ""}</li>
-            ))}
-          </ul>
+        <div className="space-y-2">
+          <div>
+            <div className="text-xs text-gray-600">연결(소스 → 현재)</div>
+            {edges.filter((e) => e.targetId === qaId).length > 0 ? (
+              <ul className="text-[11px] space-y-1">
+                {edges.filter((e) => e.targetId === qaId).map((e, i) => {
+                  const src = relNodes.get(e.sourceId);
+                  if (!src) return <li key={`in-${i}`} className="truncate">Q: {e.sourceId} · {e.type}</li>;
+                  const snippet = src.summary || src.answer;
+                  return (
+                    <li key={`in-${i}`} className="truncate">
+                      <div>Q: {src.question} · {e.type}</div>
+                      {snippet && <div className="text-[10px] text-gray-600 truncate">A: {snippet}</div>}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <div className="text-[11px] text-gray-500">없음</div>
+            )}
+          </div>
+          <div>
+            <div className="text-xs text-gray-600">연결(현재 → 타겟)</div>
+            {edges.filter((e) => e.sourceId === qaId).length > 0 ? (
+              <ul className="text-[11px] space-y-1">
+                {edges.filter((e) => e.sourceId === qaId).map((e, i) => {
+                  const trg = relNodes.get(e.targetId);
+                  if (!trg) return <li key={`out-${i}`} className="truncate">{e.type} · Q: {e.targetId}</li>;
+                  const snippet = trg.summary || trg.answer;
+                  return (
+                    <li key={`out-${i}`} className="truncate">
+                      <div>{e.type} · Q: {trg.question}</div>
+                      {snippet && <div className="text-[10px] text-gray-600 truncate">A: {snippet}</div>}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <div className="text-[11px] text-gray-500">없음</div>
+            )}
+          </div>
         </div>
       )}
       {!qaId && <div className="text-[11px] text-gray-600">먼저 중앙에서 Q&A를 공유해 ID를 생성하세요.</div>}
