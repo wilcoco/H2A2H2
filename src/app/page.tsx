@@ -51,6 +51,8 @@ export default function Home() {
   const [graphRefreshKey, setGraphRefreshKey] = useState(0);
   const [defaultSourceId, setDefaultSourceId] = useState<string | null>(null);
   const [lastViewedQaId, setLastViewedQaId] = useState<string | null>(null);
+  const [leftKeyword, setLeftKeyword] = useState<string | null>(null);
+  const [leftKeywordMode, setLeftKeywordMode] = useState<"any" | "all">("any");
 
   useEffect(() => {
     let mounted = true;
@@ -237,6 +239,9 @@ export default function Home() {
             targetId={relTargetId}
             onPickTarget={(id) => setRelTargetId(id)}
             refreshKey={graphRefreshKey}
+            keyword={leftKeyword}
+            keywordMode={leftKeywordMode}
+            onClearKeyword={() => setLeftKeyword(null)}
           />
         </aside>
 
@@ -246,6 +251,7 @@ export default function Home() {
             question={!selectedQaId ? centerQuestion : undefined}
             aiAnswer={!selectedQaId ? centerAiAnswer : undefined}
             onOpenThread={() => setThreadOpen(true)}
+            onKeywordClick={(kw) => { setLeftKeyword(kw); }}
             onShared={(newId: string) => {
               const prev = selectedQaId || lastViewedQaId;
               if (prev) setDefaultSourceId(prev);

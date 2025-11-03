@@ -13,9 +13,10 @@ type Props = {
   refreshKey?: number;
   onSelectQA?: (id: string) => void;
   currentUserEmail?: string;
+  onKeywordClick?: (kw: string) => void;
 };
 
-export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread, onShared, onPinned, refreshKey, onSelectQA, currentUserEmail }: Props) {
+export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread, onShared, onPinned, refreshKey, onSelectQA, currentUserEmail, onKeywordClick }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<any | null>(null);
@@ -299,7 +300,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
           ) : (keywords.length > 0 ? (
             <div className="flex flex-wrap gap-1">
               {keywords.map((k, i) => (
-                <span key={i} className="text-[11px] px-2 py-0.5 rounded-full border">{k}</span>
+                <button key={i} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => onKeywordClick?.(k)}>{k}</button>
               ))}
             </div>
           ) : (

@@ -10,9 +10,12 @@ type Props = {
   targetId?: string | null;
   onPickTarget?: (id: string) => void;
   refreshKey?: number;
+  keyword?: string | null;
+  keywordMode?: "any" | "all";
+  onClearKeyword?: () => void;
 };
 
-export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId, onPickTarget, refreshKey }: Props) {
+export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId, onPickTarget, refreshKey, keyword, keywordMode = "any", onClearKeyword }: Props) {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<QAEntry[]>([]);
@@ -21,6 +24,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
   const reqIdRef = useRef(0);
 
   async function search(next?: string) {
+    if ((keyword || "").trim()) return; // keyword 모드일 땐 텍스트 검색 비활성화
     const query = (next ?? q).trim();
     if (!query) { setItems([]); setLoading(false); abortRef.current?.abort(); reqIdRef.current++; return; }
     abortRef.current?.abort();
@@ -53,11 +57,51 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
     }
   }
 
+  async function searchByKeyword(kw: string) {
+    const key = (kw || "").trim();
+    if (!key) { setItems([]); setLoading(false); abortRef.current?.abort(); reqIdRef.current++; return; }
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const myId = ++reqIdRef.current;
+    setLoading(true);
+    setError(null);
+    setItems([]);
+    try {
+      const res = await fetch("/api/qa/byKeyword", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keyword: key, mode: keywordMode, limit: 10 }),
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      const j = await res.json().catch(() => ({ items: [] }));
+      const its: QAEntry[] = Array.isArray(j?.items) ? (j.items as QAEntry[]) : [];
+      if (myId === reqIdRef.current) setItems(its);
+    } catch (e: unknown) {
+      if ((e as any)?.name === "AbortError") return;
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      if (myId === reqIdRef.current) {
+        setLoading(false);
+        abortRef.current = null;
+      }
+    }
+  }
+
   useEffect(() => {
+    if ((keyword || "").trim()) return; // 키워드 모드일 때는 텍스트 디바운스 검색을 생략
     const t = setTimeout(() => { void search(q); }, 250);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, refreshKey]);
+  }, [q, refreshKey, keyword]);
+
+  useEffect(() => {
+    const k = (keyword || "").trim();
+    if (!k) return;
+    void searchByKeyword(k);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keyword, keywordMode, refreshKey]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -71,9 +115,10 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
                 const query = q.trim();
-                if (query) onAskAINow(query);
+                if (query) { onClearKeyword?.(); onAskAINow(query); }
               } else if (e.key === "Enter") {
                 e.preventDefault();
+                onClearKeyword?.();
                 void search(q);
               }
             }}
@@ -85,9 +130,15 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
           <button
             className="text-xs px-2 py-2 rounded bg-emerald-600 text-white disabled:opacity-50"
             disabled={q.trim().length === 0}
-            onClick={() => { const query = q.trim(); if (query) onAskAINow(query); }}
+            onClick={() => { const query = q.trim(); if (query) { onClearKeyword?.(); onAskAINow(query); } }}
           >AI에게 묻기</button>
         </div>
+        {(keyword || "").trim() && (
+          <div className="mt-2 flex items-center gap-2">
+            <span className="text-[10px] px-2 py-0.5 rounded-full border bg-blue-50 border-blue-200 text-blue-700">키워드: {keyword}</span>
+            <button className="text-[11px] px-2 py-0.5 rounded border" onClick={() => onClearKeyword?.()}>Clear</button>
+          </div>
+        )}
       </div>
       {error && <div className="text-xs text-red-600">{error}</div>}
       {loading && <div className="text-xs text-gray-500">검색 중...</div>}
