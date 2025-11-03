@@ -303,7 +303,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
                   return (
                     <li key={`in-${idx}`} className="text-[12px] flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="truncate">Q: {src.question} · {e.type}</div>
+                        <div className="truncate">{e.type} · Q: {src.question}</div>
                         {snippet && <div className="text-[11px] text-gray-600 truncate">A: {snippet}</div>}
                       </div>
                       <button className="text-[11px] px-2 py-1 rounded border shrink-0" onClick={() => onSelectQA?.(src.id)}>보기</button>
