@@ -53,6 +53,7 @@ export default function Home() {
   const [lastViewedQaId, setLastViewedQaId] = useState<string | null>(null);
   const [leftKeyword, setLeftKeyword] = useState<string | null>(null);
   const [leftKeywordMode, setLeftKeywordMode] = useState<"any" | "all">("any");
+  const [relNavDirection, setRelNavDirection] = useState<"prev_to_current" | "current_to_prev">("prev_to_current");
 
   useEffect(() => {
     let mounted = true;
@@ -62,8 +63,16 @@ export default function Home() {
         if (mounted && me?.user?.email) setUser({ email: me.user.email as string, name: me.user.name });
       } catch {}
     })();
+    try {
+      const saved = localStorage.getItem("rel_nav_direction");
+      if (saved === "current_to_prev" || saved === "prev_to_current") setRelNavDirection(saved);
+    } catch {}
     return () => { mounted = false; };
   }, []);
+
+  useEffect(() => {
+    try { localStorage.setItem("rel_nav_direction", relNavDirection); } catch {}
+  }, [relNavDirection]);
 
   // Hydrate pins when user changes
   useEffect(() => {
@@ -93,6 +102,16 @@ export default function Home() {
     if (has(["먼저", "선행", "필요", "해야", "전제", "필수"])) return "prerequisite";
     if (has(["종류", "유형", "세부", "특정"])) return "narrows";
     return "precedes";
+  }
+
+  async function autoConnectCurrentToPrev(currId: string, prevId: string | null, newQ: string) {
+    try {
+      const trg = (prevId || "").trim();
+      if (!trg || currId === trg) return;
+      const type = suggestRelTypeForNew(newQ);
+      await fetch("/api/qa/relation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceId: currId, targetId: trg, type, weight: 1 }) });
+      setGraphRefreshKey((k) => k + 1);
+    } catch {}
   }
 
   async function autoConnectPrevToCurrent(prevId: string | null, currId: string, newQ: string) {
@@ -233,7 +252,19 @@ export default function Home() {
       <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr_360px] gap-3 md:gap-4 p-3 md:p-4 overflow-hidden">
         <aside className="rounded border border-gray-200/60 p-3 md:p-3 overflow-auto">
           <LeftAsk
-            onSelectQA={(id) => { setLastViewedQaId(id); setSelectedQaId(id); setCenterAiAnswer(""); }}
+            onSelectQA={(id) => {
+              const prev = selectedQaId || lastViewedQaId;
+              if (relNavDirection === "prev_to_current") {
+                if (prev) setDefaultSourceId(prev);
+                setRelTargetId(id);
+              } else {
+                setDefaultSourceId(id);
+                if (prev) setRelTargetId(prev);
+              }
+              setLastViewedQaId(id);
+              setSelectedQaId(id);
+              setCenterAiAnswer("");
+            }}
             onAskAINow={(q) => void askAiNow(q)}
             connectMode={connectMode}
             targetId={relTargetId}
@@ -254,25 +285,48 @@ export default function Home() {
             onKeywordClick={(kw) => { setLeftKeyword(kw); }}
             onShared={(newId: string) => {
               const prev = selectedQaId || lastViewedQaId;
-              if (prev) setDefaultSourceId(prev);
-              else {
-                const fallback = (pinnedIds || []).find((x) => x && x !== newId) || null;
-                if (fallback) setDefaultSourceId(fallback);
+              if (relNavDirection === "prev_to_current") {
+                if (prev) setDefaultSourceId(prev); else {
+                  const fallback = (pinnedIds || []).find((x) => x && x !== newId) || null;
+                  if (fallback) setDefaultSourceId(fallback);
+                }
+                setRelTargetId(newId);
+              } else {
+                setDefaultSourceId(newId);
+                if (prev) setRelTargetId(prev); else {
+                  const fallback = (pinnedIds || []).find((x) => x && x !== newId) || null;
+                  if (fallback) setRelTargetId(fallback);
+                }
               }
               setSelectedQaId(newId);
               setCenterAiAnswer("");
-              setRelTargetId(newId);
-              // Update last viewed to the new one after defaulting
+              // Update last viewed after defaulting
               setLastViewedQaId(newId);
-              // Auto-connect previous → current for visibility in Center panel
-              void autoConnectPrevToCurrent(prev ?? null, newId, centerQuestion);
+              // Auto-connect based on direction
+              if (relNavDirection === "prev_to_current") {
+                void autoConnectPrevToCurrent(prev ?? null, newId, centerQuestion);
+              } else {
+                void autoConnectCurrentToPrev(newId, prev ?? null, centerQuestion);
+              }
             }}
             onPinned={async (id: string) => {
               setPinnedIds((prev) => (prev.includes(id) ? prev : [id, ...prev]));
               try { await fetch("/api/qa/pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId: id }) }); } catch {}
             }}
             refreshKey={graphRefreshKey}
-            onSelectQA={(id) => { setLastViewedQaId(id); setSelectedQaId(id); setCenterAiAnswer(""); }}
+            onSelectQA={(id) => {
+              const prev = selectedQaId || lastViewedQaId;
+              if (relNavDirection === "prev_to_current") {
+                if (prev) setDefaultSourceId(prev);
+                setRelTargetId(id);
+              } else {
+                setDefaultSourceId(id);
+                if (prev) setRelTargetId(prev);
+              }
+              setLastViewedQaId(id);
+              setSelectedQaId(id);
+              setCenterAiAnswer("");
+            }}
             currentUserEmail={user?.email}
           />
         </main>
@@ -286,11 +340,10 @@ export default function Home() {
             onConnectModeChange={(v) => setConnectMode(v)}
             defaultSourceId={defaultSourceId}
             pinnedIds={pinnedIds}
-            onUnpin={async (id) => {
-              setPinnedIds((prev) => prev.filter((x) => x !== id));
-              try { await fetch("/api/qa/pin", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId: id }) }); } catch {}
-            }}
+            onUnpin={(id) => setPinnedIds((arr) => arr.filter((x) => x !== id))}
             onGraphChanged={() => setGraphRefreshKey((k) => k + 1)}
+            navDirection={relNavDirection}
+            onNavDirectionChange={(d) => setRelNavDirection(d)}
           />
         </aside>
       </div>

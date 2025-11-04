@@ -12,9 +12,11 @@ type Props = {
   pinnedIds?: string[];
   onUnpin?: (id: string) => void;
   onGraphChanged?: () => void;
+  navDirection?: "prev_to_current" | "current_to_prev";
+  onNavDirectionChange?: (d: "prev_to_current" | "current_to_prev") => void;
 };
 
-export default function RightRelations({ qaId, targetId, onTargetChange, connectMode, onConnectModeChange, defaultSourceId, pinnedIds = [], onUnpin, onGraphChanged }: Props) {
+export default function RightRelations({ qaId, targetId, onTargetChange, connectMode, onConnectModeChange, defaultSourceId, pinnedIds = [], onUnpin, onGraphChanged, navDirection = "prev_to_current", onNavDirectionChange }: Props) {
   const [relType, setRelType] = useState<string>("precedes");
   const [busy, setBusy] = useState(false);
   const [edges, setEdges] = useState<Array<{ sourceId: string; targetId: string; type: string; synthetic?: boolean }>>([]);
@@ -232,6 +234,13 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
         </select>
         <button className="text-xs px-3 py-2 rounded border disabled:opacity-50" disabled={!((srcOverrideId || qaId) && targetId) || busy} onClick={() => void connect()}>{busy ? "Connecting..." : "Connect"}</button>
         <button className="text-xs px-3 py-2 rounded border disabled:opacity-50" disabled={!((srcOverrideId || qaId) && targetId)} onClick={() => { if (targetId) { const s = targetId; const t = srcOverrideId || qaId!; setSrcOverrideId(s); setManualSource(true); onTargetChange?.(t); } }}>Swap</button>
+        <div className="ml-auto flex items-center gap-1">
+          <span className="text-[11px] text-gray-600">방향</span>
+          <select className="text-xs border rounded px-2 py-1" value={navDirection} onChange={(e) => onNavDirectionChange?.(e.target.value as any)} title="중앙 선택 이동 시 기본 연결 방향">
+            <option value="prev_to_current">이전 → 현재</option>
+            <option value="current_to_prev">현재 → 이전</option>
+          </select>
+        </div>
       </div>
       <div className="space-y-2">
         <div className="text-xs text-gray-600">Source</div>
