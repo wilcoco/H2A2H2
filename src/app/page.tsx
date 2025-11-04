@@ -54,6 +54,7 @@ export default function Home() {
   const [leftKeyword, setLeftKeyword] = useState<string | null>(null);
   const [leftKeywordMode, setLeftKeywordMode] = useState<"any" | "all">("any");
   const [relNavDirection, setRelNavDirection] = useState<"prev_to_current" | "current_to_prev">("prev_to_current");
+  const [forceSourceId, setForceSourceId] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -283,6 +284,16 @@ export default function Home() {
             aiAnswer={!selectedQaId ? centerAiAnswer : undefined}
             onOpenThread={() => setThreadOpen(true)}
             onKeywordClick={(kw) => { setLeftKeyword(kw); }}
+            onSetSource={(id) => {
+              setForceSourceId(id);
+            }}
+            onSetTarget={(id) => {
+              setRelTargetId(id);
+            }}
+            onSetCard={async (id) => {
+              setPinnedIds((prev) => (prev.includes(id) ? prev : [id, ...prev]));
+              try { await fetch("/api/qa/pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId: id }) }); } catch {}
+            }}
             onShared={(newId: string) => {
               const prev = selectedQaId || lastViewedQaId;
               if (relNavDirection === "prev_to_current") {
@@ -344,6 +355,7 @@ export default function Home() {
             onGraphChanged={() => setGraphRefreshKey((k) => k + 1)}
             navDirection={relNavDirection}
             onNavDirectionChange={(d) => setRelNavDirection(d)}
+            forceSourceId={forceSourceId}
           />
         </aside>
       </div>

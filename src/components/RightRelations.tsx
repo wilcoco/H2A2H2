@@ -14,9 +14,10 @@ type Props = {
   onGraphChanged?: () => void;
   navDirection?: "prev_to_current" | "current_to_prev";
   onNavDirectionChange?: (d: "prev_to_current" | "current_to_prev") => void;
+  forceSourceId?: string | null;
 };
 
-export default function RightRelations({ qaId, targetId, onTargetChange, connectMode, onConnectModeChange, defaultSourceId, pinnedIds = [], onUnpin, onGraphChanged, navDirection = "prev_to_current", onNavDirectionChange }: Props) {
+export default function RightRelations({ qaId, targetId, onTargetChange, connectMode, onConnectModeChange, defaultSourceId, pinnedIds = [], onUnpin, onGraphChanged, navDirection = "prev_to_current", onNavDirectionChange, forceSourceId }: Props) {
   const [relType, setRelType] = useState<string>("precedes");
   const [busy, setBusy] = useState(false);
   const [edges, setEdges] = useState<Array<{ sourceId: string; targetId: string; type: string; synthetic?: boolean }>>([]);
@@ -56,6 +57,14 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
       setSrcOverrideId(defaultSourceId);
     }
   }, [defaultSourceId, manualSource, srcOverrideId]);
+
+  // Force source assignment from center action
+  useEffect(() => {
+    if (forceSourceId && srcOverrideId !== forceSourceId) {
+      setSrcOverrideId(forceSourceId);
+      setManualSource(true);
+    }
+  }, [forceSourceId, srcOverrideId]);
 
   useEffect(() => {
     let active = true;

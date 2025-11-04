@@ -14,9 +14,12 @@ type Props = {
   onSelectQA?: (id: string) => void;
   currentUserEmail?: string;
   onKeywordClick?: (kw: string) => void;
+  onSetSource?: (id: string) => void;
+  onSetTarget?: (id: string) => void;
+  onSetCard?: (id: string) => void;
 };
 
-export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread, onShared, onPinned, refreshKey, onSelectQA, currentUserEmail, onKeywordClick }: Props) {
+export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread, onShared, onPinned, refreshKey, onSelectQA, currentUserEmail, onKeywordClick, onSetSource, onSetTarget, onSetCard }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<any | null>(null);
@@ -210,6 +213,29 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
     }
   }
 
+  async function shareAnd(mode: "source" | "target" | "card") {
+    const q = (question || "").trim();
+    const a = (aiAnswer || "").trim();
+    if (!q || !a) return;
+    try {
+      setSaving(true);
+      const res = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q, answer: a, summary: newSummary.trim() || undefined }) });
+      if (!res.ok) throw new Error("Share failed");
+      const j = await res.json();
+      const id = String(j?.id || "");
+      if (id) {
+        if (mode === "source") onSetSource?.(id);
+        else if (mode === "target") onSetTarget?.(id);
+        else { onSetCard?.(id); onPinned?.(id); }
+        onSelectQA?.(id);
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function PatchPreviewGraph({ patch }: { patch: LlmPatch }) {
     const addedNodes = patch.ops.filter(op => op.op === "add_node").map(op => (op as any).node);
     const addedEdges = patch.ops.filter(op => op.op === "add_edge").map(op => (op as any).edge);
@@ -270,23 +296,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
     return (
       <div className="flex flex-col gap-2">
         <div className="text-sm font-semibold">Q: {data.question}</div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button className="text-xs px-2 py-1 rounded border" onClick={() => onOpenThread?.()}>Thread</button>
-          <button className="text-xs px-2 py-1 rounded border" disabled={!qaId || voteBusy} onClick={() => void vote(1)}>Helpful ({data.helpful ?? 0})</button>
-          <button className="text-xs px-2 py-1 rounded border" disabled={!qaId || voteBusy} onClick={() => void vote(-1)}>Not ({data.unhelpful ?? 0})</button>
-          <button className="text-xs px-2 py-1 rounded border" disabled={!qaId} onClick={() => { if (qaId) onPinned?.(qaId); }}>Save to Right</button>
-          {currentUserEmail && data.createdBy === currentUserEmail && (
-            <button className="text-xs px-2 py-1 rounded border" disabled={!qaId || publishing} onClick={() => void togglePublish(!(data.published !== false))}>{publishing ? "..." : (data.published !== false ? "Unpublish" : "Publish")}</button>
-          )}
-          {!editing ? (
-            <button className="text-xs px-2 py-1 rounded border" onClick={() => { setEditing(true); setEditSummary(String(data.summary || "")); }}>Edit summary</button>
-          ) : (
-            <div className="flex items-center gap-2">
-              <button className="text-xs px-2 py-1 rounded bg-blue-600 text-white disabled:opacity-50" disabled={saving || !editSummary.trim()} onClick={() => void saveSummary()}>{saving ? "Saving..." : "Save"}</button>
-              <button className="text-xs px-2 py-1 rounded border" onClick={() => setEditing(false)}>Cancel</button>
-            </div>
-          )}
-        </div>
+        {/* Top action bar removed per UX change */}
         <div className="flex items-center gap-2 text-[11px] text-gray-600">
           <span className={`px-2 py-0.5 rounded-full border ${data.published !== false ? 'bg-green-50 border-green-200 text-green-700' : 'bg-yellow-50 border-yellow-200 text-yellow-700'}`}>{data.published !== false ? 'Published' : 'Draft'}</span>
           {data.createdBy && <span>by {data.createdBy}</span>}
@@ -310,6 +320,11 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
         {editing && (
           <textarea className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" rows={4} value={editSummary} onChange={(e) => setEditSummary(e.target.value)} />
         )}
+        <div className="flex items-center gap-2 mt-2">
+          <button className="text-xs px-2 py-1 rounded border" disabled={!qaId} onClick={() => qaId && onSetSource?.(qaId)}>Set Source</button>
+          <button className="text-xs px-2 py-1 rounded border" disabled={!qaId} onClick={() => qaId && onSetTarget?.(qaId)}>Set Target</button>
+          <button className="text-xs px-2 py-1 rounded border" disabled={!qaId} onClick={() => qaId && onSetCard?.(qaId)}>Set Card</button>
+        </div>
         <div className="mt-2">
           <div className="text-xs text-gray-600 mb-1">노트</div>
           <textarea
@@ -404,7 +419,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
           ) : (keywords.length > 0 ? (
             <div className="flex flex-wrap gap-1">
               {keywords.map((k, i) => (
-                <span key={i} className="text-[11px] px-2 py-0.5 rounded-full border">{k}</span>
+                <button key={i} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => onKeywordClick?.(k)}>{k}</button>
               ))}
             </div>
           ) : (
@@ -413,7 +428,9 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
         </div>
         <textarea className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" rows={4} placeholder="핵심 요약을 작성하세요" value={newSummary} onChange={(e) => setNewSummary(e.target.value)} />
         <div className="flex items-center gap-2">
-          <button className="text-xs px-2 py-1 rounded bg-blue-600 text-white disabled:opacity-50" disabled={saving} onClick={() => void shareNew()}>{saving ? "Sharing..." : "Share & Save to Right"}</button>
+          <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={saving} onClick={() => void shareAnd("source")}>{saving ? "Sharing..." : "Set Source"}</button>
+          <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={saving} onClick={() => void shareAnd("target")}>{saving ? "Sharing..." : "Set Target"}</button>
+          <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={saving} onClick={() => void shareAnd("card")}>{saving ? "Sharing..." : "Set Card"}</button>
         </div>
       </div>
     );
