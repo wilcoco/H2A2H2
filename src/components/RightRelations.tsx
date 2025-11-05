@@ -8,7 +8,6 @@ type Props = {
   onTargetChange?: (id: string | null) => void;
   connectMode?: boolean;
   onConnectModeChange?: (v: boolean) => void;
-  defaultSourceId?: string | null;
   pinnedIds?: string[];
   onUnpin?: (id: string) => void;
   onGraphChanged?: () => void;
@@ -17,7 +16,7 @@ type Props = {
   forceSourceId?: string | null;
 };
 
-export default function RightRelations({ qaId, targetId, onTargetChange, connectMode, onConnectModeChange, defaultSourceId, pinnedIds = [], onUnpin, onGraphChanged, navDirection = "prev_to_current", onNavDirectionChange, forceSourceId }: Props) {
+export default function RightRelations({ qaId, targetId, onTargetChange, connectMode, onConnectModeChange, pinnedIds = [], onUnpin, onGraphChanged, navDirection = "prev_to_current", onNavDirectionChange, forceSourceId }: Props) {
   const [relType, setRelType] = useState<string>("precedes");
   const [busy, setBusy] = useState(false);
   const [edges, setEdges] = useState<Array<{ sourceId: string; targetId: string; type: string; synthetic?: boolean }>>([]);
@@ -38,25 +37,9 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
 
   useEffect(() => { setError(null); }, [qaId]);
 
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      if (!qaId) { if (active) setSource(null); return; }
-      try {
-        const r = await fetch(`/api/qa/${encodeURIComponent(qaId)}`, { cache: "no-store" });
-        const j = await r.json();
-        if (active) setSource({ id: qaId, question: String(j?.question || "") });
-      } catch { if (active) setSource(null); }
-    })();
-    return () => { active = false; };
-  }, [qaId]);
+  useEffect(() => { setSource(null); }, [qaId]);
 
-  // Apply default source override if provided by parent (e.g., previous question)
-  useEffect(() => {
-    if (defaultSourceId && !manualSource && srcOverrideId !== defaultSourceId) {
-      setSrcOverrideId(defaultSourceId);
-    }
-  }, [defaultSourceId, manualSource, srcOverrideId]);
+  // Remove default source behavior; only explicit Set Source should assign srcOverrideId
 
   // Force source assignment from center action
   useEffect(() => {
@@ -82,7 +65,7 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
   // Heuristic suggestion for relation type when both sides are known
   useEffect(() => {
     if (!autoType) return;
-    const s = (srcOverride?.question || source?.question || "").toLowerCase();
+    const s = (srcOverride?.question || "").toLowerCase();
     const t = (target?.question || "").toLowerCase();
     if (!s || !t) return;
     const has = (str: string, arr: string[]) => arr.some((k) => str.includes(k));
@@ -95,7 +78,7 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
   }, [autoType, srcOverride?.question, source?.question, target?.question]);
 
   async function connect() {
-    const src = srcOverrideId || qaId;
+    const src = srcOverrideId;
     if (!src || !targetId || !relType) return;
     try {
       setBusy(true); setError(null);
@@ -242,7 +225,7 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
       <div className="space-y-2">
         <div className="text-xs text-gray-600">Source</div>
         <div className="text-[12px] rounded border p-2 bg-white/60 dark:bg-gray-900/40 min-h-[40px] flex items-center justify-between gap-2">
-          <div className="truncate">{srcOverrideId ? (srcOverride ? `Q: ${srcOverride.question}` : `Q: ${srcOverrideId}`) : (source ? `Q: ${source.question}` : "선택된 질문이 없습니다.")}</div>
+          <div className="truncate">{srcOverrideId ? (srcOverride ? `Q: ${srcOverride.question}` : `Q: ${srcOverrideId}`) : "선택된 질문이 없습니다."}</div>
           {srcOverride && <button className="text-[11px] px-2 py-1 rounded border" onClick={() => { setSrcOverrideId(null); setManualSource(false); }}>Clear</button>}
         </div>
         <div className="flex items-center justify-center gap-2 my-1">
@@ -261,8 +244,8 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
             <option value="refutes">refutes</option>
             <option value="alternative">alternative</option>
           </select>
-          <button className="text-xs px-3 py-2 rounded border disabled:opacity-50" disabled={!((srcOverrideId || qaId) && targetId) || busy} onClick={() => void connect()}>{busy ? "Connecting..." : "Connect"}</button>
-          <button className="text-xs px-3 py-2 rounded border disabled:opacity-50" disabled={!((srcOverrideId || qaId) && targetId)} onClick={() => { if (targetId) { const s = targetId; const t = srcOverrideId || qaId!; setSrcOverrideId(s); setManualSource(true); onTargetChange?.(t); } }}>Swap</button>
+          <button className="text-xs px-3 py-2 rounded border disabled:opacity-50" disabled={!(srcOverrideId && targetId) || busy} onClick={() => void connect()}>{busy ? "Connecting..." : "Connect"}</button>
+          <button className="text-xs px-3 py-2 rounded border disabled:opacity-50" disabled={!(srcOverrideId && targetId)} onClick={() => { if (targetId && srcOverrideId) { const s = targetId; const t = srcOverrideId; setSrcOverrideId(s); setManualSource(true); onTargetChange?.(t); } }}>Swap</button>
         </div>
         <div className="text-xs text-gray-600">Target</div>
         <div className="text-[12px] rounded border p-2 bg-white/60 dark:bg-gray-900/40 min-h-[40px] flex items-center justify-between gap-2">

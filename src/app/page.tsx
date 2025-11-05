@@ -49,7 +49,7 @@ export default function Home() {
   const [relTargetId, setRelTargetId] = useState<string | null>(null);
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [graphRefreshKey, setGraphRefreshKey] = useState(0);
-  const [defaultSourceId, setDefaultSourceId] = useState<string | null>(null);
+  // removed: defaultSourceId. Source is set explicitly from Center actions only.
   const [lastViewedQaId, setLastViewedQaId] = useState<string | null>(null);
   const [leftKeyword, setLeftKeyword] = useState<string | null>(null);
   const [leftKeywordMode, setLeftKeywordMode] = useState<"any" | "all">("any");
@@ -312,7 +312,6 @@ export default function Home() {
             onTargetChange={(id) => setRelTargetId(id)}
             connectMode={connectMode}
             onConnectModeChange={(v) => setConnectMode(v)}
-            defaultSourceId={defaultSourceId}
             pinnedIds={pinnedIds}
             onUnpin={(id) => setPinnedIds((arr) => arr.filter((x) => x !== id))}
             onGraphChanged={() => setGraphRefreshKey((k) => k + 1)}
