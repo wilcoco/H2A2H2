@@ -254,14 +254,6 @@ export default function Home() {
         <aside className="rounded border border-gray-200/60 p-3 md:p-3 overflow-auto">
           <LeftAsk
             onSelectQA={(id) => {
-              const prev = selectedQaId || lastViewedQaId;
-              if (relNavDirection === "prev_to_current") {
-                if (prev) setDefaultSourceId(prev);
-                setRelTargetId(id);
-              } else {
-                setDefaultSourceId(id);
-                if (prev) setRelTargetId(prev);
-              }
               setLastViewedQaId(id);
               setSelectedQaId(id);
               setCenterAiAnswer("");
@@ -295,30 +287,9 @@ export default function Home() {
               try { await fetch("/api/qa/pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId: id }) }); } catch {}
             }}
             onShared={(newId: string) => {
-              const prev = selectedQaId || lastViewedQaId;
-              if (relNavDirection === "prev_to_current") {
-                if (prev) setDefaultSourceId(prev); else {
-                  const fallback = (pinnedIds || []).find((x) => x && x !== newId) || null;
-                  if (fallback) setDefaultSourceId(fallback);
-                }
-                setRelTargetId(newId);
-              } else {
-                setDefaultSourceId(newId);
-                if (prev) setRelTargetId(prev); else {
-                  const fallback = (pinnedIds || []).find((x) => x && x !== newId) || null;
-                  if (fallback) setRelTargetId(fallback);
-                }
-              }
               setSelectedQaId(newId);
               setCenterAiAnswer("");
-              // Update last viewed after defaulting
               setLastViewedQaId(newId);
-              // Auto-connect based on direction
-              if (relNavDirection === "prev_to_current") {
-                void autoConnectPrevToCurrent(prev ?? null, newId, centerQuestion);
-              } else {
-                void autoConnectCurrentToPrev(newId, prev ?? null, centerQuestion);
-              }
             }}
             onPinned={async (id: string) => {
               setPinnedIds((prev) => (prev.includes(id) ? prev : [id, ...prev]));
@@ -326,14 +297,6 @@ export default function Home() {
             }}
             refreshKey={graphRefreshKey}
             onSelectQA={(id) => {
-              const prev = selectedQaId || lastViewedQaId;
-              if (relNavDirection === "prev_to_current") {
-                if (prev) setDefaultSourceId(prev);
-                setRelTargetId(id);
-              } else {
-                setDefaultSourceId(id);
-                if (prev) setRelTargetId(prev);
-              }
               setLastViewedQaId(id);
               setSelectedQaId(id);
               setCenterAiAnswer("");
