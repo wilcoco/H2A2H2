@@ -206,13 +206,6 @@ function SuggestItem({ it, onSelectQA, connectMode, targetId, onPickTarget, refr
         <div className="shrink-0 flex items-center gap-2">
           <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 border">Chain {loading ? "…" : (count ?? 0)}</span>
           <button className="text-[11px] px-2 py-1 rounded border" onClick={() => setExpanded((v) => !v)}>{expanded ? "접기" : "보기"}</button>
-          {connectMode && (
-            <button
-              className={`text-[11px] px-2 py-1 rounded border ${targetId === it.id ? "bg-blue-600 text-white" : ""}`}
-              onClick={(e) => { e.stopPropagation(); onPickTarget?.(it.id); }}
-              title="이 항목을 연결 대상으로 지정"
-            >{targetId === it.id ? "선택됨" : "연결"}</button>
-          )}
         </div>
       </div>
       {expanded && (
