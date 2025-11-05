@@ -231,18 +231,6 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
         <label className="text-[11px] flex items-center gap-1">
           <input type="checkbox" checked={!!connectMode} onChange={(e) => onConnectModeChange?.(e.target.checked)} /> 연결 모드
         </label>
-        <select className="text-xs border rounded px-2 py-1" value={relType} onChange={(e) => { setRelType(e.target.value); setAutoType(false); }}>
-          <option value="precedes">precedes</option>
-          <option value="prerequisite">prerequisite</option>
-          <option value="narrows">narrows</option>
-          <option value="elaborates">elaborates</option>
-          <option value="clarifies">clarifies</option>
-          <option value="supports">supports</option>
-          <option value="refutes">refutes</option>
-          <option value="alternative">alternative</option>
-        </select>
-        <button className="text-xs px-3 py-2 rounded border disabled:opacity-50" disabled={!((srcOverrideId || qaId) && targetId) || busy} onClick={() => void connect()}>{busy ? "Connecting..." : "Connect"}</button>
-        <button className="text-xs px-3 py-2 rounded border disabled:opacity-50" disabled={!((srcOverrideId || qaId) && targetId)} onClick={() => { if (targetId) { const s = targetId; const t = srcOverrideId || qaId!; setSrcOverrideId(s); setManualSource(true); onTargetChange?.(t); } }}>Swap</button>
         <div className="ml-auto flex items-center gap-1">
           <span className="text-[11px] text-gray-600">방향</span>
           <select className="text-xs border rounded px-2 py-1" value={navDirection} onChange={(e) => onNavDirectionChange?.(e.target.value as any)} title="중앙 선택 이동 시 기본 연결 방향">
@@ -256,6 +244,25 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
         <div className="text-[12px] rounded border p-2 bg-white/60 dark:bg-gray-900/40 min-h-[40px] flex items-center justify-between gap-2">
           <div className="truncate">{srcOverrideId ? (srcOverride ? `Q: ${srcOverride.question}` : `Q: ${srcOverrideId}`) : (source ? `Q: ${source.question}` : "선택된 질문이 없습니다.")}</div>
           {srcOverride && <button className="text-[11px] px-2 py-1 rounded border" onClick={() => { setSrcOverrideId(null); setManualSource(false); }}>Clear</button>}
+        </div>
+        <div className="flex items-center justify-center gap-2 my-1">
+          <div className="text-[11px] text-gray-600 flex items-center gap-1">
+            <span>Source</span>
+            <span>→</span>
+            <span>Target</span>
+          </div>
+          <select className="text-xs border rounded px-2 py-1" value={relType} onChange={(e) => { setRelType(e.target.value); setAutoType(false); }}>
+            <option value="precedes">precedes</option>
+            <option value="prerequisite">prerequisite</option>
+            <option value="narrows">narrows</option>
+            <option value="elaborates">elaborates</option>
+            <option value="clarifies">clarifies</option>
+            <option value="supports">supports</option>
+            <option value="refutes">refutes</option>
+            <option value="alternative">alternative</option>
+          </select>
+          <button className="text-xs px-3 py-2 rounded border disabled:opacity-50" disabled={!((srcOverrideId || qaId) && targetId) || busy} onClick={() => void connect()}>{busy ? "Connecting..." : "Connect"}</button>
+          <button className="text-xs px-3 py-2 rounded border disabled:opacity-50" disabled={!((srcOverrideId || qaId) && targetId)} onClick={() => { if (targetId) { const s = targetId; const t = srcOverrideId || qaId!; setSrcOverrideId(s); setManualSource(true); onTargetChange?.(t); } }}>Swap</button>
         </div>
         <div className="text-xs text-gray-600">Target</div>
         <div className="text-[12px] rounded border p-2 bg-white/60 dark:bg-gray-900/40 min-h-[40px] flex items-center justify-between gap-2">
