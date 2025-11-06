@@ -14,6 +14,7 @@ const ChatMsg = z.object({
 const Body = z.object({
   prompt: z.string().optional().default(""),
   history: z.array(ChatMsg).optional().default([]),
+  provider: z.enum(["openai", "anthropic"]).optional(),
 });
 
 function kwHeuristic(text: string, max = 8): string[] {
@@ -44,11 +45,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ answer });
     };
 
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) return fallback();
-
-    const client = new OpenAI({ apiKey });
+    const provider = input.provider ?? (process.env.AI_PROVIDER as any) ?? "openai";
+    const openaiKey = process.env.OPENAI_API_KEY;
+    const anthropicKey = process.env.ANTHROPIC_API_KEY;
+    const client = openaiKey ? new OpenAI({ apiKey: openaiKey }) : null;
     const model = process.env.OPENAI_MODEL || "gpt-4o";
+    const anthropicModel = process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-latest";
 
     const sys = "You are a helpful assistant. Answer in the user's language. Output structure: (1) A 1-2 sentence answer first. (2) 2-3 key reasons or evidence. (3) Uncertainty/limits if any. (4) If needed, one clarifying question at the end.";
     const historyText = (input.history || [])
@@ -136,47 +138,139 @@ export async function POST(req: Request) {
     } catch {}
 
     const combined = `${sys}\n\n${relatedText ? relatedText + "\n\n" : ""}${historyText ? `Conversation:\n${historyText}\n\n` : ""}User: ${promptText}`;
+    const anthUser = `${relatedText ? relatedText + "\n\n" : ""}${historyText ? `Conversation:\n${historyText}\n\n` : ""}User: ${promptText}`;
 
     try {
-      const base: any = { model, input: combined, temperature: 0.2, max_output_tokens: 1200 };
-      if (model.startsWith("o3")) base.reasoning = { effort: "high" };
       let answer = "";
-      try {
-        const res = await client.responses.create(base);
-        answer = (res as any).output_text?.trim() ?? "";
-      } catch {
-        if (model !== "gpt-4o") {
+      if (provider === "anthropic") {
+        const antKey = process.env.ANTHROPIC_API_KEY;
+        if (!antKey) return fallback();
+        try {
+          const resp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-api-key": antKey,
+              "anthropic-version": "2023-06-01",
+            },
+            body: JSON.stringify({
+              model: anthropicModel,
+              system: sys,
+              max_tokens: 1200,
+              temperature: 0.2,
+              messages: [
+                { role: "user", content: [{ type: "text", text: anthUser }] },
+              ],
+            }),
+          });
+          const j = await resp.json().catch(() => ({} as any));
+          const parts: Array<{ type: string; text?: string }> = Array.isArray(j?.content) ? j.content : [];
+          answer = parts.filter((p) => p?.type === "text").map((p) => String(p.text || "")).join("\n").trim();
+        } catch {}
+        if (!answer && client) {
+          const base: any = { model, input: combined, temperature: 0.2, max_output_tokens: 1200 };
+          if (model.startsWith("o3")) base.reasoning = { effort: "high" };
           try {
-            const res2 = await client.responses.create({ ...base, model: "gpt-4o", reasoning: undefined });
-            answer = (res2 as any).output_text?.trim() ?? "";
+            const res = await client.responses.create(base);
+            answer = (res as any).output_text?.trim() ?? "";
           } catch {}
         }
-      }
-      if (!answer) return fallback();
-      // Optional second pass refine
-      const doRefine = process.env.CHAT_REFINE_PASS !== "0";
-      if (doRefine) {
-        try {
-          const refineInstr = "Review and improve the draft for accuracy, completeness, clarity, and structure. Keep the same language as the user. Do not invent sources. If uncertain, state limits.";
-          const refineInput = `${refineInstr}\n\nQuestion: ${promptText}\n\nDraft:\n${answer}\n\n${relatedText ? `Context (may be partial):\n${relatedText}\n` : ""}`;
-          const refineBody: any = { model, input: refineInput, temperature: 0.2, max_output_tokens: 1500 };
-          if (model.startsWith("o3")) refineBody.reasoning = { effort: "high" };
-          let improved = "";
+        if (!answer) return fallback();
+        const doRefine = process.env.CHAT_REFINE_PASS !== "0";
+        if (doRefine) {
           try {
-            const r1 = await client.responses.create(refineBody);
-            improved = (r1 as any).output_text?.trim() ?? "";
+            const refineInstr = "Review and improve the draft for accuracy, completeness, clarity, and structure. Keep the same language as the user. Do not invent sources. If uncertain, state limits.";
+            const refineInput = `${refineInstr}\n\nQuestion: ${promptText}\n\nDraft:\n${answer}\n\n${relatedText ? `Context (may be partial):\n${relatedText}\n` : ""}`;
+            try {
+              const resp2 = await fetch("https://api.anthropic.com/v1/messages", {
+                method: "POST",
+                headers: {
+                  "content-type": "application/json",
+                  "x-api-key": antKey,
+                  "anthropic-version": "2023-06-01",
+                },
+                body: JSON.stringify({
+                  model: anthropicModel,
+                  system: sys,
+                  max_tokens: 1500,
+                  temperature: 0.2,
+                  messages: [
+                    { role: "user", content: [{ type: "text", text: refineInput }] },
+                  ],
+                }),
+              });
+              const jj = await resp2.json().catch(() => ({} as any));
+              const parts2: Array<{ type: string; text?: string }> = Array.isArray(jj?.content) ? jj.content : [];
+              const improved = parts2.filter((p) => p?.type === "text").map((p) => String(p.text || "")).join("\n").trim();
+              if (improved) answer = improved;
+            } catch {}
+          } catch {}
+        }
+        return NextResponse.json({ answer });
+      } else {
+        if (client) {
+          const base: any = { model, input: combined, temperature: 0.2, max_output_tokens: 1200 };
+          if (model.startsWith("o3")) base.reasoning = { effort: "high" };
+          try {
+            const res = await client.responses.create(base);
+            answer = (res as any).output_text?.trim() ?? "";
           } catch {
             if (model !== "gpt-4o") {
               try {
-                const r2 = await client.responses.create({ ...refineBody, model: "gpt-4o", reasoning: undefined });
-                improved = (r2 as any).output_text?.trim() ?? "";
+                const res2 = await client.responses.create({ ...base, model: "gpt-4o", reasoning: undefined });
+                answer = (res2 as any).output_text?.trim() ?? "";
               } catch {}
             }
           }
-          if (improved) answer = improved;
-        } catch {}
+        } else if (anthropicKey) {
+          try {
+            const resp = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                "x-api-key": anthropicKey,
+                "anthropic-version": "2023-06-01",
+              },
+              body: JSON.stringify({
+                model: anthropicModel,
+                system: sys,
+                max_tokens: 1200,
+                temperature: 0.2,
+                messages: [
+                  { role: "user", content: [{ type: "text", text: anthUser }] },
+                ],
+              }),
+            });
+            const j = await resp.json().catch(() => ({} as any));
+            const parts: Array<{ type: string; text?: string }> = Array.isArray(j?.content) ? j.content : [];
+            answer = parts.filter((p) => p?.type === "text").map((p) => String(p.text || "")).join("\n").trim();
+          } catch {}
+        }
+        if (!answer) return fallback();
+        const doRefine = process.env.CHAT_REFINE_PASS !== "0";
+        if (doRefine && client) {
+          try {
+            const refineInstr = "Review and improve the draft for accuracy, completeness, clarity, and structure. Keep the same language as the user. Do not invent sources. If uncertain, state limits.";
+            const refineInput = `${refineInstr}\n\nQuestion: ${promptText}\n\nDraft:\n${answer}\n\n${relatedText ? `Context (may be partial):\n${relatedText}\n` : ""}`;
+            const refineBody: any = { model, input: refineInput, temperature: 0.2, max_output_tokens: 1500 };
+            if (model.startsWith("o3")) refineBody.reasoning = { effort: "high" };
+            let improved = "";
+            try {
+              const r1 = await client.responses.create(refineBody);
+              improved = (r1 as any).output_text?.trim() ?? "";
+            } catch {
+              if (model !== "gpt-4o") {
+                try {
+                  const r2 = await client.responses.create({ ...refineBody, model: "gpt-4o", reasoning: undefined });
+                  improved = (r2 as any).output_text?.trim() ?? "";
+                } catch {}
+              }
+            }
+            if (improved) answer = improved;
+          } catch {}
+        }
+        return NextResponse.json({ answer });
       }
-      return NextResponse.json({ answer });
     } catch {
       return fallback();
     }

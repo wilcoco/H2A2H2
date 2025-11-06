@@ -55,6 +55,7 @@ const RequestSchema = z.object({
   type: NodeType.optional(),
   nodes: z.array(GraphNode).optional().default([]),
   edges: z.array(GraphEdge).optional().default([]),
+  provider: z.enum(["openai", "anthropic"]).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -83,13 +84,8 @@ export async function POST(req: NextRequest) {
       return LlmPatch.parse(body);
     };
 
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      // No API key in env → return minimal local patch so UI can still function
-      return NextResponse.json(buildFallback());
-    }
-
-    const client = new OpenAI({ apiKey });
+    const openaiKey = process.env.OPENAI_API_KEY;
+    const client = openaiKey ? new OpenAI({ apiKey: openaiKey }) : null;
 
     const system = `You generate graph editing proposals for a knowledge graph.
 Return ONLY a JSON object matching this TypeScript type exactly, with no markdown:
@@ -134,79 +130,117 @@ Constraints:
     
     try {
       const model = process.env.OPENAI_MODEL || "gpt-4o";
+      const provider = input.provider ?? (process.env.AI_PROVIDER as any) ?? "openai";
+      const anthropicModel = process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-latest";
       const inputText = `${system}\n\n${(user.content?.[0] as any)?.text ?? ""}`;
-      const body: any = { model, input: inputText, temperature: 0.1, max_output_tokens: 2000 };
-      if (model.startsWith("o3")) body.reasoning = { effort: "high" };
-      body.response_format = {
-        type: "json_schema",
-        json_schema: {
-          name: "LlmPatch",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              id: { type: "string" },
-              description: { type: "string" },
-              ops: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    op: { type: "string", enum: ["add_node","update_node","remove_node","add_edge","remove_edge"] },
-                    id: { type: "string" },
-                    node: {
-                      type: "object",
-                      properties: {
-                        id: { type: "string" },
-                        type: { type: "string", enum: ["concept","claim","evidence","source","qa","premise","inference","conclusion"] },
-                        title: { type: "string" },
-                        content: { type: "string" },
+      let text = "";
+      if (provider === "anthropic") {
+        const antKey = process.env.ANTHROPIC_API_KEY;
+        if (antKey) {
+          try {
+            const resp = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                "x-api-key": antKey,
+                "anthropic-version": "2023-06-01",
+              },
+              body: JSON.stringify({
+                model: anthropicModel,
+                system: "Return ONLY a JSON object matching the described schema. No markdown.",
+                max_tokens: 2000,
+                temperature: 0.1,
+                messages: [
+                  { role: "user", content: [{ type: "text", text: inputText }] },
+                ],
+              }),
+            });
+            const j = await resp.json().catch(() => ({} as any));
+            const parts: Array<{ type: string; text?: string }> = Array.isArray(j?.content) ? j.content : [];
+            text = parts.filter((p) => p?.type === "text").map((p) => String(p.text || "")).join("\n");
+          } catch {}
+        }
+        if (!text) {
+          const body: any = { model, input: inputText, temperature: 0.1, max_output_tokens: 2000 };
+          if (model.startsWith("o3")) body.reasoning = { effort: "high" };
+          try {
+            const res = await client.responses.create(body);
+            text = (res as any).output_text ?? "";
+          } catch {}
+        }
+      } else {
+        const body: any = { model, input: inputText, temperature: 0.1, max_output_tokens: 2000 };
+        if (model.startsWith("o3")) body.reasoning = { effort: "high" };
+        body.response_format = {
+          type: "json_schema",
+          json_schema: {
+            name: "LlmPatch",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                id: { type: "string" },
+                description: { type: "string" },
+                ops: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      op: { type: "string", enum: ["add_node","update_node","remove_node","add_edge","remove_edge"] },
+                      id: { type: "string" },
+                      node: {
+                        type: "object",
+                        properties: {
+                          id: { type: "string" },
+                          type: { type: "string", enum: ["concept","claim","evidence","source","qa","premise","inference","conclusion"] },
+                          title: { type: "string" },
+                          content: { type: "string" },
+                        },
+                        required: ["id","type","title"],
+                        additionalProperties: false,
                       },
-                      required: ["id","type","title"],
-                      additionalProperties: false,
-                    },
-                    patch: {
-                      type: "object",
-                      properties: {
-                        id: { type: "string" },
-                        type: { type: "string", enum: ["concept","claim","evidence","source","qa","premise","inference","conclusion"] },
-                        title: { type: "string" },
-                        content: { type: "string" },
+                      patch: {
+                        type: "object",
+                        properties: {
+                          id: { type: "string" },
+                          type: { type: "string", enum: ["concept","claim","evidence","source","qa","premise","inference","conclusion"] },
+                          title: { type: "string" },
+                          content: { type: "string" },
+                        },
+                        additionalProperties: true,
                       },
-                      additionalProperties: true,
-                    },
-                    edge: {
-                      type: "object",
-                      properties: {
-                        id: { type: "string" },
-                        sourceId: { type: "string" },
-                        targetId: { type: "string" },
-                        type: { type: "string", enum: ["supports","refutes","relates_to","cites","infers"] },
+                      edge: {
+                        type: "object",
+                        properties: {
+                          id: { type: "string" },
+                          sourceId: { type: "string" },
+                          targetId: { type: "string" },
+                          type: { type: "string", enum: ["supports","refutes","relates_to","cites","infers"] },
+                        },
+                        required: ["id","sourceId","targetId","type"],
+                        additionalProperties: false,
                       },
-                      required: ["id","sourceId","targetId","type"],
-                      additionalProperties: false,
                     },
+                    required: ["op"],
+                    additionalProperties: true,
                   },
-                  required: ["op"],
-                  additionalProperties: true,
                 },
               },
+              required: ["id","ops"],
+              additionalProperties: false,
             },
-            required: ["id","ops"],
-            additionalProperties: false,
           },
-        },
-      };
-      let text = "";
-      try {
-        const res = await client.responses.create(body);
-        text = (res as any).output_text ?? "";
-      } catch {
-        if (model !== "gpt-4o") {
-          try {
-            const res2 = await client.responses.create({ ...body, model: "gpt-4o", reasoning: undefined });
-            text = (res2 as any).output_text ?? "";
-          } catch {}
+        };
+        try {
+          const res = await client.responses.create(body);
+          text = (res as any).output_text ?? "";
+        } catch {
+          if (model !== "gpt-4o") {
+            try {
+              const res2 = await client.responses.create({ ...body, model: "gpt-4o", reasoning: undefined });
+              text = (res2 as any).output_text ?? "";
+            } catch {}
+          }
         }
       }
       if (!text) return NextResponse.json(buildFallback());

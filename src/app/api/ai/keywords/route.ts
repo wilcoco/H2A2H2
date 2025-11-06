@@ -27,47 +27,70 @@ export async function POST(req: NextRequest) {
     const json = await req.json().catch(() => ({}));
     const text = (json?.text ?? "").toString();
     const max = Math.max(1, Math.min(10, Number(json?.max ?? 6)));
+    const provider = (json?.provider as "openai" | "anthropic" | undefined) ?? ((process.env.AI_PROVIDER as any) ?? "openai");
 
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey || text.trim().length === 0) {
+    const openaiKey = process.env.OPENAI_API_KEY;
+    const anthropicKey = process.env.ANTHROPIC_API_KEY;
+    if (text.trim().length === 0) {
       const kws = heuristic(text, max);
       return NextResponse.json({ keywords: kws });
     }
 
     try {
-      const client = new OpenAI({ apiKey });
+      const client = openaiKey ? new OpenAI({ apiKey: openaiKey }) : null;
       const model = process.env.OPENAI_MODEL || "gpt-4o";
       const prompt = `You extract keywords. Output valid JSON only. Extract ${max} concise keywords or short phrases (2-4 words) from the following text.\nReturn ONLY a JSON object with shape {"keywords": string[]} and no extra keys or text.\nText:\n${text}`;
-      const body: any = { model, input: prompt, temperature: 0.2, max_output_tokens: 800 };
-      if (model.startsWith("o3")) body.reasoning = { effort: "high" };
-      body.response_format = {
-        type: "json_schema",
-        json_schema: {
-          name: "Keywords",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              keywords: {
-                type: "array",
-                items: { type: "string" }
-              }
-            },
-            required: ["keywords"],
-            additionalProperties: false
-          }
-        }
-      };
       let content = "";
-      try {
-        const res = await client.responses.create(body);
-        content = (res as any).output_text ?? "";
-      } catch {
-        if (model !== "gpt-4o") {
-          try {
-            const res2 = await client.responses.create({ ...body, model: "gpt-4o", reasoning: undefined });
-            content = (res2 as any).output_text ?? "";
-          } catch {}
+      if (provider === "anthropic" && anthropicKey) {
+        try {
+          const resp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-api-key": anthropicKey,
+              "anthropic-version": "2023-06-01",
+            },
+            body: JSON.stringify({
+              model: process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-latest",
+              system: "Return ONLY valid JSON with {\"keywords\": string[]}. No markdown.",
+              max_tokens: 800,
+              temperature: 0.2,
+              messages: [
+                { role: "user", content: [{ type: "text", text: prompt }] },
+              ],
+            }),
+          });
+          const j = await resp.json().catch(() => ({} as any));
+          const parts: Array<{ type: string; text?: string }> = Array.isArray(j?.content) ? j.content : [];
+          content = parts.filter((p) => p?.type === "text").map((p) => String(p.text || "")).join("\n");
+        } catch {}
+      }
+      if (!content && client) {
+        try {
+          const body: any = { model, input: prompt, temperature: 0.2, max_output_tokens: 800 };
+          if (model.startsWith("o3")) body.reasoning = { effort: "high" };
+          body.response_format = {
+            type: "json_schema",
+            json_schema: {
+              name: "Keywords",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: { keywords: { type: "array", items: { type: "string" } } },
+                required: ["keywords"],
+                additionalProperties: false,
+              },
+            },
+          };
+          const res = await client.responses.create(body);
+          content = (res as any).output_text ?? "";
+        } catch {
+          if (client && model !== "gpt-4o") {
+            try {
+              const res2 = await client.responses.create({ model: "gpt-4o", input: prompt, temperature: 0.2, max_output_tokens: 800 });
+              content = (res2 as any).output_text ?? "";
+            } catch {}
+          }
         }
       }
       try {

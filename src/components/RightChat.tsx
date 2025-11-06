@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { LlmPatch, GraphNode, GraphEdge, NodeType, EdgeType, Work, QAEntry } from "@/types/graph";
 
 type Props = {
@@ -50,6 +50,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
   const [followupText, setFollowupText] = useState<Record<string, string>>({});
   const [noteText, setNoteText] = useState<Record<string, string>>({});
   const [voteBusy, setVoteBusy] = useState<Record<string, boolean>>({});
+  const [provider, setProvider] = useState<"openai" | "anthropic">("openai");
 
   async function useQA(id: string) {
     try {
@@ -127,7 +128,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
 
   async function aiAnswer(qaId: string, question: string) {
     try {
-      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: question, history: [] }) });
+      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: question, history: [], provider }) });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err?.error || "Chat failed");
@@ -267,7 +268,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
       const kres = await fetch("/api/ai/keywords", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: question, max: 6 }),
+        body: JSON.stringify({ text: question, max: 6, provider }),
       });
       const kj = await kres.json().catch(() => ({ keywords: [] }));
       const kws: string[] = Array.isArray(kj?.keywords) ? kj.keywords : [];
@@ -313,7 +314,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: question, history }),
+        body: JSON.stringify({ prompt: question, history, provider }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -330,7 +331,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
           const pres = await fetch("/api/ai/patch", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ mode: "from_answer", answer, prompt: question, nodes, edges }),
+            body: JSON.stringify({ mode: "from_answer", answer, prompt: question, nodes, edges, provider }),
           });
           if (pres.ok) {
             const p = (await pres.json()) as LlmPatch;
@@ -412,7 +413,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
       const pres = await fetch("/api/ai/patch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "from_answer", answer: prompt.trim(), prompt: prompt.trim(), title: title.trim() || undefined, nodes, edges }),
+        body: JSON.stringify({ mode: "from_answer", answer: prompt.trim(), prompt: prompt.trim(), title: title.trim() || undefined, nodes, edges, provider }),
       });
       if (!pres.ok) {
         const err = await pres.json().catch(() => ({}));
@@ -587,6 +588,17 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
       </div>
     );
   }
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("ai_provider");
+      if (saved === "openai" || saved === "anthropic") setProvider(saved);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try { localStorage.setItem("ai_provider", provider); } catch {}
+  }, [provider]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -772,6 +784,17 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
             <input type="checkbox" checked={autoApply} onChange={(e) => setAutoApply(e.target.checked)} />
             Auto-apply
           </label>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-gray-600">Provider:</span>
+          <select
+            value={provider}
+            onChange={(e) => setProvider(e.target.value === "anthropic" ? "anthropic" : "openai")}
+            className="border rounded px-2 py-1 text-xs"
+          >
+            <option value="openai">OpenAI</option>
+            <option value="anthropic">Anthropic (Claude)</option>
+          </select>
         </div>
         <div className="flex items-center gap-2">
           <select
