@@ -137,6 +137,66 @@ Constraints:
       const inputText = `${system}\n\n${(user.content?.[0] as any)?.text ?? ""}`;
       const body: any = { model, input: inputText, temperature: 0.1, max_output_tokens: 2000 };
       if (model.startsWith("o3")) body.reasoning = { effort: "high" };
+      body.response_format = {
+        type: "json_schema",
+        json_schema: {
+          name: "LlmPatch",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              description: { type: "string" },
+              ops: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    op: { type: "string", enum: ["add_node","update_node","remove_node","add_edge","remove_edge"] },
+                    id: { type: "string" },
+                    node: {
+                      type: "object",
+                      properties: {
+                        id: { type: "string" },
+                        type: { type: "string", enum: ["concept","claim","evidence","source","qa","premise","inference","conclusion"] },
+                        title: { type: "string" },
+                        content: { type: "string" },
+                      },
+                      required: ["id","type","title"],
+                      additionalProperties: false,
+                    },
+                    patch: {
+                      type: "object",
+                      properties: {
+                        id: { type: "string" },
+                        type: { type: "string", enum: ["concept","claim","evidence","source","qa","premise","inference","conclusion"] },
+                        title: { type: "string" },
+                        content: { type: "string" },
+                      },
+                      additionalProperties: true,
+                    },
+                    edge: {
+                      type: "object",
+                      properties: {
+                        id: { type: "string" },
+                        sourceId: { type: "string" },
+                        targetId: { type: "string" },
+                        type: { type: "string", enum: ["supports","refutes","relates_to","cites","infers"] },
+                      },
+                      required: ["id","sourceId","targetId","type"],
+                      additionalProperties: false,
+                    },
+                  },
+                  required: ["op"],
+                  additionalProperties: true,
+                },
+              },
+            },
+            required: ["id","ops"],
+            additionalProperties: false,
+          },
+        },
+      };
       const res = await client.responses.create(body);
 
       const text = (res as any).output_text ?? "";

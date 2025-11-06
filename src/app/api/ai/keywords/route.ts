@@ -40,6 +40,24 @@ export async function POST(req: NextRequest) {
       const prompt = `You extract keywords. Output valid JSON only. Extract ${max} concise keywords or short phrases (2-4 words) from the following text.\nReturn ONLY a JSON object with shape {"keywords": string[]} and no extra keys or text.\nText:\n${text}`;
       const body: any = { model, input: prompt, temperature: 0.2, max_output_tokens: 800 };
       if (model.startsWith("o3")) body.reasoning = { effort: "high" };
+      body.response_format = {
+        type: "json_schema",
+        json_schema: {
+          name: "Keywords",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              keywords: {
+                type: "array",
+                items: { type: "string" }
+              }
+            },
+            required: ["keywords"],
+            additionalProperties: false
+          }
+        }
+      };
       const res = await client.responses.create(body);
       const content = (res as any).output_text ?? "";
       try {
