@@ -69,6 +69,10 @@ export async function ensureTables() {
     try { await c.query(`create extension if not exists pg_trgm`); } catch {}
     try { await c.query(`create index if not exists qa_entries_question_trgm on qa_entries using gin (lower(question) gin_trgm_ops)`); } catch {}
     try { await c.query(`create index if not exists qa_entries_summary_trgm on qa_entries using gin (lower(coalesce(summary,'')) gin_trgm_ops)`); } catch {}
+    // Optional vector search support
+    try { await c.query(`create extension if not exists vector`); } catch {}
+    try { await c.query(`alter table qa_entries add column if not exists embedding vector(1536)`); } catch {}
+    try { await c.query(`create index if not exists qa_entries_embedding_idx on qa_entries using ivfflat (embedding vector_cosine_ops) with (lists = 100)`); } catch {}
 
     await c.query(`
       create table if not exists qa_feedback (
