@@ -135,7 +135,7 @@ Constraints:
     try {
       const model = process.env.OPENAI_MODEL || "gpt-4o";
       const inputText = `${system}\n\n${(user.content?.[0] as any)?.text ?? ""}`;
-      const body: any = { model, input: inputText, temperature: 0.2 };
+      const body: any = { model, input: inputText, temperature: 0.1, max_output_tokens: 2000 };
       if (model.startsWith("o3")) body.reasoning = { effort: "high" };
       const res = await client.responses.create(body);
 
