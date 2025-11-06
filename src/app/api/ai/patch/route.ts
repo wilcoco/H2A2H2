@@ -197,9 +197,19 @@ Constraints:
           },
         },
       };
-      const res = await client.responses.create(body);
-
-      const text = (res as any).output_text ?? "";
+      let text = "";
+      try {
+        const res = await client.responses.create(body);
+        text = (res as any).output_text ?? "";
+      } catch {
+        if (model !== "gpt-4o") {
+          try {
+            const res2 = await client.responses.create({ ...body, model: "gpt-4o", reasoning: undefined });
+            text = (res2 as any).output_text ?? "";
+          } catch {}
+        }
+      }
+      if (!text) return NextResponse.json(buildFallback());
       let parsed: unknown;
       try {
         parsed = JSON.parse(text);

@@ -58,8 +58,18 @@ export async function POST(req: NextRequest) {
           }
         }
       };
-      const res = await client.responses.create(body);
-      const content = (res as any).output_text ?? "";
+      let content = "";
+      try {
+        const res = await client.responses.create(body);
+        content = (res as any).output_text ?? "";
+      } catch {
+        if (model !== "gpt-4o") {
+          try {
+            const res2 = await client.responses.create({ ...body, model: "gpt-4o", reasoning: undefined });
+            content = (res2 as any).output_text ?? "";
+          } catch {}
+        }
+      }
       try {
         const parsed = JSON.parse(content ?? "{}");
         const arr = Array.isArray(parsed?.keywords) ? parsed.keywords.map((s: unknown) => String(s)).filter(Boolean) : [];
