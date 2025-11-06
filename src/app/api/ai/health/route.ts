@@ -5,5 +5,6 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const hasKey = Boolean(process.env.OPENAI_API_KEY);
-  return NextResponse.json({ ok: true, hasKey, model: hasKey ? "gpt-4o-mini" : null });
+  const model = process.env.OPENAI_MODEL || "gpt-4o";
+  return NextResponse.json({ ok: true, hasKey, model: hasKey ? model : null });
 }

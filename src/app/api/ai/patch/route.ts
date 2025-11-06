@@ -133,18 +133,13 @@ Constraints:
     };
     
     try {
-      // Use Chat Completions with JSON mode
-      const completion = await client.chat.completions.create({
-        model: "gpt-4o-mini",
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: system },
-          user,
-        ],
-        temperature: 0.2,
-      });
+      const model = process.env.OPENAI_MODEL || "gpt-4o";
+      const inputText = `${system}\n\n${(user.content?.[0] as any)?.text ?? ""}`;
+      const body: any = { model, input: inputText, temperature: 0.2 };
+      if (model.startsWith("o3")) body.reasoning = { effort: "high" };
+      const res = await client.responses.create(body);
 
-      const text = completion.choices?.[0]?.message?.content ?? "";
+      const text = (res as any).output_text ?? "";
       let parsed: unknown;
       try {
         parsed = JSON.parse(text);

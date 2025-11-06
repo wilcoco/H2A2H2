@@ -36,17 +36,12 @@ export async function POST(req: NextRequest) {
 
     try {
       const client = new OpenAI({ apiKey });
-      const prompt = `Extract ${max} concise keywords or short phrases (2-4 words) from the following text. Return ONLY a JSON object: {\n  "keywords": string[]\n}\nText:\n${text}`;
-      const completion = await client.chat.completions.create({
-        model: "gpt-4o-mini",
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: "You extract keywords. Output valid JSON only." },
-          { role: "user", content: prompt },
-        ],
-        temperature: 0.2,
-      });
-      const content = completion.choices?.[0]?.message?.content ?? "";
+      const model = process.env.OPENAI_MODEL || "gpt-4o";
+      const prompt = `You extract keywords. Output valid JSON only. Extract ${max} concise keywords or short phrases (2-4 words) from the following text.\nReturn ONLY a JSON object with shape {"keywords": string[]} and no extra keys or text.\nText:\n${text}`;
+      const body: any = { model, input: prompt, temperature: 0.2 };
+      if (model.startsWith("o3")) body.reasoning = { effort: "high" };
+      const res = await client.responses.create(body);
+      const content = (res as any).output_text ?? "";
       try {
         const parsed = JSON.parse(content ?? "{}");
         const arr = Array.isArray(parsed?.keywords) ? parsed.keywords.map((s: unknown) => String(s)).filter(Boolean) : [];
@@ -62,3 +57,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ keywords: [] });
   }
 }
+

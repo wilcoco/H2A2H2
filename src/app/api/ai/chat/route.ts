@@ -31,20 +31,20 @@ export async function POST(req: Request) {
     if (!apiKey) return fallback();
 
     const client = new OpenAI({ apiKey });
+    const model = process.env.OPENAI_MODEL || "gpt-4o";
 
-    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-      { role: "system", content: "You are a helpful assistant. Answer concisely in the user's language." },
-      ...input.history.map((m) => ({ role: m.role, content: m.content })),
-      { role: "user", content: input.prompt || "" },
-    ];
+    const sys = "You are a helpful assistant. Answer concisely in the user's language.";
+    const historyText = (input.history || [])
+      .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+      .join("\n");
+    const promptText = input.prompt || "";
+    const combined = `${sys}\n\n${historyText ? `Conversation:\n${historyText}\n\n` : ""}User: ${promptText}`;
 
     try {
-      const completion = await client.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages,
-        temperature: 0.5,
-      });
-      const answer = completion.choices?.[0]?.message?.content ?? "";
+      const body: any = { model, input: combined, temperature: 0.5 };
+      if (model.startsWith("o3")) body.reasoning = { effort: "high" };
+      const res = await client.responses.create(body);
+      const answer = (res as any).output_text?.trim() ?? "";
       if (!answer) return fallback();
       return NextResponse.json({ answer });
     } catch {
@@ -55,3 +55,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Bad Request" }, { status: 400 });
   }
 }
+
