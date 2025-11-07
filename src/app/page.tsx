@@ -56,6 +56,7 @@ export default function Home() {
   const [relNavDirection, setRelNavDirection] = useState<"prev_to_current" | "current_to_prev">("prev_to_current");
   const [forceSourceId, setForceSourceId] = useState<string | null>(null);
   const [provider, setProvider] = useState<"openai" | "anthropic">("openai");
+  const [centerAiMeta, setCenterAiMeta] = useState<{ providerUsed?: "openai" | "anthropic"; modelUsed?: string; fallbackUsed?: boolean } | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -137,10 +138,12 @@ export default function Home() {
       setSelectedQaId(null);
       setCenterQuestion(question);
       setCenterAiAnswer("");
+      setCenterAiMeta(null);
       const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: question, history: [], provider }) });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
       setCenterAiAnswer(String(j?.answer || ""));
+      setCenterAiMeta({ providerUsed: j?.providerUsed as any, modelUsed: j?.modelUsed as any, fallbackUsed: Boolean(j?.fallbackUsed) });
     } catch {}
   }
 
@@ -292,6 +295,9 @@ export default function Home() {
             qaId={selectedQaId || undefined}
             question={!selectedQaId ? centerQuestion : undefined}
             aiAnswer={!selectedQaId ? centerAiAnswer : undefined}
+            aiProvider={!selectedQaId ? centerAiMeta?.providerUsed : undefined}
+            aiModel={!selectedQaId ? centerAiMeta?.modelUsed : undefined}
+            aiFallbackUsed={!selectedQaId ? centerAiMeta?.fallbackUsed : undefined}
             onOpenThread={() => setThreadOpen(true)}
             onKeywordClick={(kw) => { setLeftKeyword(kw); }}
             onSetSource={(id) => {

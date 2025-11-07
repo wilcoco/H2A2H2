@@ -7,6 +7,9 @@ type Props = {
   qaId?: string;
   question?: string;
   aiAnswer?: string;
+  aiProvider?: "openai" | "anthropic";
+  aiModel?: string;
+  aiFallbackUsed?: boolean;
   onOpenThread?: () => void;
   onShared?: (id: string) => void;
   onPinned?: (id: string) => void;
@@ -19,7 +22,7 @@ type Props = {
   onSetCard?: (id: string) => void;
 };
 
-export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread, onShared, onPinned, refreshKey, onSelectQA, currentUserEmail, onKeywordClick, onSetSource, onSetTarget, onSetCard }: Props) {
+export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, aiModel, aiFallbackUsed, onOpenThread, onShared, onPinned, refreshKey, onSelectQA, currentUserEmail, onKeywordClick, onSetSource, onSetTarget, onSetCard }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<any | null>(null);
@@ -411,6 +414,13 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, onOpenThread,
       <div className="flex flex-col gap-2">
         <div className="text-sm font-semibold">Q: {question}</div>
         <div className="text-sm whitespace-pre-wrap">AI Answer: {aiAnswer}</div>
+        {(aiProvider || aiModel) && (
+          <div className="text-[11px] text-gray-600">
+            via {aiProvider === "anthropic" ? "Anthropic (Claude)" : aiProvider === "openai" ? "OpenAI" : "AI"}
+            {aiModel ? ` · ${aiModel}` : ""}
+            {aiFallbackUsed ? " · fallback" : ""}
+          </div>
+        )}
         <div className="text-xs text-gray-600">요약 또는 키워드를 확인하고 공유하면 지식 체계에 등록됩니다.</div>
         <div>
           <div className="text-xs text-gray-600 mb-1">키워드</div>
