@@ -174,7 +174,14 @@ export async function POST(req: Request) {
           try {
             const res = await client.responses.create(base);
             answer = (res as any).output_text?.trim() ?? "";
-          } catch {}
+          } catch {
+            if (model !== "gpt-4o") {
+              try {
+                const res2 = await client.responses.create({ ...base, model: "gpt-4o", reasoning: undefined });
+                answer = (res2 as any).output_text?.trim() ?? "";
+              } catch {}
+            }
+          }
         }
         if (!answer) return fallback();
         const doRefine = process.env.CHAT_REFINE_PASS !== "0";
