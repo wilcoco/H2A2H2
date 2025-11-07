@@ -55,6 +55,7 @@ export default function Home() {
   const [leftKeywordMode, setLeftKeywordMode] = useState<"any" | "all">("any");
   const [relNavDirection, setRelNavDirection] = useState<"prev_to_current" | "current_to_prev">("prev_to_current");
   const [forceSourceId, setForceSourceId] = useState<string | null>(null);
+  const [provider, setProvider] = useState<"openai" | "anthropic">("openai");
 
   useEffect(() => {
     let mounted = true;
@@ -67,6 +68,8 @@ export default function Home() {
     try {
       const saved = localStorage.getItem("rel_nav_direction");
       if (saved === "current_to_prev" || saved === "prev_to_current") setRelNavDirection(saved);
+      const prov = localStorage.getItem("ai_provider");
+      if (prov === "openai" || prov === "anthropic") setProvider(prov);
     } catch {}
     return () => { mounted = false; };
   }, []);
@@ -74,6 +77,10 @@ export default function Home() {
   useEffect(() => {
     try { localStorage.setItem("rel_nav_direction", relNavDirection); } catch {}
   }, [relNavDirection]);
+
+  useEffect(() => {
+    try { localStorage.setItem("ai_provider", provider); } catch {}
+  }, [provider]);
 
   // Hydrate pins when user changes
   useEffect(() => {
@@ -130,7 +137,7 @@ export default function Home() {
       setSelectedQaId(null);
       setCenterQuestion(question);
       setCenterAiAnswer("");
-      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: question, history: [] }) });
+      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: question, history: [], provider }) });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
       setCenterAiAnswer(String(j?.answer || ""));
@@ -227,6 +234,17 @@ export default function Home() {
         <h1 className="text-base font-semibold">업무 지식 편집기</h1>
         <div className="flex items-center gap-3">
           <div className="text-xs text-gray-500 hidden sm:block">MVP · 3-panels</div>
+          <div className="flex items-center gap-1 text-xs">
+            <span className="text-gray-600">Provider</span>
+            <select
+              className="border rounded px-2 py-1 text-xs"
+              value={provider}
+              onChange={(e) => setProvider(e.target.value === "anthropic" ? "anthropic" : "openai")}
+            >
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic (Claude)</option>
+            </select>
+          </div>
           {user ? (
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-700">{user.name || user.email}</span>
