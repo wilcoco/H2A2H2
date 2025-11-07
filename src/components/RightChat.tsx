@@ -51,6 +51,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
   const [noteText, setNoteText] = useState<Record<string, string>>({});
   const [voteBusy, setVoteBusy] = useState<Record<string, boolean>>({});
   const [provider, setProvider] = useState<"openai" | "anthropic">("openai");
+  const [detail, setDetail] = useState<"short" | "normal" | "long">("normal");
 
   async function useQA(id: string) {
     try {
@@ -128,7 +129,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
 
   async function aiAnswer(qaId: string, question: string) {
     try {
-      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: question, history: [], provider }) });
+      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: question, history: [], provider, detail }) });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err?.error || "Chat failed");
@@ -314,7 +315,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: question, history, provider }),
+        body: JSON.stringify({ prompt: question, history, provider, detail }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -593,6 +594,8 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
     try {
       const saved = localStorage.getItem("ai_provider");
       if (saved === "openai" || saved === "anthropic") setProvider(saved);
+      const det = localStorage.getItem("ai_detail");
+      if (det === "short" || det === "normal" || det === "long") setDetail(det);
     } catch {}
   }, []);
 
@@ -601,10 +604,18 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
   }, [provider]);
 
   useEffect(() => {
+    try { localStorage.setItem("ai_detail", detail); } catch {}
+  }, [detail]);
+
+  useEffect(() => {
     function onStorage(e: StorageEvent) {
       if (e.key === "ai_provider") {
         const v = e.newValue || "";
         if (v === "openai" || v === "anthropic") setProvider(v as "openai" | "anthropic");
+      }
+      if (e.key === "ai_detail") {
+        const v = e.newValue || "";
+        if (v === "short" || v === "normal" || v === "long") setDetail(v as any);
       }
     }
     window.addEventListener("storage", onStorage);

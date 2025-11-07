@@ -57,6 +57,7 @@ export default function Home() {
   const [forceSourceId, setForceSourceId] = useState<string | null>(null);
   const [provider, setProvider] = useState<"openai" | "anthropic">("openai");
   const [centerAiMeta, setCenterAiMeta] = useState<{ providerUsed?: "openai" | "anthropic"; modelUsed?: string; fallbackUsed?: boolean } | null>(null);
+  const [detail, setDetail] = useState<"short" | "normal" | "long">("normal");
 
   useEffect(() => {
     let mounted = true;
@@ -71,6 +72,8 @@ export default function Home() {
       if (saved === "current_to_prev" || saved === "prev_to_current") setRelNavDirection(saved);
       const prov = localStorage.getItem("ai_provider");
       if (prov === "openai" || prov === "anthropic") setProvider(prov);
+      const det = localStorage.getItem("ai_detail");
+      if (det === "short" || det === "normal" || det === "long") setDetail(det);
     } catch {}
     return () => { mounted = false; };
   }, []);
@@ -82,6 +85,10 @@ export default function Home() {
   useEffect(() => {
     try { localStorage.setItem("ai_provider", provider); } catch {}
   }, [provider]);
+
+  useEffect(() => {
+    try { localStorage.setItem("ai_detail", detail); } catch {}
+  }, [detail]);
 
   // Hydrate pins when user changes
   useEffect(() => {
@@ -139,7 +146,7 @@ export default function Home() {
       setCenterQuestion(question);
       setCenterAiAnswer("");
       setCenterAiMeta(null);
-      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: question, history: [], provider }) });
+      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: question, history: [], provider, detail }) });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
       setCenterAiAnswer(String(j?.answer || ""));
@@ -246,6 +253,21 @@ export default function Home() {
             >
               <option value="openai">OpenAI</option>
               <option value="anthropic">Anthropic (Claude)</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-1 text-xs">
+            <span className="text-gray-600">답변 길이</span>
+            <select
+              className="border rounded px-2 py-1 text-xs"
+              value={detail}
+              onChange={(e) => {
+                const v = e.target.value;
+                setDetail(v === "short" ? "short" : v === "long" ? "long" : "normal");
+              }}
+            >
+              <option value="short">간결</option>
+              <option value="normal">중간</option>
+              <option value="long">자세함</option>
             </select>
           </div>
           {user ? (

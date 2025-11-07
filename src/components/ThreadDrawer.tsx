@@ -35,6 +35,7 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
   const [relType, setRelType] = useState<string>("precedes");
   const [connecting, setConnecting] = useState(false);
   const [provider, setProvider] = useState<"openai" | "anthropic">("openai");
+  const [detail, setDetail] = useState<"short" | "normal" | "long">("normal");
 
   useEffect(() => {
     let mounted = true;
@@ -63,6 +64,8 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
     try {
       const saved = localStorage.getItem("ai_provider");
       if (saved === "openai" || saved === "anthropic") setProvider(saved);
+      const det = localStorage.getItem("ai_detail");
+      if (det === "short" || det === "normal" || det === "long") setDetail(det);
     } catch {}
   }, []);
 
@@ -84,7 +87,7 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
 
   async function aiAnswer(id: string, q: string) {
     try {
-      const r = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider }) });
+      const r = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider, detail }) });
       if (!r.ok) throw new Error("AI failed");
       const j = await r.json();
       const answer = String(j?.answer || "");
@@ -94,6 +97,21 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
       await refresh();
     } catch {}
   }
+
+  useEffect(() => {
+    function onStorage(e: StorageEvent) {
+      if (e.key === "ai_provider") {
+        const v = e.newValue || "";
+        if (v === "openai" || v === "anthropic") setProvider(v as any);
+      }
+      if (e.key === "ai_detail") {
+        const v = e.newValue || "";
+        if (v === "short" || v === "normal" || v === "long") setDetail(v as any);
+      }
+    }
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
   async function refresh() {
     if (!rootId) return;

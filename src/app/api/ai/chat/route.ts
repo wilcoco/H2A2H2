@@ -15,6 +15,7 @@ const Body = z.object({
   prompt: z.string().optional().default(""),
   history: z.array(ChatMsg).optional().default([]),
   provider: z.enum(["openai", "anthropic"]).optional(),
+  detail: z.enum(["short", "normal", "long"]).optional(),
 });
 
 function kwHeuristic(text: string, max = 8): string[] {
@@ -38,6 +39,7 @@ export async function POST(req: Request) {
     const json = await req.json();
     const input = Body.parse(json);
     const explicitProvider = Boolean((json as any)?.provider);
+    const detail = (input.detail ?? (process.env.ANSWER_LENGTH as any) ?? "normal") as "short" | "normal" | "long";
 
     const fallback = () => {
       const answer = input.prompt
@@ -53,7 +55,15 @@ export async function POST(req: Request) {
     const model = process.env.OPENAI_MODEL || "gpt-4o";
     const anthropicModel = process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-latest";
 
-    const sys = "You are a helpful assistant. Answer in the user's language. Provide ONLY the final answer. Do not include analysis or review sections. Do not use headings like '검토 결과', '개선점', '불확실성', or '추가 확인 질문'. Do not enumerate sections (no (1)(2)(3)). Write concise sentences or short bullet points. Include a brief caveat only if strictly necessary for correctness.";
+    const styleLine =
+      detail === "short"
+        ? "Be concise. Aim for 3–5 sentences."
+        : detail === "long"
+        ? "Be thorough and well-structured with clear paragraphs and bullet points as needed."
+        : "Be balanced and complete without unnecessary brevity.";
+    const sys = `You are a helpful assistant. Answer in the user's language. Provide ONLY the final answer. Do not include analysis or review sections. Do not use headings like '검토 결과', '개선점', '불확실성', or '추가 확인 질문'. Do not enumerate sections (no (1)(2)(3)). Include a brief caveat only if strictly necessary for correctness. ${styleLine}`;
+    const maxTokens = detail === "long" ? 2500 : detail === "short" ? 800 : 1500;
+    const refineTokens = Math.min(maxTokens + 400, 3000);
     const historyText = (input.history || [])
       .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
       .join("\n");
@@ -160,7 +170,7 @@ export async function POST(req: Request) {
               body: JSON.stringify({
                 model: anthropicModel,
                 system: sys,
-                max_tokens: 1200,
+                max_tokens: maxTokens,
                 temperature: 0.2,
                 messages: [
                   { role: "user", content: [{ type: "text", text: anthUser }] },
@@ -173,7 +183,7 @@ export async function POST(req: Request) {
           } catch {}
         }
         if (!answer && client && !explicitProvider) {
-          const base: any = { model, input: combined, temperature: 0.2, max_output_tokens: 1200 };
+          const base: any = { model, input: combined, temperature: 0.2, max_output_tokens: maxTokens };
           if (model.startsWith("o3")) base.reasoning = { effort: "high" };
           try {
             const res = await client.responses.create(base);
@@ -193,7 +203,7 @@ export async function POST(req: Request) {
         const doRefine = process.env.CHAT_REFINE_PASS !== "0";
         if (doRefine) {
           try {
-            const refineInstr = "Rewrite into a final, direct answer only. Remove any meta-analysis, review-style sections, or numbered structure. Keep the user's language and tone. Do not add follow-up questions. Add a brief caveat only if strictly necessary.";
+            const refineInstr = `Rewrite into a final, direct answer only. Remove any meta-analysis, review-style sections, or numbered structure. Keep the user's language and tone. Do not add follow-up questions. ${detail === "short" ? "Keep it concise (3–5 sentences)." : detail === "long" ? "Make it thorough and well-structured." : "Balance brevity and completeness."}`;
             const refineInput = `${refineInstr}\n\nQuestion: ${promptText}\n\nDraft:\n${answer}\n\n${relatedText ? `Context (may be partial):\n${relatedText}\n` : ""}`;
             if (antKey) {
               try {
@@ -207,7 +217,7 @@ export async function POST(req: Request) {
                   body: JSON.stringify({
                     model: anthropicModel,
                     system: sys,
-                    max_tokens: 1500,
+                    max_tokens: refineTokens,
                     temperature: 0.2,
                     messages: [
                       { role: "user", content: [{ type: "text", text: refineInput }] },
@@ -220,7 +230,7 @@ export async function POST(req: Request) {
                 if (improved) answer = improved;
               } catch {}
             } else if (client) {
-              const refineBody: any = { model, input: refineInput, temperature: 0.2, max_output_tokens: 1500 };
+              const refineBody: any = { model, input: refineInput, temperature: 0.2, max_output_tokens: refineTokens };
               if (model.startsWith("o3")) refineBody.reasoning = { effort: "high" };
               let improved = "";
               try {
@@ -238,10 +248,10 @@ export async function POST(req: Request) {
             }
           } catch {}
         }
-        return NextResponse.json({ answer, providerUsed, modelUsed, fallbackUsed });
+        return NextResponse.json({ answer, providerUsed, modelUsed, fallbackUsed, detailUsed: detail });
       } else {
         if (client) {
-          const base: any = { model, input: combined, temperature: 0.2, max_output_tokens: 1200 };
+          const base: any = { model, input: combined, temperature: 0.2, max_output_tokens: maxTokens };
           if (model.startsWith("o3")) base.reasoning = { effort: "high" };
           try {
             const res = await client.responses.create(base);
@@ -267,7 +277,7 @@ export async function POST(req: Request) {
               body: JSON.stringify({
                 model: anthropicModel,
                 system: sys,
-                max_tokens: 1200,
+                max_tokens: maxTokens,
                 temperature: 0.2,
                 messages: [
                   { role: "user", content: [{ type: "text", text: anthUser }] },
@@ -284,9 +294,9 @@ export async function POST(req: Request) {
         const doRefine = process.env.CHAT_REFINE_PASS !== "0";
         if (doRefine && client) {
           try {
-            const refineInstr = "Rewrite into a final, direct answer only. Remove any meta-analysis, review-style sections, or numbered structure. Keep the user's language and tone. Do not add follow-up questions. Add a brief caveat only if strictly necessary.";
+            const refineInstr = `Rewrite into a final, direct answer only. Remove any meta-analysis, review-style sections, or numbered structure. Keep the user's language and tone. Do not add follow-up questions. ${detail === "short" ? "Keep it concise (3–5 sentences)." : detail === "long" ? "Make it thorough and well-structured." : "Balance brevity and completeness."}`;
             const refineInput = `${refineInstr}\n\nQuestion: ${promptText}\n\nDraft:\n${answer}\n\n${relatedText ? `Context (may be partial):\n${relatedText}\n` : ""}`;
-            const refineBody: any = { model, input: refineInput, temperature: 0.2, max_output_tokens: 1500 };
+            const refineBody: any = { model, input: refineInput, temperature: 0.2, max_output_tokens: refineTokens };
             if (model.startsWith("o3")) refineBody.reasoning = { effort: "high" };
             let improved = "";
             try {
@@ -303,7 +313,7 @@ export async function POST(req: Request) {
             if (improved) answer = improved;
           } catch {}
         }
-        return NextResponse.json({ answer, providerUsed, modelUsed, fallbackUsed });
+        return NextResponse.json({ answer, providerUsed, modelUsed, fallbackUsed, detailUsed: detail });
       }
     } catch {
       return fallback();
