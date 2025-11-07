@@ -160,7 +160,7 @@ Constraints:
             text = parts.filter((p) => p?.type === "text").map((p) => String(p.text || "")).join("\n");
           } catch {}
         }
-        if (!text) {
+        if (!text && client) {
           const body: any = { model, input: inputText, temperature: 0.1, max_output_tokens: 2000 };
           if (model.startsWith("o3")) body.reasoning = { effort: "high" };
           try {
@@ -231,14 +231,42 @@ Constraints:
             },
           },
         };
-        try {
-          const res = await client.responses.create(body);
-          text = (res as any).output_text ?? "";
-        } catch {
-          if (model !== "gpt-4o") {
+        if (client) {
+          try {
+            const res = await client.responses.create(body);
+            text = (res as any).output_text ?? "";
+          } catch {
+            if (model !== "gpt-4o") {
+              try {
+                const res2 = await client.responses.create({ ...body, model: "gpt-4o", reasoning: undefined });
+                text = (res2 as any).output_text ?? "";
+              } catch {}
+            }
+          }
+        } else {
+          const antKey = process.env.ANTHROPIC_API_KEY;
+          if (antKey) {
             try {
-              const res2 = await client.responses.create({ ...body, model: "gpt-4o", reasoning: undefined });
-              text = (res2 as any).output_text ?? "";
+              const resp = await fetch("https://api.anthropic.com/v1/messages", {
+                method: "POST",
+                headers: {
+                  "content-type": "application/json",
+                  "x-api-key": antKey,
+                  "anthropic-version": "2023-06-01",
+                },
+                body: JSON.stringify({
+                  model: anthropicModel,
+                  system: "Return ONLY a JSON object matching the described schema. No markdown.",
+                  max_tokens: 2000,
+                  temperature: 0.1,
+                  messages: [
+                    { role: "user", content: [{ type: "text", text: inputText }] },
+                  ],
+                }),
+              });
+              const j = await resp.json().catch(() => ({} as any));
+              const parts: Array<{ type: string; text?: string }> = Array.isArray(j?.content) ? j.content : [];
+              text = parts.filter((p) => p?.type === "text").map((p) => String(p.text || "")).join("\n");
             } catch {}
           }
         }

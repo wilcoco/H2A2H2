@@ -144,29 +144,30 @@ export async function POST(req: Request) {
       let answer = "";
       if (provider === "anthropic") {
         const antKey = process.env.ANTHROPIC_API_KEY;
-        if (!antKey) return fallback();
-        try {
-          const resp = await fetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            headers: {
-              "content-type": "application/json",
-              "x-api-key": antKey,
-              "anthropic-version": "2023-06-01",
-            },
-            body: JSON.stringify({
-              model: anthropicModel,
-              system: sys,
-              max_tokens: 1200,
-              temperature: 0.2,
-              messages: [
-                { role: "user", content: [{ type: "text", text: anthUser }] },
-              ],
-            }),
-          });
-          const j = await resp.json().catch(() => ({} as any));
-          const parts: Array<{ type: string; text?: string }> = Array.isArray(j?.content) ? j.content : [];
-          answer = parts.filter((p) => p?.type === "text").map((p) => String(p.text || "")).join("\n").trim();
-        } catch {}
+        if (antKey) {
+          try {
+            const resp = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                "x-api-key": antKey,
+                "anthropic-version": "2023-06-01",
+              },
+              body: JSON.stringify({
+                model: anthropicModel,
+                system: sys,
+                max_tokens: 1200,
+                temperature: 0.2,
+                messages: [
+                  { role: "user", content: [{ type: "text", text: anthUser }] },
+                ],
+              }),
+            });
+            const j = await resp.json().catch(() => ({} as any));
+            const parts: Array<{ type: string; text?: string }> = Array.isArray(j?.content) ? j.content : [];
+            answer = parts.filter((p) => p?.type === "text").map((p) => String(p.text || "")).join("\n").trim();
+          } catch {}
+        }
         if (!answer && client) {
           const base: any = { model, input: combined, temperature: 0.2, max_output_tokens: 1200 };
           if (model.startsWith("o3")) base.reasoning = { effort: "high" };
@@ -181,29 +182,47 @@ export async function POST(req: Request) {
           try {
             const refineInstr = "Review and improve the draft for accuracy, completeness, clarity, and structure. Keep the same language as the user. Do not invent sources. If uncertain, state limits.";
             const refineInput = `${refineInstr}\n\nQuestion: ${promptText}\n\nDraft:\n${answer}\n\n${relatedText ? `Context (may be partial):\n${relatedText}\n` : ""}`;
-            try {
-              const resp2 = await fetch("https://api.anthropic.com/v1/messages", {
-                method: "POST",
-                headers: {
-                  "content-type": "application/json",
-                  "x-api-key": antKey,
-                  "anthropic-version": "2023-06-01",
-                },
-                body: JSON.stringify({
-                  model: anthropicModel,
-                  system: sys,
-                  max_tokens: 1500,
-                  temperature: 0.2,
-                  messages: [
-                    { role: "user", content: [{ type: "text", text: refineInput }] },
-                  ],
-                }),
-              });
-              const jj = await resp2.json().catch(() => ({} as any));
-              const parts2: Array<{ type: string; text?: string }> = Array.isArray(jj?.content) ? jj.content : [];
-              const improved = parts2.filter((p) => p?.type === "text").map((p) => String(p.text || "")).join("\n").trim();
+            if (antKey) {
+              try {
+                const resp2 = await fetch("https://api.anthropic.com/v1/messages", {
+                  method: "POST",
+                  headers: {
+                    "content-type": "application/json",
+                    "x-api-key": antKey,
+                    "anthropic-version": "2023-06-01",
+                  },
+                  body: JSON.stringify({
+                    model: anthropicModel,
+                    system: sys,
+                    max_tokens: 1500,
+                    temperature: 0.2,
+                    messages: [
+                      { role: "user", content: [{ type: "text", text: refineInput }] },
+                    ],
+                  }),
+                });
+                const jj = await resp2.json().catch(() => ({} as any));
+                const parts2: Array<{ type: string; text?: string }> = Array.isArray(jj?.content) ? jj.content : [];
+                const improved = parts2.filter((p) => p?.type === "text").map((p) => String(p.text || "")).join("\n").trim();
+                if (improved) answer = improved;
+              } catch {}
+            } else if (client) {
+              const refineBody: any = { model, input: refineInput, temperature: 0.2, max_output_tokens: 1500 };
+              if (model.startsWith("o3")) refineBody.reasoning = { effort: "high" };
+              let improved = "";
+              try {
+                const r1 = await client.responses.create(refineBody);
+                improved = (r1 as any).output_text?.trim() ?? "";
+              } catch {
+                if (model !== "gpt-4o") {
+                  try {
+                    const r2 = await client.responses.create({ ...refineBody, model: "gpt-4o", reasoning: undefined });
+                    improved = (r2 as any).output_text?.trim() ?? "";
+                  } catch {}
+                }
+              }
               if (improved) answer = improved;
-            } catch {}
+            }
           } catch {}
         }
         return NextResponse.json({ answer });
