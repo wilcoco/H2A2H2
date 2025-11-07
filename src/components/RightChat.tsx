@@ -600,6 +600,17 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
     try { localStorage.setItem("ai_provider", provider); } catch {}
   }, [provider]);
 
+  useEffect(() => {
+    function onStorage(e: StorageEvent) {
+      if (e.key === "ai_provider") {
+        const v = e.newValue || "";
+        if (v === "openai" || v === "anthropic") setProvider(v as "openai" | "anthropic");
+      }
+    }
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
   return (
     <div className="flex flex-col gap-4">
       <h2 className="text-lg font-semibold">AI Q&A</h2>

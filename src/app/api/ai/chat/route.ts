@@ -53,7 +53,7 @@ export async function POST(req: Request) {
     const model = process.env.OPENAI_MODEL || "gpt-4o";
     const anthropicModel = process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-latest";
 
-    const sys = "You are a helpful assistant. Answer in the user's language. Output structure: (1) A 1-2 sentence answer first. (2) 2-3 key reasons or evidence. (3) Uncertainty/limits if any. (4) If needed, one clarifying question at the end.";
+    const sys = "You are a helpful assistant. Answer in the user's language. Provide ONLY the final answer. Do not include analysis or review sections. Do not use headings like '검토 결과', '개선점', '불확실성', or '추가 확인 질문'. Do not enumerate sections (no (1)(2)(3)). Write concise sentences or short bullet points. Include a brief caveat only if strictly necessary for correctness.";
     const historyText = (input.history || [])
       .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
       .join("\n");
@@ -193,7 +193,7 @@ export async function POST(req: Request) {
         const doRefine = process.env.CHAT_REFINE_PASS !== "0";
         if (doRefine) {
           try {
-            const refineInstr = "Review and improve the draft for accuracy, completeness, clarity, and structure. Keep the same language as the user. Do not invent sources. If uncertain, state limits.";
+            const refineInstr = "Rewrite into a final, direct answer only. Remove any meta-analysis, review-style sections, or numbered structure. Keep the user's language and tone. Do not add follow-up questions. Add a brief caveat only if strictly necessary.";
             const refineInput = `${refineInstr}\n\nQuestion: ${promptText}\n\nDraft:\n${answer}\n\n${relatedText ? `Context (may be partial):\n${relatedText}\n` : ""}`;
             if (antKey) {
               try {
@@ -284,7 +284,7 @@ export async function POST(req: Request) {
         const doRefine = process.env.CHAT_REFINE_PASS !== "0";
         if (doRefine && client) {
           try {
-            const refineInstr = "Review and improve the draft for accuracy, completeness, clarity, and structure. Keep the same language as the user. Do not invent sources. If uncertain, state limits.";
+            const refineInstr = "Rewrite into a final, direct answer only. Remove any meta-analysis, review-style sections, or numbered structure. Keep the user's language and tone. Do not add follow-up questions. Add a brief caveat only if strictly necessary.";
             const refineInput = `${refineInstr}\n\nQuestion: ${promptText}\n\nDraft:\n${answer}\n\n${relatedText ? `Context (may be partial):\n${relatedText}\n` : ""}`;
             const refineBody: any = { model, input: refineInput, temperature: 0.2, max_output_tokens: 1500 };
             if (model.startsWith("o3")) refineBody.reasoning = { effort: "high" };
