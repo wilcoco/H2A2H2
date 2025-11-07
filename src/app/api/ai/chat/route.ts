@@ -37,6 +37,7 @@ export async function POST(req: Request) {
   try {
     const json = await req.json();
     const input = Body.parse(json);
+    const explicitProvider = Boolean((json as any)?.provider);
 
     const fallback = () => {
       const answer = input.prompt
@@ -142,6 +143,9 @@ export async function POST(req: Request) {
 
     try {
       let answer = "";
+      let providerUsed: "openai" | "anthropic" | "fallback" = provider;
+      let modelUsed: string = "";
+      let fallbackUsed = false;
       if (provider === "anthropic") {
         const antKey = process.env.ANTHROPIC_API_KEY;
         if (antKey) {
@@ -168,7 +172,7 @@ export async function POST(req: Request) {
             answer = parts.filter((p) => p?.type === "text").map((p) => String(p.text || "")).join("\n").trim();
           } catch {}
         }
-        if (!answer && client) {
+        if (!answer && client && !explicitProvider) {
           const base: any = { model, input: combined, temperature: 0.2, max_output_tokens: 1200 };
           if (model.startsWith("o3")) base.reasoning = { effort: "high" };
           try {
@@ -182,8 +186,10 @@ export async function POST(req: Request) {
               } catch {}
             }
           }
+          if (answer) { providerUsed = "openai"; modelUsed = model; fallbackUsed = true; }
         }
-        if (!answer) return fallback();
+        if (!answer) return NextResponse.json({ answer: "", error: "anthropic_failed", providerExpected: provider, modelExpected: anthropicModel });
+        providerUsed = "anthropic"; modelUsed = anthropicModel;
         const doRefine = process.env.CHAT_REFINE_PASS !== "0";
         if (doRefine) {
           try {
@@ -232,7 +238,7 @@ export async function POST(req: Request) {
             }
           } catch {}
         }
-        return NextResponse.json({ answer });
+        return NextResponse.json({ answer, providerUsed, modelUsed, fallbackUsed });
       } else {
         if (client) {
           const base: any = { model, input: combined, temperature: 0.2, max_output_tokens: 1200 };
@@ -248,7 +254,8 @@ export async function POST(req: Request) {
               } catch {}
             }
           }
-        } else if (anthropicKey) {
+          if (answer) { providerUsed = "openai"; modelUsed = model; }
+        } else if (anthropicKey && !explicitProvider) {
           try {
             const resp = await fetch("https://api.anthropic.com/v1/messages", {
               method: "POST",
@@ -271,8 +278,9 @@ export async function POST(req: Request) {
             const parts: Array<{ type: string; text?: string }> = Array.isArray(j?.content) ? j.content : [];
             answer = parts.filter((p) => p?.type === "text").map((p) => String(p.text || "")).join("\n").trim();
           } catch {}
+          if (answer) { providerUsed = "anthropic"; modelUsed = anthropicModel; fallbackUsed = true; }
         }
-        if (!answer) return fallback();
+        if (!answer) return NextResponse.json({ answer: "", error: "openai_failed", providerExpected: provider, modelExpected: model });
         const doRefine = process.env.CHAT_REFINE_PASS !== "0";
         if (doRefine && client) {
           try {
@@ -295,7 +303,7 @@ export async function POST(req: Request) {
             if (improved) answer = improved;
           } catch {}
         }
-        return NextResponse.json({ answer });
+        return NextResponse.json({ answer, providerUsed, modelUsed, fallbackUsed });
       }
     } catch {
       return fallback();

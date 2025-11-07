@@ -34,6 +34,7 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
   const [toId, setToId] = useState<string | null>(null);
   const [relType, setRelType] = useState<string>("precedes");
   const [connecting, setConnecting] = useState(false);
+  const [provider, setProvider] = useState<"openai" | "anthropic">("openai");
 
   useEffect(() => {
     let mounted = true;
@@ -59,6 +60,13 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
   }, [open, qaId]);
 
   useEffect(() => {
+    try {
+      const saved = localStorage.getItem("ai_provider");
+      if (saved === "openai" || saved === "anthropic") setProvider(saved);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
     if (tab === "map") void loadMap();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, rootId]);
@@ -76,7 +84,7 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
 
   async function aiAnswer(id: string, q: string) {
     try {
-      const r = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [] }) });
+      const r = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider }) });
       if (!r.ok) throw new Error("AI failed");
       const j = await r.json();
       const answer = String(j?.answer || "");
