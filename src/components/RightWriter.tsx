@@ -16,6 +16,7 @@ export default function RightWriter({ qaId, currentUserEmail, onSaved }: Props) 
   const [contentHtml, setContentHtml] = useState("");
   const editorRef = useRef<HTMLDivElement | null>(null);
   const [createdBy, setCreatedBy] = useState<string | undefined>(undefined);
+  const lastRangeRef = useRef<Range | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -43,8 +44,41 @@ export default function RightWriter({ qaId, currentUserEmail, onSaved }: Props) 
     return () => { active = false; };
   }, [qaId]);
 
-  function exec(cmd: string) {
-    try { document.execCommand(cmd); } catch {}
+  useEffect(() => {
+    // Ensure Enter creates paragraphs
+    try { document.execCommand("defaultParagraphSeparator", false, "p"); } catch {}
+    function onSelChange() {
+      try {
+        const sel = window.getSelection();
+        const ed = editorRef.current;
+        if (!sel || sel.rangeCount === 0 || !ed) return;
+        const node = sel.anchorNode as Node | null;
+        if (node && (node === ed || ed.contains(node))) {
+          lastRangeRef.current = sel.getRangeAt(0);
+        }
+      } catch {}
+    }
+    document.addEventListener("selectionchange", onSelChange);
+    return () => document.removeEventListener("selectionchange", onSelChange);
+  }, []);
+
+  function focusEditor() {
+    const el = editorRef.current;
+    if (!el) return;
+    el.focus();
+    try {
+      const sel = window.getSelection();
+      if (sel && lastRangeRef.current) {
+        sel.removeAllRanges();
+        sel.addRange(lastRangeRef.current);
+      }
+    } catch {}
+  }
+
+  function exec(cmd: string, value?: string) {
+    focusEditor();
+    try { document.execCommand(cmd, false, value); } catch {}
+    try { setContentHtml(editorRef.current?.innerHTML || ""); } catch {}
   }
 
   function escapeHtml(s: string): string {
@@ -98,9 +132,25 @@ export default function RightWriter({ qaId, currentUserEmail, onSaved }: Props) 
         <div className="flex items-center gap-2 mb-1">
           <div className="text-xs text-gray-600">내용</div>
           <div className="ml-auto flex items-center gap-1">
-            <button className="text-[11px] px-2 py-0.5 rounded border" onClick={() => exec("bold")}>B</button>
-            <button className="text-[11px] px-2 py-0.5 rounded border" onClick={() => exec("italic")}>I</button>
-            <button className="text-[11px] px-2 py-0.5 rounded border" onClick={() => exec("insertUnorderedList")}>• List</button>
+            <button className="text-[11px] px-2 py-0.5 rounded border" title="굵게" onClick={() => exec("bold")}>B</button>
+            <button className="text-[11px] px-2 py-0.5 rounded border" title="기울임" onClick={() => exec("italic")}>I</button>
+            <button className="text-[11px] px-2 py-0.5 rounded border" title="밑줄" onClick={() => exec("underline")}>U</button>
+            <button className="text-[11px] px-2 py-0.5 rounded border" title="취소선" onClick={() => exec("strikeThrough")}>S</button>
+            <span className="mx-1 text-gray-300">|</span>
+            <button className="text-[11px] px-2 py-0.5 rounded border" title="H1" onClick={() => exec("formatBlock", "H1")}>H1</button>
+            <button className="text-[11px] px-2 py-0.5 rounded border" title="H2" onClick={() => exec("formatBlock", "H2")}>H2</button>
+            <button className="text-[11px] px-2 py-0.5 rounded border" title="인용" onClick={() => exec("formatBlock", "BLOCKQUOTE")}>❝</button>
+            <button className="text-[11px] px-2 py-0.5 rounded border" title="코드" onClick={() => exec("formatBlock", "PRE")}>{"< >"}</button>
+            <span className="mx-1 text-gray-300">|</span>
+            <button className="text-[11px] px-2 py-0.5 rounded border" title="불릿" onClick={() => exec("insertUnorderedList")}>• List</button>
+            <button className="text-[11px] px-2 py-0.5 rounded border" title="번호" onClick={() => exec("insertOrderedList")}>1. List</button>
+            <span className="mx-1 text-gray-300">|</span>
+            <button className="text-[11px] px-2 py-0.5 rounded border" title="링크" onClick={() => { const u = prompt("URL"); if (u) exec("createLink", u); }}>🔗</button>
+            <button className="text-[11px] px-2 py-0.5 rounded border" title="실행 취소" onClick={() => exec("undo")}>↶</button>
+            <button className="text-[11px] px-2 py-0.5 rounded border" title="다시 실행" onClick={() => exec("redo")}>↷</button>
+            <span className="mx-1 text-gray-300">|</span>
+            <button className="text-[11px] px-2 py-0.5 rounded border" title="서식 제거" onClick={() => exec("removeFormat")}>Tx</button>
+            <button className="text-[11px] px-2 py-0.5 rounded border" title="모두 지우기" onClick={() => { if (editorRef.current) { editorRef.current.innerHTML = ""; setContentHtml(""); } }}>Clear</button>
           </div>
         </div>
         <div
@@ -108,7 +158,20 @@ export default function RightWriter({ qaId, currentUserEmail, onSaved }: Props) 
           className="min-h-[160px] rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60"
           contentEditable
           suppressContentEditableWarning
+          tabIndex={0}
           onInput={(e) => setContentHtml((e.target as HTMLDivElement).innerHTML)}
+          onMouseUp={() => {
+            try {
+              const sel = window.getSelection();
+              if (sel && sel.rangeCount > 0) lastRangeRef.current = sel.getRangeAt(0);
+            } catch {}
+          }}
+          onKeyUp={() => {
+            try {
+              const sel = window.getSelection();
+              if (sel && sel.rangeCount > 0) lastRangeRef.current = sel.getRangeAt(0);
+            } catch {}
+          }}
           dangerouslySetInnerHTML={{ __html: contentHtml }}
         />
       </div>
