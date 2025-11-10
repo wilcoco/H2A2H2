@@ -10,9 +10,10 @@ export async function POST(req: NextRequest) {
     const qaId: string = (body?.qaId ?? "").toString();
     const answer: string | undefined = typeof body?.answer === "string" ? String(body.answer) : undefined;
     let summary: string | undefined = typeof body?.summary === "string" ? String(body.summary) : undefined;
+    const question: string | undefined = typeof body?.question === "string" ? String(body.question) : undefined;
     const patch: any | undefined = body?.patch ?? undefined;
-    if (!qaId || (!((answer || "").trim()) && !(summary && summary.trim()))) {
-      return NextResponse.json({ error: "Missing answer or summary" }, { status: 400 });
+    if (!qaId || (!((answer || "").trim()) && !(summary && summary.trim()) && !(question && question.trim()))) {
+      return NextResponse.json({ error: "Missing fields" }, { status: 400 });
     }
 
     // derive summary fallback if not provided but answer exists
@@ -23,10 +24,18 @@ export async function POST(req: NextRequest) {
       } catch {}
     }
 
+    function normalize(text: string): string { return text.toLowerCase().replace(/\s+/g, " ").trim(); }
+
     await withConn(async (c) => {
       await c.query(
-        `update qa_entries set answer = coalesce($2, answer), summary = coalesce($3, summary), patch = coalesce($4, patch) where id = $1`,
-        [qaId, (answer || "").trim() ? answer : null, summary ?? null, patch ?? null]
+        `update qa_entries
+            set answer = coalesce($2, answer),
+                summary = coalesce($3, summary),
+                patch = coalesce($4, patch),
+                question = coalesce($5, question),
+                norm_question = case when $5 is not null and length(trim($5)) > 0 then $6 else norm_question end
+          where id = $1`,
+        [qaId, (answer || "").trim() ? answer : null, summary ?? null, patch ?? null, (question || "").trim() ? question : null, (question || "").trim() ? normalize(question as string) : null]
       );
     });
 

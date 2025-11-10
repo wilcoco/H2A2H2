@@ -21,8 +21,8 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
   const [busy, setBusy] = useState(false);
   const [edges, setEdges] = useState<Array<{ sourceId: string; targetId: string; type: string; synthetic?: boolean }>>([]);
   const [error, setError] = useState<string | null>(null);
-  const [source, setSource] = useState<{ id: string; question: string } | null>(null);
-  const [target, setTarget] = useState<{ id: string; question: string } | null>(null);
+  const [source, setSource] = useState<{ id: string; question: string; createdBy?: string } | null>(null);
+  const [target, setTarget] = useState<{ id: string; question: string; createdBy?: string } | null>(null);
   const [myQ, setMyQ] = useState("");
   const [myLoading, setMyLoading] = useState(false);
   const [myItems, setMyItems] = useState<Array<{ id: string; question: string; summary?: string; helpful?: number; unhelpful?: number }>>([]);
@@ -30,7 +30,7 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
   const myAbortRef = useRef<AbortController | null>(null);
   const [pinnedItems, setPinnedItems] = useState<Array<{ id: string; question: string; summary?: string; answer?: string }>>([]);
   const [srcOverrideId, setSrcOverrideId] = useState<string | null>(null);
-  const [srcOverride, setSrcOverride] = useState<{ id: string; question: string } | null>(null);
+  const [srcOverride, setSrcOverride] = useState<{ id: string; question: string; createdBy?: string } | null>(null);
   const [relNodes, setRelNodes] = useState<Map<string, { id: string; question: string; summary?: string; answer?: string }>>(new Map());
   const [autoType, setAutoType] = useState(true);
   const [manualSource, setManualSource] = useState(false);
@@ -56,7 +56,7 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
       try {
         const r = await fetch(`/api/qa/${encodeURIComponent(targetId)}`, { cache: "no-store" });
         const j = await r.json();
-        if (active) setTarget({ id: targetId, question: String(j?.question || "") });
+        if (active) setTarget({ id: targetId, question: String(j?.question || ""), createdBy: j?.createdBy ? String(j.createdBy) : undefined });
       } catch { if (active) setTarget(null); }
     })();
     return () => { active = false; };
@@ -129,7 +129,7 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
       try {
         const r = await fetch(`/api/qa/${encodeURIComponent(srcOverrideId)}`, { cache: "no-store" });
         const j = await r.json();
-        if (active) setSrcOverride({ id: srcOverrideId, question: String(j?.question || "") });
+        if (active) setSrcOverride({ id: srcOverrideId, question: String(j?.question || ""), createdBy: j?.createdBy ? String(j.createdBy) : undefined } as any);
       } catch { if (active) setSrcOverride(null); }
     })();
     return () => { active = false; };
@@ -224,9 +224,12 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
       </div>
       <div className="space-y-2">
         <div className="text-xs text-gray-600">Source</div>
-        <div className="text-[12px] rounded border p-2 bg-white/60 dark:bg-gray-900/40 min-h-[40px] flex items-center justify-between gap-2">
-          <div className="truncate">{srcOverrideId ? (srcOverride ? `Q: ${srcOverride.question}` : `Q: ${srcOverrideId}`) : "선택된 질문이 없습니다."}</div>
-          {srcOverride && <button className="text-[11px] px-2 py-1 rounded border" onClick={() => { setSrcOverrideId(null); setManualSource(false); }}>Clear</button>}
+        <div className="text-[12px] rounded border p-2 bg-white/60 dark:bg-gray-900/40 min-h-[40px]">
+          <div className="flex items-center justify-between gap-2">
+            <div className="truncate">{srcOverrideId ? (srcOverride ? `Q: ${srcOverride.question}` : `Q: ${srcOverrideId}`) : "선택된 질문이 없습니다."}</div>
+            {srcOverride && <button className="text-[11px] px-2 py-1 rounded border" onClick={() => { setSrcOverrideId(null); setManualSource(false); }}>Clear</button>}
+          </div>
+          {srcOverride?.createdBy && <div className="text-[10px] text-gray-500 mt-0.5">by {srcOverride.createdBy}</div>}
         </div>
         <div className="flex items-center justify-center gap-2 my-1">
           <div className="text-[11px] text-gray-600 flex items-center gap-1">
@@ -248,9 +251,12 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
           <button className="text-xs px-3 py-2 rounded border disabled:opacity-50" disabled={!(srcOverrideId && targetId)} onClick={() => { if (targetId && srcOverrideId) { const s = targetId; const t = srcOverrideId; setSrcOverrideId(s); setManualSource(true); onTargetChange?.(t); } }}>Swap</button>
         </div>
         <div className="text-xs text-gray-600">Target</div>
-        <div className="text-[12px] rounded border p-2 bg-white/60 dark:bg-gray-900/40 min-h-[40px] flex items-center justify-between gap-2">
-          <div className="truncate">{target ? `Q: ${target.question}` : "좌측에서 항목의 '연결' 버튼으로 대상 선택"}</div>
-          {target && <button className="text-[11px] px-2 py-1 rounded border" onClick={() => onTargetChange?.(null)}>Clear</button>}
+        <div className="text-[12px] rounded border p-2 bg-white/60 dark:bg-gray-900/40 min-h-[40px]">
+          <div className="flex items-center justify-between gap-2">
+            <div className="truncate">{target ? `Q: ${target.question}` : "좌측에서 항목의 '연결' 버튼으로 대상 선택"}</div>
+            {target && <button className="text-[11px] px-2 py-1 rounded border" onClick={() => onTargetChange?.(null)}>Clear</button>}
+          </div>
+          {target?.createdBy && <div className="text-[10px] text-gray-500 mt-0.5">by {target.createdBy}</div>}
         </div>
       </div>
       {pinnedItems.length > 0 && (

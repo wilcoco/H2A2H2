@@ -44,6 +44,7 @@ export interface QAEntry {
   answer?: string;
   summary?: string;
   workId?: string;
+  createdBy?: string;
 }
 
 export type PatchOp =

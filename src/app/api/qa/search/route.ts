@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     const limit: number = Math.min(Math.max(Number(body?.limit ?? 5), 1), 10);
     const strict: boolean = !!body?.strict;
     const q = query.trim();
-    let rows: Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string }> = [];
+    let rows: Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string; created_by?: string }> = [];
     if (q) {
       try {
         rows = await withConn(async (c) => {
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
               limit $2`,
             [q.toLowerCase(), limit, userId]
           );
-          return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string }>;
+          return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string; created_by?: string }>;
         });
       } catch {
         // Fallback to LIKE-only if pg_trgm/similarity is unavailable
@@ -89,12 +89,12 @@ export async function POST(req: NextRequest) {
     if ((!rows || rows.length === 0) && !strict) {
       rows = await withConn(async (c) => {
         const r = await c.query(
-          `select id, question, answer, summary, work_id from qa_entries
+          `select id, question, answer, summary, work_id, created_by from qa_entries
             where published = true or created_by = $2
             order by created_at desc limit $1`,
           [limit, userId]
         );
-        return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string }>;
+        return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string; created_by?: string }>;
       });
     }
     const items = rows.map((r) => ({
@@ -103,6 +103,7 @@ export async function POST(req: NextRequest) {
       answer: r.answer ?? undefined,
       summary: r.summary ?? undefined,
       workId: r.work_id ?? undefined,
+      createdBy: (r as any).created_by ?? undefined,
     }));
     // Keyword caching on first search
     const ids = items.map((i) => i.id);

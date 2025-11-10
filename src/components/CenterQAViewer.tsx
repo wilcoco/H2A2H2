@@ -394,7 +394,15 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             >OR 모드</button>
             {selectMode && (
               <>
-                <span className="text-[10px] text-gray-600">선택됨: {(selPhrases.length + selWords.length)}개</span>
+                <span className="text-[10px] text-gray-600">선택됨:</span>
+                <div className="flex items-center gap-1 flex-wrap">
+                  {selPhrases.map((p, i) => (
+                    <span key={`sel-ph-${i}`} className="text-[10px] px-2 py-0.5 rounded-full border bg-purple-50 border-purple-200 text-purple-700">{p}</span>
+                  ))}
+                  {selWords.map((w, i) => (
+                    <span key={`sel-kw-${i}`} className="text-[10px] px-2 py-0.5 rounded-full border">{w}</span>
+                  ))}
+                </div>
                 <button className="ml-auto text-[11px] px-2 py-0.5 rounded border border-emerald-600 text-emerald-700" onClick={doSearch}>검색</button>
                 <button className="text-[11px] px-2 py-0.5 rounded border" onClick={cancelSelect}>취소</button>
               </>
@@ -556,7 +564,15 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             <button className={`text-[11px] px-2 py-0.5 rounded border ${selectMode === 'any' ? 'bg-blue-600 text-white border-blue-600' : ''}`} onClick={() => startSelect('any')}>OR 모드</button>
             {selectMode && (
               <>
-                <span className="text-[10px] text-gray-600">선택됨: {(selPhrases.length + selWords.length)}개</span>
+                <span className="text-[10px] text-gray-600">선택됨:</span>
+                <div className="flex items-center gap-1 flex-wrap">
+                  {selPhrases.map((p, i) => (
+                    <span key={`sel2-ph-${i}`} className="text-[10px] px-2 py-0.5 rounded-full border bg-purple-50 border-purple-200 text-purple-700">{p}</span>
+                  ))}
+                  {selWords.map((w, i) => (
+                    <span key={`sel2-kw-${i}`} className="text-[10px] px-2 py-0.5 rounded-full border">{w}</span>
+                  ))}
+                </div>
                 <button className="ml-auto text-[11px] px-2 py-0.5 rounded border border-emerald-600 text-emerald-700" onClick={doSearch}>검색</button>
                 <button className="text-[11px] px-2 py-0.5 rounded border" onClick={cancelSelect}>취소</button>
               </>

@@ -221,6 +221,7 @@ function SuggestItem({ it, onSelectQA, connectMode, targetId, onPickTarget, refr
       <div className="min-w-0 cursor-pointer hover:opacity-90" onClick={() => onSelectQA(it.id)}>
         <div className="text-sm font-medium line-clamp-3">Q: {it.question}</div>
         {it.summary && <div className="text-[11px] text-gray-600 mt-0.5 line-clamp-3">{it.summary}</div>}
+        {it.createdBy && <div className="text-[10px] text-gray-500 mt-0.5">by {it.createdBy}</div>}
       </div>
       <div className="mt-1 flex items-center gap-2 justify-end">
         <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 border">Chain {loading ? "…" : (count ?? 0)}</span>

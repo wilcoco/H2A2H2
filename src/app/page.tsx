@@ -5,6 +5,7 @@ import LeftAsk from "@/components/LeftAsk";
 import CenterQAViewer from "@/components/CenterQAViewer";
 import ThreadDrawer from "@/components/ThreadDrawer";
 import RightRelations from "@/components/RightRelations";
+import RightWriter from "@/components/RightWriter";
 import type { GraphNode, GraphEdge, Work, LlmPatch, NodeType, EdgeType } from "@/types/graph";
 import AuthModal from "@/components/AuthModal";
 import PublishModal from "@/components/PublishModal";
@@ -60,6 +61,7 @@ export default function Home() {
   const [provider, setProvider] = useState<"openai" | "anthropic">("openai");
   const [centerAiMeta, setCenterAiMeta] = useState<{ providerUsed?: "openai" | "anthropic"; modelUsed?: string; fallbackUsed?: boolean } | null>(null);
   const [detail, setDetail] = useState<"short" | "normal" | "long">("normal");
+  const [rightTab, setRightTab] = useState<"relations" | "writer">("relations");
 
   useEffect(() => {
     let mounted = true;
@@ -367,20 +369,42 @@ export default function Home() {
           />
         </main>
 
-        <aside className="rounded border border-gray-200/60 p-2 md:p-3 overflow-auto">
-          <RightRelations
-            qaId={selectedQaId || undefined}
-            targetId={relTargetId}
-            onTargetChange={(id) => setRelTargetId(id)}
-            connectMode={connectMode}
-            onConnectModeChange={(v) => setConnectMode(v)}
-            pinnedIds={pinnedIds}
-            onUnpin={(id) => setPinnedIds((arr) => arr.filter((x) => x !== id))}
-            onGraphChanged={() => setGraphRefreshKey((k) => k + 1)}
-            navDirection={relNavDirection}
-            onNavDirectionChange={(d) => setRelNavDirection(d)}
-            forceSourceId={forceSourceId}
-          />
+        <aside className="rounded border border-gray-200/60 p-0 overflow-hidden flex flex-col">
+          <div className="flex items-center border-b border-gray-200/60">
+            <button
+              className={`text-xs px-3 py-2 ${rightTab === 'relations' ? 'border-b-2 border-blue-600 text-blue-700' : 'text-gray-600'}`}
+              onClick={() => setRightTab('relations')}
+            >관계 편집</button>
+            <button
+              className={`text-xs px-3 py-2 ${rightTab === 'writer' ? 'border-b-2 border-blue-600 text-blue-700' : 'text-gray-600'}`}
+              onClick={() => setRightTab('writer')}
+            >문서 작성</button>
+          </div>
+          <div className="p-2 md:p-3 overflow-auto flex-1">
+            {rightTab === 'relations' ? (
+              <RightRelations
+                qaId={selectedQaId || undefined}
+                targetId={relTargetId}
+                onTargetChange={(id) => setRelTargetId(id)}
+                connectMode={connectMode}
+                onConnectModeChange={(v) => setConnectMode(v)}
+                pinnedIds={pinnedIds}
+                onUnpin={(id) => setPinnedIds((arr) => arr.filter((x) => x !== id))}
+                onGraphChanged={() => setGraphRefreshKey((k) => k + 1)}
+                navDirection={relNavDirection}
+                onNavDirectionChange={(d) => setRelNavDirection(d)}
+                forceSourceId={forceSourceId}
+              />
+            ) : (
+              <RightWriter
+                qaId={selectedQaId || undefined}
+                currentUserEmail={user?.email || null}
+                onSaved={() => {
+                  setGraphRefreshKey((k) => k + 1);
+                }}
+              />
+            )}
+          </div>
         </aside>
       </div>
       <ThreadDrawer qaId={selectedQaId || undefined} open={threadOpen} onClose={() => setThreadOpen(false)} />

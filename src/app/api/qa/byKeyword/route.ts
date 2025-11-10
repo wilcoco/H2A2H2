@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     if (kws.length === 1 || mode === "any") {
       rows = await withConn(async (c) => {
         const r = await c.query(
-          `select e.id, e.question, e.answer, e.summary, e.work_id
+          `select e.id, e.question, e.answer, e.summary, e.work_id, e.created_by
              from qa_entries e
              join qa_keywords k on k.qa_id = e.id
             where k.keyword = any($1)
@@ -51,14 +51,14 @@ export async function POST(req: NextRequest) {
             limit $2`,
           [kws, limit, userId]
         );
-        return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string }>;
+        return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string; created_by?: string }>;
       });
       if (!rows.length) {
         // Fallback: partial match with ILIKE ANY on keywords
         const pats = kws.map((k) => `%${k}%`);
         rows = await withConn(async (c) => {
           const r = await c.query(
-            `select e.id, e.question, e.answer, e.summary, e.work_id
+            `select e.id, e.question, e.answer, e.summary, e.work_id, e.created_by
                from qa_entries e
               where (e.published = true or e.created_by = $3)
                 and exists (
@@ -70,14 +70,14 @@ export async function POST(req: NextRequest) {
               limit $2`,
             [pats, limit, userId]
           );
-          return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string }>;
+          return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string; created_by?: string }>;
         });
       }
     } else {
       // ALL match: having count(distinct keyword) >= number of normalized inputs
       rows = await withConn(async (c) => {
         const r = await c.query(
-          `select e.id, e.question, e.answer, e.summary, e.work_id
+          `select e.id, e.question, e.answer, e.summary, e.work_id, e.created_by
              from qa_entries e
              join qa_keywords k on k.qa_id = e.id
             where k.keyword = any($1)
@@ -88,13 +88,13 @@ export async function POST(req: NextRequest) {
             limit $2`,
           [kws, limit, userId, kws.length]
         );
-        return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string }>;
+        return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string; created_by?: string }>;
       });
       if (!rows.length) {
         const pats = kws.map((k) => `%${k}%`);
         rows = await withConn(async (c) => {
           const r = await c.query(
-            `select e.id, e.question, e.answer, e.summary, e.work_id
+            `select e.id, e.question, e.answer, e.summary, e.work_id, e.created_by
                from qa_entries e
               where (e.published = true or e.created_by = $3)
                 and exists (
@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
               limit $2`,
             [pats, limit, userId]
           );
-          return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string }>;
+          return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string; created_by?: string }>;
         });
       }
     }
@@ -127,7 +127,7 @@ export async function POST(req: NextRequest) {
       kmap = Object.fromEntries(ids.map((id) => [id, (out.get(id) || []).slice(0, 8)]));
     }
 
-    const items = rows.map((r) => ({ id: r.id, question: r.question, answer: r.answer ?? undefined, summary: r.summary ?? undefined, workId: r.work_id ?? undefined }));
+    const items = rows.map((r) => ({ id: r.id, question: r.question, answer: r.answer ?? undefined, summary: r.summary ?? undefined, workId: r.work_id ?? undefined, createdBy: (r as any).created_by ?? undefined }));
     return NextResponse.json({ items, keywords: kmap });
   } catch (e) {
     return NextResponse.json({ items: [], keywords: {} });
