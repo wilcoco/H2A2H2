@@ -41,6 +41,36 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   const [keywords, setKeywords] = useState<string[]>([]);
   const [phrases, setPhrases] = useState<string[]>([]);
   const [kwLoading, setKwLoading] = useState(false);
+  const [selectMode, setSelectMode] = useState<"any" | "all" | null>(null);
+  const [selWords, setSelWords] = useState<string[]>([]);
+  const [selPhrases, setSelPhrases] = useState<string[]>([]);
+
+  function startSelect(mode: "any" | "all") {
+    setSelectMode(mode);
+    setSelWords([]);
+    setSelPhrases([]);
+  }
+  function cancelSelect() {
+    setSelectMode(null);
+    setSelWords([]);
+    setSelPhrases([]);
+  }
+  function doSearch() {
+    if (!selectMode) return;
+    onKeywordSearch?.({
+      keywords: selWords.length ? selWords : undefined,
+      phrases: selPhrases.length ? selPhrases : undefined,
+      mode: selectMode,
+    });
+  }
+  function toggleSelWord(w: string) {
+    if (!selectMode) { onKeywordClick?.(w); return; }
+    setSelWords((prev) => (prev.includes(w) ? prev.filter((x) => x !== w) : [...prev, w]));
+  }
+  function toggleSelPhrase(p: string) {
+    if (!selectMode) { onKeywordSearch?.({ phrases: [p], mode: "any" }); return; }
+    setSelPhrases((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -318,9 +348,16 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             <div className="text-[11px] text-gray-600">추출 중…</div>
           ) : (phrases.length > 0 ? (
             <div className="flex flex-wrap gap-1">
-              {phrases.map((p, i) => (
-                <button key={`ph-${i}`} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => onKeywordSearch?.({ phrases: [p], mode: "any" })}>{p}</button>
-              ))}
+              {phrases.map((p, i) => {
+                const active = selPhrases.includes(p) && !!selectMode;
+                return (
+                  <button
+                    key={`ph-${i}`}
+                    className={`text-[11px] px-2 py-0.5 rounded-full border ${active ? 'bg-blue-600 text-white border-blue-600' : 'hover:bg-blue-50'}`}
+                    onClick={() => toggleSelPhrase(p)}
+                  >{p}</button>
+                );
+              })}
             </div>
           ) : (
             <div className="text-[11px] text-gray-600">없음</div>
@@ -332,20 +369,38 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             <div className="text-[11px] text-gray-600">추출 중…</div>
           ) : (keywords.length > 0 ? (
             <div className="flex flex-wrap gap-1">
-              {keywords.map((k, i) => (
-                <button key={`kw-${i}`} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => onKeywordClick?.(k)}>{k}</button>
-              ))}
+              {keywords.map((k, i) => {
+                const active = selWords.includes(k) && !!selectMode;
+                return (
+                  <button
+                    key={`kw-${i}`}
+                    className={`text-[11px] px-2 py-0.5 rounded-full border ${active ? 'bg-blue-600 text-white border-blue-600' : 'hover:bg-blue-50'}`}
+                    onClick={() => toggleSelWord(k)}
+                  >{k}</button>
+                );
+              })}
             </div>
           ) : (
             <div className="text-[11px] text-gray-600">없음</div>
           ))}
-          {keywords.length > 0 && (
-            <div className="mt-2 flex items-center gap-2">
-              <button className="text-[11px] px-2 py-0.5 rounded border" onClick={() => onKeywordSearch?.({ keywords, mode: "all" })}>단어 AND</button>
-              <button className="text-[11px] px-2 py-0.5 rounded border" onClick={() => onKeywordSearch?.({ keywords, mode: "any" })}>단어 OR</button>
-            </div>
-          )}
-          {keywords.length >= 2 && (
+          <div className="mt-2 flex items-center gap-2 flex-wrap">
+            <button
+              className={`text-[11px] px-2 py-0.5 rounded border ${selectMode === 'all' ? 'bg-blue-600 text-white border-blue-600' : ''}`}
+              onClick={() => startSelect('all')}
+            >AND 모드</button>
+            <button
+              className={`text-[11px] px-2 py-0.5 rounded border ${selectMode === 'any' ? 'bg-blue-600 text-white border-blue-600' : ''}`}
+              onClick={() => startSelect('any')}
+            >OR 모드</button>
+            {selectMode && (
+              <>
+                <span className="text-[10px] text-gray-600">선택됨: {(selPhrases.length + selWords.length)}개</span>
+                <button className="ml-auto text-[11px] px-2 py-0.5 rounded border border-emerald-600 text-emerald-700" onClick={doSearch}>검색</button>
+                <button className="text-[11px] px-2 py-0.5 rounded border" onClick={cancelSelect}>취소</button>
+              </>
+            )}
+          </div>
+          {(!selectMode && keywords.length >= 2) && (
             <div className="mt-1">
               <div className="text-[10px] text-gray-600 mb-1">조합 보기(AND)</div>
               <div className="flex flex-wrap gap-1">
@@ -469,9 +524,12 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             <div className="text-[11px] text-gray-600">추출 중…</div>
           ) : (phrases.length > 0 ? (
             <div className="flex flex-wrap gap-1">
-              {phrases.map((p, i) => (
-                <button key={`ph2-${i}`} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => onKeywordSearch?.({ phrases: [p], mode: "any" })}>{p}</button>
-              ))}
+              {phrases.map((p, i) => {
+                const active = selPhrases.includes(p) && !!selectMode;
+                return (
+                  <button key={`ph2-${i}`} className={`text-[11px] px-2 py-0.5 rounded-full border ${active ? 'bg-blue-600 text-white border-blue-600' : 'hover:bg-blue-50'}`} onClick={() => toggleSelPhrase(p)}>{p}</button>
+                );
+              })}
             </div>
           ) : (
             <div className="text-[11px] text-gray-600">없음</div>
@@ -483,20 +541,28 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             <div className="text-[11px] text-gray-600">추출 중…</div>
           ) : (keywords.length > 0 ? (
             <div className="flex flex-wrap gap-1">
-              {keywords.map((k, i) => (
-                <button key={`kw2-${i}`} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => onKeywordClick?.(k)}>{k}</button>
-              ))}
+              {keywords.map((k, i) => {
+                const active = selWords.includes(k) && !!selectMode;
+                return (
+                  <button key={`kw2-${i}`} className={`text-[11px] px-2 py-0.5 rounded-full border ${active ? 'bg-blue-600 text-white border-blue-600' : 'hover:bg-blue-50'}`} onClick={() => toggleSelWord(k)}>{k}</button>
+                );
+              })}
             </div>
           ) : (
             <div className="text-[11px] text-gray-600">없음</div>
           ))}
-          {keywords.length > 0 && (
-            <div className="mt-2 flex items-center gap-2">
-              <button className="text-[11px] px-2 py-0.5 rounded border" onClick={() => onKeywordSearch?.({ keywords, mode: "all" })}>단어 AND</button>
-              <button className="text-[11px] px-2 py-0.5 rounded border" onClick={() => onKeywordSearch?.({ keywords, mode: "any" })}>단어 OR</button>
-            </div>
-          )}
-          {keywords.length >= 2 && (
+          <div className="mt-2 flex items-center gap-2 flex-wrap">
+            <button className={`text-[11px] px-2 py-0.5 rounded border ${selectMode === 'all' ? 'bg-blue-600 text-white border-blue-600' : ''}`} onClick={() => startSelect('all')}>AND 모드</button>
+            <button className={`text-[11px] px-2 py-0.5 rounded border ${selectMode === 'any' ? 'bg-blue-600 text-white border-blue-600' : ''}`} onClick={() => startSelect('any')}>OR 모드</button>
+            {selectMode && (
+              <>
+                <span className="text-[10px] text-gray-600">선택됨: {(selPhrases.length + selWords.length)}개</span>
+                <button className="ml-auto text-[11px] px-2 py-0.5 rounded border border-emerald-600 text-emerald-700" onClick={doSearch}>검색</button>
+                <button className="text-[11px] px-2 py-0.5 rounded border" onClick={cancelSelect}>취소</button>
+              </>
+            )}
+          </div>
+          {(!selectMode && keywords.length >= 2) && (
             <div className="mt-1">
               <div className="text-[10px] text-gray-600 mb-1">조합 보기(AND)</div>
               <div className="flex flex-wrap gap-1">
