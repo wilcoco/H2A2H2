@@ -12,11 +12,20 @@ function heuristic(text: string, max = 8): string[] {
     // Korean (basic)
     "은","는","이","가","을","를","에","의","도","과","와","들","에서","하다","했다","인가","인데","하면","하려고","어떻게","무엇","왜","언제","어디",
   ]);
-  const tokens = (text || "")
-    .toLowerCase()
-    .replace(/[\p{P}\p{S}]/gu, " ")
-    .split(/\s+/)
-    .filter((t) => t.length >= 2 && !stop.has(t));
+  function normalizeKo(s: string): string {
+    const t = (s || "").trim().toLowerCase();
+    if (!t) return t;
+    const josa = [
+      "에서","에게","으로","하면","하며","라고","이라면","이랑","처럼","부터","까지","조차","마저","뿐","이라서","라서","이라며","이며",
+      "은","는","이","가","을","를","과","와","로","에","도","만","나","이나","라도","라면","랑","엔","의"
+    ];
+    for (const j of josa.sort((a,b) => b.length - a.length)) {
+      if (t.endsWith(j) && t.length > j.length + 1) return t.slice(0, t.length - j.length);
+    }
+    return t;
+  }
+  const raw = (text || "").toLowerCase().replace(/[\p{P}\p{S}]/gu, " ").split(/\s+/);
+  const tokens = raw.map((w) => normalizeKo(w)).filter((t) => t.length >= 2 && !stop.has(t));
   const freq = new Map<string, number>();
   for (const t of tokens) freq.set(t, (freq.get(t) || 0) + 1);
   const sorted = [...freq.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);

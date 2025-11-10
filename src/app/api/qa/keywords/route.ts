@@ -6,20 +6,56 @@ export const dynamic = "force-dynamic";
 
 function heuristic(text: string, max = 8): string[] {
   const stop = new Set([
-    // English
     "the","a","an","and","or","of","to","in","on","for","with","is","are","was","were","be","as","by","at","from","that","this","it","we","you","they","i","how","what","why","when","where",
-    // Korean (basic)
     "은","는","이","가","을","를","에","의","도","과","와","들","에서","하다","했다","인가","인데","하면","하려고","어떻게","무엇","왜","언제","어디",
   ]);
-  const tokens = (text || "")
-    .toLowerCase()
-    .replace(/[\p{P}\p{S}]/gu, " ")
-    .split(/\s+/)
-    .filter((t) => t.length >= 2 && !stop.has(t));
+  function normalizeKo(s: string): string {
+    const t = (s || "").trim().toLowerCase();
+    if (!t) return t;
+    const josa = [
+      "에서","에게","으로","하면","하며","라고","이라면","이랑","처럼","부터","까지","조차","마저","뿐","이라서","라서","이라며","이며",
+      "은","는","이","가","을","를","과","와","로","에","도","만","나","이나","라도","라면","랑","엔","의"
+    ];
+    for (const j of josa.sort((a,b) => b.length - a.length)) {
+      if (t.endsWith(j) && t.length > j.length + 1) return t.slice(0, t.length - j.length);
+    }
+    return t;
+  }
+  const raw = (text || "").toLowerCase().replace(/[\p{P}\p{S}]/gu, " ").split(/\s+/);
+  const tokens = raw.map((w) => normalizeKo(w)).filter((t) => t.length >= 2 && !stop.has(t));
   const freq = new Map<string, number>();
   for (const t of tokens) freq.set(t, (freq.get(t) || 0) + 1);
   const sorted = [...freq.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
-  return sorted.slice(0, max);
+  const out: string[] = [];
+  for (const t of sorted) { if (!out.includes(t)) out.push(t); if (out.length >= max) break; }
+  return out;
+}
+
+function phraseHeuristic(text: string, max = 6): string[] {
+  function normalizeKoToken(s: string): string {
+    const t = (s || "").trim().toLowerCase();
+    if (!t) return t;
+    const josa = [
+      "에서","에게","으로","하면","하며","라고","이라면","이랑","처럼","부터","까지","조차","마저","뿐","이라서","라서","이라며","이며",
+      "은","는","이","가","을","를","과","와","로","에","도","만","나","이나","라도","라면","랑","엔","의"
+    ];
+    for (const j of josa.sort((a,b) => b.length - a.length)) {
+      if (t.endsWith(j) && t.length > j.length + 1) return t.slice(0, t.length - j.length);
+    }
+    return t;
+  }
+  const tokens = (text || "").toLowerCase().replace(/[\p{P}\p{S}]/gu, " ").split(/\s+/).filter(Boolean).map(normalizeKoToken).filter((t) => t.length >= 2);
+  const grams: string[] = [];
+  const maxN = 4;
+  for (let n = 2; n <= Math.min(maxN, tokens.length); n++) {
+    for (let i = 0; i + n <= tokens.length; i++) grams.push(tokens.slice(i, i + n).join(" "));
+  }
+  const freq = new Map<string, number>();
+  for (const g of grams) freq.set(g, (freq.get(g) || 0) + 1);
+  const sorted = [...freq.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
+  const out: string[] = [];
+  for (const t of sorted) { if (!out.includes(t)) out.push(t); if (out.length >= max) break; }
+  return out;
 }
 
 export async function POST(req: NextRequest) {
@@ -54,16 +90,26 @@ export async function POST(req: NextRequest) {
         );
         return r.rows as Array<{ id: string; text: string | null }>;
       });
-      // Generate heuristics and upsert
+      // Generate heuristics (words + phrases) and upsert
       await withConn(async (c) => {
         for (const { id, text } of texts) {
-          const kws = heuristic(String(text || ""), max);
-          for (let i = 0; i < kws.length; i++) {
-            const kw = kws[i];
+          const base = String(text || "");
+          const words = heuristic(base, max);
+          const phrases = phraseHeuristic(base, Math.min(6, max));
+          for (let i = 0; i < words.length; i++) {
+            const kw = words[i];
             await c.query(
               `insert into qa_keywords (qa_id, keyword, weight) values ($1,$2,$3)
                on conflict (qa_id, keyword) do update set weight = excluded.weight`,
               [id, kw, Math.max(1, Math.min(9, i + 1))]
+            );
+          }
+          for (let i = 0; i < phrases.length; i++) {
+            const ph = phrases[i];
+            await c.query(
+              `insert into qa_keywords (qa_id, keyword, weight) values ($1,$2,$3)
+               on conflict (qa_id, keyword) do update set weight = excluded.weight`,
+              [id, ph, Math.max(2, Math.min(9, i + 2))]
             );
           }
         }
@@ -81,8 +127,15 @@ export async function POST(req: NextRequest) {
     }
 
     const results: Record<string, string[]> = {};
-    for (const id of qaIds) results[id] = (existingMap.get(id) || []).slice(0, max);
-    return NextResponse.json({ results });
+    const phrases: Record<string, string[]> = {};
+    for (const id of qaIds) {
+      const arr = (existingMap.get(id) || []);
+      const ws = arr.filter((s) => !/\s/.test(s)).slice(0, max);
+      const ps = arr.filter((s) => /\s/.test(s)).slice(0, Math.min(6, max));
+      results[id] = ws;
+      phrases[id] = ps;
+    }
+    return NextResponse.json({ results, phrases });
   } catch (e) {
     return NextResponse.json({ results: {} });
   }

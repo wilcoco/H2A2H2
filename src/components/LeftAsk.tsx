@@ -12,10 +12,12 @@ type Props = {
   refreshKey?: number;
   keyword?: string | null;
   keywordMode?: "any" | "all";
+  keywords?: string[] | null;
+  phrases?: string[] | null;
   onClearKeyword?: () => void;
 };
 
-export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId, onPickTarget, refreshKey, keyword, keywordMode = "any", onClearKeyword }: Props) {
+export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId, onPickTarget, refreshKey, keyword, keywordMode = "any", keywords = null, phrases = null, onClearKeyword }: Props) {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<QAEntry[]>([]);
@@ -24,7 +26,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
   const reqIdRef = useRef(0);
 
   async function search(next?: string) {
-    if ((keyword || "").trim()) return; // keyword 모드일 땐 텍스트 검색 비활성화
+    if ((keyword || "").trim() || (keywords && keywords.length) || (phrases && phrases.length)) return; // 키워드/복합어 모드일 땐 텍스트 검색 비활성화
     const query = (next ?? q).trim();
     if (!query) { setItems([]); setLoading(false); abortRef.current?.abort(); reqIdRef.current++; return; }
     abortRef.current?.abort();
@@ -57,9 +59,11 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
     }
   }
 
-  async function searchByKeyword(kw: string) {
-    const key = (kw || "").trim();
-    if (!key) { setItems([]); setLoading(false); abortRef.current?.abort(); reqIdRef.current++; return; }
+  async function searchByKeyword() {
+    const key = (keyword || "").trim();
+    const kwArr = Array.isArray(keywords) ? keywords.filter((s) => (s || "").trim().length > 0) : [];
+    const phArr = Array.isArray(phrases) ? phrases.filter((s) => (s || "").trim().length > 0) : [];
+    if (!key && kwArr.length === 0 && phArr.length === 0) { setItems([]); setLoading(false); abortRef.current?.abort(); reqIdRef.current++; return; }
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -71,7 +75,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
       const res = await fetch("/api/qa/byKeyword", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keyword: key, mode: keywordMode, limit: 10 }),
+        body: JSON.stringify({ keyword: key || undefined, keywords: kwArr.length ? kwArr : undefined, phrases: phArr.length ? phArr : undefined, mode: keywordMode, limit: 10 }),
         cache: "no-store",
         signal: controller.signal,
       });
@@ -90,18 +94,18 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
   }
 
   useEffect(() => {
-    if ((keyword || "").trim()) return; // 키워드 모드일 때는 텍스트 디바운스 검색을 생략
+    if ((keyword || "").trim() || (keywords && keywords.length) || (phrases && phrases.length)) return; // 키워드/복합어 모드일 때는 텍스트 디바운스 검색 생략
     const t = setTimeout(() => { void search(q); }, 250);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, refreshKey, keyword]);
+  }, [q, refreshKey, keyword, JSON.stringify(keywords || []), JSON.stringify(phrases || [])]);
 
   useEffect(() => {
-    const k = (keyword || "").trim();
-    if (!k) return;
-    void searchByKeyword(k);
+    if ((keyword || "").trim() || (keywords && keywords.length) || (phrases && phrases.length)) {
+      void searchByKeyword();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keyword, keywordMode, refreshKey]);
+  }, [keyword, JSON.stringify(keywords || []), JSON.stringify(phrases || []), keywordMode, refreshKey]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -133,9 +137,25 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
             onClick={() => { const query = q.trim(); if (query) { onClearKeyword?.(); onAskAINow(query); } }}
           >AI에게 묻기</button>
         </div>
-        {(keyword || "").trim() && (
-          <div className="mt-2 flex items-center gap-2">
-            <span className="text-[10px] px-2 py-0.5 rounded-full border bg-blue-50 border-blue-200 text-blue-700">키워드: {keyword}</span>
+        {(((keyword || "").trim()) || (keywords && keywords.length) || (phrases && phrases.length)) && (
+          <div className="mt-2 flex items-center gap-2 flex-wrap">
+            {phrases && phrases.length > 0 ? (
+              <>
+                <span className="text-[10px] px-2 py-0.5 rounded-full border bg-purple-50 border-purple-200 text-purple-700">복합어</span>
+                {phrases.slice(0, 4).map((p, i) => (
+                  <span key={`ph-b-${i}`} className="text-[10px] px-2 py-0.5 rounded-full border">{p}</span>
+                ))}
+              </>
+            ) : (keywords && keywords.length > 0 ? (
+              <>
+                <span className="text-[10px] px-2 py-0.5 rounded-full border bg-blue-50 border-blue-200 text-blue-700">단어 {keywordMode?.toUpperCase?.()}</span>
+                {keywords.slice(0, 5).map((k, i) => (
+                  <span key={`kw-b-${i}`} className="text-[10px] px-2 py-0.5 rounded-full border">{k}</span>
+                ))}
+              </>
+            ) : (
+              <span className="text-[10px] px-2 py-0.5 rounded-full border bg-blue-50 border-blue-200 text-blue-700">키워드: {keyword}</span>
+            ))}
             <button className="text-[11px] px-2 py-0.5 rounded border" onClick={() => onClearKeyword?.()}>Clear</button>
           </div>
         )}

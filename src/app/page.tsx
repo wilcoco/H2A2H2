@@ -53,6 +53,8 @@ export default function Home() {
   const [lastViewedQaId, setLastViewedQaId] = useState<string | null>(null);
   const [leftKeyword, setLeftKeyword] = useState<string | null>(null);
   const [leftKeywordMode, setLeftKeywordMode] = useState<"any" | "all">("any");
+  const [leftKeywords, setLeftKeywords] = useState<string[] | null>(null);
+  const [leftPhrases, setLeftPhrases] = useState<string[] | null>(null);
   const [relNavDirection, setRelNavDirection] = useState<"prev_to_current" | "current_to_prev">("prev_to_current");
   const [forceSourceId, setForceSourceId] = useState<string | null>(null);
   const [provider, setProvider] = useState<"openai" | "anthropic">("openai");
@@ -308,7 +310,9 @@ export default function Home() {
             refreshKey={graphRefreshKey}
             keyword={leftKeyword}
             keywordMode={leftKeywordMode}
-            onClearKeyword={() => setLeftKeyword(null)}
+            keywords={leftKeywords}
+            phrases={leftPhrases}
+            onClearKeyword={() => { setLeftKeyword(null); setLeftKeywords(null); setLeftPhrases(null); setLeftKeywordMode("any"); }}
           />
         </aside>
 
@@ -321,7 +325,19 @@ export default function Home() {
             aiModel={!selectedQaId ? centerAiMeta?.modelUsed : undefined}
             aiFallbackUsed={!selectedQaId ? centerAiMeta?.fallbackUsed : undefined}
             onOpenThread={() => setThreadOpen(true)}
-            onKeywordClick={(kw) => { setLeftKeyword(kw); }}
+            onKeywordClick={(kw) => { setLeftKeywords(null); setLeftPhrases(null); setLeftKeyword(kw); }}
+            onKeywordSearch={({ keywords, phrases, mode }) => {
+              setLeftKeywordMode(mode || "any");
+              if (phrases && phrases.length > 0) {
+                setLeftKeywords(null);
+                setLeftPhrases(phrases);
+                setLeftKeyword(phrases[0]);
+              } else if (keywords && keywords.length > 0) {
+                setLeftPhrases(null);
+                setLeftKeywords(keywords);
+                setLeftKeyword(keywords.join(" "));
+              }
+            }}
             onSetSource={(id) => {
               setForceSourceId(id);
             }}

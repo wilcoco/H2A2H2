@@ -15,6 +15,7 @@ export async function POST(req: NextRequest) {
 
     const keyword: string | undefined = body?.keyword ? String(body.keyword) : undefined;
     const keywords: string[] = Array.isArray(body?.keywords) ? body.keywords.map((s: any) => String(s)).filter(Boolean) : [];
+    const phrases: string[] = Array.isArray(body?.phrases) ? body.phrases.map((s: any) => String(s)).filter(Boolean) : [];
     const mode: "any" | "all" = (body?.mode === "all" ? "all" : "any");
     const limit: number = Math.min(Math.max(Number(body?.limit ?? 10), 1), 25);
 
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
       }
       return t;
     }
-    const rawKws = (keyword ? [keyword] : keywords).map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const rawKws = [keyword, ...keywords, ...phrases].map((s) => String(s || "").trim().toLowerCase()).filter(Boolean);
     const normSet = new Set<string>();
     for (const k of rawKws) { normSet.add(k); normSet.add(normalizeKo(k)); }
     const kws = Array.from(normSet).filter(Boolean);

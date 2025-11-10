@@ -17,12 +17,13 @@ type Props = {
   onSelectQA?: (id: string) => void;
   currentUserEmail?: string;
   onKeywordClick?: (kw: string) => void;
+  onKeywordSearch?: (opts: { keywords?: string[]; phrases?: string[]; mode?: "any" | "all" }) => void;
   onSetSource?: (id: string) => void;
   onSetTarget?: (id: string) => void;
   onSetCard?: (id: string) => void;
 };
 
-export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, aiModel, aiFallbackUsed, onOpenThread, onShared, onPinned, refreshKey, onSelectQA, currentUserEmail, onKeywordClick, onSetSource, onSetTarget, onSetCard }: Props) {
+export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, aiModel, aiFallbackUsed, onOpenThread, onShared, onPinned, refreshKey, onSelectQA, currentUserEmail, onKeywordClick, onKeywordSearch, onSetSource, onSetTarget, onSetCard }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<any | null>(null);
@@ -38,6 +39,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   const [mapEdges, setMapEdges] = useState<Array<{ sourceId: string; targetId: string; type: string }>>([]);
   const [publishing, setPublishing] = useState(false);
   const [keywords, setKeywords] = useState<string[]>([]);
+  const [phrases, setPhrases] = useState<string[]>([]);
   const [kwLoading, setKwLoading] = useState(false);
 
   useEffect(() => {
@@ -69,18 +71,22 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           setKwLoading(true);
           // Use cached QA keywords (populate on first request)
           const r = await fetch("/api/qa/keywords", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId, max: 8 }) });
-          const j = await r.json().catch(() => ({ results: {} }));
+          const j = await r.json().catch(() => ({ results: {}, phrases: {} }));
           const arr: string[] = Array.isArray(j?.results?.[qaId]) ? j.results[qaId] : [];
-          if (active) setKeywords(arr);
+          const ph: string[] = Array.isArray(j?.phrases?.[qaId]) ? j.phrases[qaId] : [];
+          if (active) { setKeywords(arr); setPhrases(ph); }
         } else if (!qaId && aiAnswer) {
           const text = String(aiAnswer || "");
           if (!text.trim()) { if (active) setKeywords([]); return; }
           setKwLoading(true);
           const r = await fetch("/api/ai/keywords", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, max: 8 }) });
-          const j = await r.json().catch(() => ({ keywords: [] }));
-          if (active) setKeywords(Array.isArray(j?.keywords) ? j.keywords : []);
+          const j = await r.json().catch(() => ({ keywords: [], phrases: [] }));
+          if (active) {
+            setKeywords(Array.isArray(j?.keywords) ? j.keywords : []);
+            setPhrases(Array.isArray(j?.phrases) ? j.phrases : []);
+          }
         } else {
-          if (active) setKeywords([]);
+          if (active) { setKeywords([]); setPhrases([]); }
         }
       } catch {
         if (active) setKeywords([]);
@@ -307,18 +313,53 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         {data.answer && <div className="text-sm whitespace-pre-wrap">A: {data.answer}</div>}
         {(() => { const s = String(data.summary || "").trim(); const a = String(data.answer || "").trim(); const distinct = s && s !== a; return (!editing && distinct) ? (<div className="text-xs text-gray-700 whitespace-pre-wrap">Summary: {data.summary}</div>) : null; })()}
         <div className="mt-2">
-          <div className="text-xs text-gray-600 mb-1">키워드</div>
+          <div className="text-xs text-gray-600 mb-1">복합어</div>
           {kwLoading ? (
             <div className="text-[11px] text-gray-600">추출 중…</div>
-          ) : (keywords.length > 0 ? (
+          ) : (phrases.length > 0 ? (
             <div className="flex flex-wrap gap-1">
-              {keywords.map((k, i) => (
-                <button key={i} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => onKeywordClick?.(k)}>{k}</button>
+              {phrases.map((p, i) => (
+                <button key={`ph-${i}`} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => onKeywordSearch?.({ phrases: [p], mode: "any" })}>{p}</button>
               ))}
             </div>
           ) : (
             <div className="text-[11px] text-gray-600">없음</div>
           ))}
+        </div>
+        <div>
+          <div className="text-xs text-gray-600 mb-1">단어</div>
+          {kwLoading ? (
+            <div className="text-[11px] text-gray-600">추출 중…</div>
+          ) : (keywords.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {keywords.map((k, i) => (
+                <button key={`kw-${i}`} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => onKeywordClick?.(k)}>{k}</button>
+              ))}
+            </div>
+          ) : (
+            <div className="text-[11px] text-gray-600">없음</div>
+          ))}
+          {keywords.length > 0 && (
+            <div className="mt-2 flex items-center gap-2">
+              <button className="text-[11px] px-2 py-0.5 rounded border" onClick={() => onKeywordSearch?.({ keywords, mode: "all" })}>단어 AND</button>
+              <button className="text-[11px] px-2 py-0.5 rounded border" onClick={() => onKeywordSearch?.({ keywords, mode: "any" })}>단어 OR</button>
+            </div>
+          )}
+          {keywords.length >= 2 && (
+            <div className="mt-1">
+              <div className="text-[10px] text-gray-600 mb-1">조합 보기(AND)</div>
+              <div className="flex flex-wrap gap-1">
+                {(() => {
+                  const tops = keywords.slice(0, 5);
+                  const pairs: Array<[string,string]> = [];
+                  for (let i = 0; i < tops.length; i++) for (let j = i+1; j < tops.length; j++) pairs.push([tops[i], tops[j]]);
+                  return pairs.slice(0, 6).map((pair, idx) => (
+                    <button key={`pair-${idx}`} className="text-[10px] px-2 py-0.5 rounded border" onClick={() => onKeywordSearch?.({ keywords: pair, mode: "all" })}>{pair[0]} + {pair[1]}</button>
+                  ));
+                })()}
+              </div>
+            </div>
+          )}
         </div>
         {editing && (
           <textarea className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" rows={4} value={editSummary} onChange={(e) => setEditSummary(e.target.value)} />
@@ -423,18 +464,53 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         )}
         <div className="text-xs text-gray-600">요약 또는 키워드를 확인하고 공유하면 지식 체계에 등록됩니다.</div>
         <div>
-          <div className="text-xs text-gray-600 mb-1">키워드</div>
+          <div className="text-xs text-gray-600 mb-1">복합어</div>
           {kwLoading ? (
             <div className="text-[11px] text-gray-600">추출 중…</div>
-          ) : (keywords.length > 0 ? (
+          ) : (phrases.length > 0 ? (
             <div className="flex flex-wrap gap-1">
-              {keywords.map((k, i) => (
-                <button key={i} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => onKeywordClick?.(k)}>{k}</button>
+              {phrases.map((p, i) => (
+                <button key={`ph2-${i}`} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => onKeywordSearch?.({ phrases: [p], mode: "any" })}>{p}</button>
               ))}
             </div>
           ) : (
             <div className="text-[11px] text-gray-600">없음</div>
           ))}
+        </div>
+        <div>
+          <div className="text-xs text-gray-600 mb-1">단어</div>
+          {kwLoading ? (
+            <div className="text-[11px] text-gray-600">추출 중…</div>
+          ) : (keywords.length > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {keywords.map((k, i) => (
+                <button key={`kw2-${i}`} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => onKeywordClick?.(k)}>{k}</button>
+              ))}
+            </div>
+          ) : (
+            <div className="text-[11px] text-gray-600">없음</div>
+          ))}
+          {keywords.length > 0 && (
+            <div className="mt-2 flex items-center gap-2">
+              <button className="text-[11px] px-2 py-0.5 rounded border" onClick={() => onKeywordSearch?.({ keywords, mode: "all" })}>단어 AND</button>
+              <button className="text-[11px] px-2 py-0.5 rounded border" onClick={() => onKeywordSearch?.({ keywords, mode: "any" })}>단어 OR</button>
+            </div>
+          )}
+          {keywords.length >= 2 && (
+            <div className="mt-1">
+              <div className="text-[10px] text-gray-600 mb-1">조합 보기(AND)</div>
+              <div className="flex flex-wrap gap-1">
+                {(() => {
+                  const tops = keywords.slice(0, 5);
+                  const pairs: Array<[string,string]> = [];
+                  for (let i = 0; i < tops.length; i++) for (let j = i+1; j < tops.length; j++) pairs.push([tops[i], tops[j]]);
+                  return pairs.slice(0, 6).map((pair, idx) => (
+                    <button key={`pair2-${idx}`} className="text-[10px] px-2 py-0.5 rounded border" onClick={() => onKeywordSearch?.({ keywords: pair, mode: "all" })}>{pair[0]} + {pair[1]}</button>
+                  ));
+                })()}
+              </div>
+            </div>
+          )}
         </div>
         <textarea className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" rows={4} placeholder="핵심 요약을 작성하세요" value={newSummary} onChange={(e) => setNewSummary(e.target.value)} />
         <div className="flex items-center gap-2">
