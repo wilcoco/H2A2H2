@@ -198,15 +198,13 @@ function SuggestItem({ it, onSelectQA, connectMode, targetId, onPickTarget, refr
 
   return (
     <li className="rounded border border-gray-200/60 p-2 bg-white/60 dark:bg-gray-900/40">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 cursor-pointer hover:opacity-90" onClick={() => onSelectQA(it.id)}>
-          <div className="text-sm font-medium line-clamp-2">Q: {it.question}</div>
-          {it.summary && <div className="text-[11px] text-gray-600 mt-0.5 line-clamp-2">{it.summary}</div>}
-        </div>
-        <div className="shrink-0 flex items-center gap-2">
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 border">Chain {loading ? "…" : (count ?? 0)}</span>
-          <button className="text-[11px] px-2 py-1 rounded border" onClick={() => setExpanded((v) => !v)}>{expanded ? "접기" : "보기"}</button>
-        </div>
+      <div className="min-w-0 cursor-pointer hover:opacity-90" onClick={() => onSelectQA(it.id)}>
+        <div className="text-sm font-medium line-clamp-3">Q: {it.question}</div>
+        {it.summary && <div className="text-[11px] text-gray-600 mt-0.5 line-clamp-3">{it.summary}</div>}
+      </div>
+      <div className="mt-1 flex items-center gap-2 justify-end">
+        <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 border">Chain {loading ? "…" : (count ?? 0)}</span>
+        <button className="text-[10px] px-2 py-0.5 rounded border" onClick={() => setExpanded((v) => !v)}>{expanded ? "접기" : "자세히"}</button>
       </div>
       {expanded && (
         <div className="mt-2 space-y-2">

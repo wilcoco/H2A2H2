@@ -52,6 +52,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
   const [voteBusy, setVoteBusy] = useState<Record<string, boolean>>({});
   const [provider, setProvider] = useState<"openai" | "anthropic">("openai");
   const [detail, setDetail] = useState<"short" | "normal" | "long">("normal");
+  const [lastMeta, setLastMeta] = useState<{ providerUsed?: "openai" | "anthropic"; modelUsed?: string; fallbackUsed?: boolean } | null>(null);
 
   async function useQA(id: string) {
     try {
@@ -321,10 +322,11 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
         const err = await res.json().catch(() => ({}));
         throw new Error(err?.error || "Chat failed");
       }
-      const data = (await res.json()) as { answer?: string };
+      const data = (await res.json()) as { answer?: string; providerUsed?: "openai" | "anthropic"; modelUsed?: string; fallbackUsed?: boolean };
       const answer = data.answer ?? "";
       if (answer) {
         setHistory((h) => [...h, { role: "user", content: question }, { role: "assistant", content: answer }]);
+        setLastMeta({ providerUsed: data.providerUsed, modelUsed: data.modelUsed, fallbackUsed: Boolean(data.fallbackUsed) });
         setLastAnswer(answer);
         setPrompt("");
         try {
@@ -711,12 +713,26 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
         {history.length === 0 && (
           <div className="text-xs text-gray-500">질문을 입력하고 Ask를 누르면 응답이 여기에 표시됩니다.</div>
         )}
-        {history.map((m, i) => (
-          <div key={i} className={`text-sm ${m.role === "assistant" ? "text-gray-900" : "text-gray-700"}`}>
-            <span className="font-medium mr-1">{m.role === "assistant" ? "AI" : "You"}:</span>
-            <span>{m.content}</span>
-          </div>
-        ))}
+        {history.map((m, i) => {
+          const isAssistant = m.role === "assistant";
+          const lastAssistantIdx = history.reduce((acc, mm, idx) => (mm.role === "assistant" ? idx : acc), -1);
+          const showMeta = isAssistant && i === lastAssistantIdx && !!lastMeta;
+          return (
+            <div key={i} className="text-sm text-gray-800">
+              <div className={isAssistant ? "text-gray-900" : "text-gray-700"}>
+                <span className="font-medium mr-1">{isAssistant ? "AI" : "You"}:</span>
+                <span>{m.content}</span>
+              </div>
+              {showMeta && (
+                <div className="text-[10px] text-gray-500 ml-6">
+                  via {lastMeta!.providerUsed === "anthropic" ? "Anthropic (Claude)" : lastMeta!.providerUsed === "openai" ? "OpenAI" : "AI"}
+                  {lastMeta!.modelUsed ? <> · {lastMeta!.modelUsed}</> : null}
+                  {lastMeta!.fallbackUsed ? " · fallback" : ""}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
       {generatingPatch && (
         <div className="text-xs text-gray-500">답변을 지식 그래프로 구조화하는 중...</div>

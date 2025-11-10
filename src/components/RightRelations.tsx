@@ -258,19 +258,19 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
           <div className="mt-2 text-xs text-gray-600">고정한 카드</div>
           <ul className="mt-1 space-y-1 max-h-60 overflow-auto">
             {pinnedItems.map((it) => (
-              <li key={it.id} className={`p-2 rounded border text-xs flex items-center justify-between gap-2 ${targetId === it.id ? "bg-gray-50" : ""}`}>
+              <li key={it.id} className={`p-2 rounded border text-xs ${targetId === it.id ? "bg-gray-50" : ""}`}>
                 <div className="min-w-0">
-                  <div className="truncate">Q: {it.question}</div>
+                  <div className="truncate font-medium">Q: {it.question}</div>
                   {it.summary ? (
                     <div className="text-[10px] text-gray-600 truncate">{it.summary}</div>
                   ) : (it.answer ? (
                     <div className="text-[10px] text-gray-600 truncate">A: {it.answer}</div>
                   ) : null)}
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button className={`text-[11px] px-2 py-1 rounded border ${srcOverrideId === it.id ? 'bg-blue-600 text-white' : ''}`} onClick={() => { setSrcOverrideId(it.id); setManualSource(true); }}>{srcOverrideId === it.id ? "Source" : "Set Source"}</button>
-                  <button className={`text-[11px] px-2 py-1 rounded border ${targetId === it.id ? 'bg-blue-600 text-white' : ''}`} onClick={() => onTargetChange?.(it.id)}>{targetId === it.id ? "Target" : "Set Target"}</button>
-                  <button className="text-[11px] px-2 py-1 rounded border" onClick={() => onUnpin?.(it.id)}>해제</button>
+                <div className="mt-1 flex items-center gap-1 justify-end">
+                  <button title="Set Source" className={`text-[10px] px-2 py-0.5 rounded border ${srcOverrideId === it.id ? 'bg-blue-600 text-white' : ''}`} onClick={() => { setSrcOverrideId(it.id); setManualSource(true); }}>{srcOverrideId === it.id ? "Src" : "Src"}</button>
+                  <button title="Set Target" className={`text-[10px] px-2 py-0.5 rounded border ${targetId === it.id ? 'bg-blue-600 text-white' : ''}`} onClick={() => onTargetChange?.(it.id)}>{targetId === it.id ? "Trg" : "Trg"}</button>
+                  <button title="Unpin" className="text-[10px] px-2 py-0.5 rounded border" onClick={() => onUnpin?.(it.id)}>X</button>
                 </div>
               </li>
             ))}

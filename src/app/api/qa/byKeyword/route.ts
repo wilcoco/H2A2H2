@@ -18,12 +18,26 @@ export async function POST(req: NextRequest) {
     const mode: "any" | "all" = (body?.mode === "all" ? "all" : "any");
     const limit: number = Math.min(Math.max(Number(body?.limit ?? 10), 1), 25);
 
-    const kws = (keyword ? [keyword] : keywords).map((s) => s.trim().toLowerCase()).filter(Boolean);
+    function normalizeKo(s: string): string {
+      const t = (s || "").trim().toLowerCase();
+      if (!t) return t;
+      const josa = [
+        "에서","에게","으로","하면","하며","라고","이라면","이랑","처럼","부터","까지","조차","마저","뿐","이라서","라서","이라며","이며",
+        "은","는","이","가","을","를","과","와","로","에","도","만","나","이나","라도","라면","랑","엔","의"
+      ];
+      for (const j of josa.sort((a,b) => b.length - a.length)) {
+        if (t.endsWith(j) && t.length > j.length + 1) return t.slice(0, t.length - j.length);
+      }
+      return t;
+    }
+    const rawKws = (keyword ? [keyword] : keywords).map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const normSet = new Set<string>();
+    for (const k of rawKws) { normSet.add(k); normSet.add(normalizeKo(k)); }
+    const kws = Array.from(normSet).filter(Boolean);
     if (kws.length === 0) return NextResponse.json({ items: [], keywords: {} });
 
     let rows: Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string }> = [];
     if (kws.length === 1 || mode === "any") {
-      // ANY match
       rows = await withConn(async (c) => {
         const r = await c.query(
           `select e.id, e.question, e.answer, e.summary, e.work_id
@@ -38,8 +52,28 @@ export async function POST(req: NextRequest) {
         );
         return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string }>;
       });
+      if (!rows.length) {
+        // Fallback: partial match with ILIKE ANY on keywords
+        const pats = kws.map((k) => `%${k}%`);
+        rows = await withConn(async (c) => {
+          const r = await c.query(
+            `select e.id, e.question, e.answer, e.summary, e.work_id
+               from qa_entries e
+              where (e.published = true or e.created_by = $3)
+                and exists (
+                  select 1 from qa_keywords k
+                   where k.qa_id = e.id and k.keyword ilike any($1)
+                )
+              group by e.id
+              order by e.created_at desc
+              limit $2`,
+            [pats, limit, userId]
+          );
+          return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string }>;
+        });
+      }
     } else {
-      // ALL match: having count(distinct keyword) = kws.length
+      // ALL match: having count(distinct keyword) >= number of normalized inputs
       rows = await withConn(async (c) => {
         const r = await c.query(
           `select e.id, e.question, e.answer, e.summary, e.work_id
@@ -55,6 +89,25 @@ export async function POST(req: NextRequest) {
         );
         return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string }>;
       });
+      if (!rows.length) {
+        const pats = kws.map((k) => `%${k}%`);
+        rows = await withConn(async (c) => {
+          const r = await c.query(
+            `select e.id, e.question, e.answer, e.summary, e.work_id
+               from qa_entries e
+              where (e.published = true or e.created_by = $3)
+                and exists (
+                  select 1 from qa_keywords k
+                   where k.qa_id = e.id and k.keyword ilike any($1)
+                )
+              group by e.id
+              order by e.created_at desc
+              limit $2`,
+            [pats, limit, userId]
+          );
+          return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string }>;
+        });
+      }
     }
 
     // Attach keywords for returned ids
