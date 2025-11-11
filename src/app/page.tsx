@@ -61,6 +61,7 @@ export default function Home() {
   const [provider, setProvider] = useState<"openai" | "anthropic">("openai");
   const [centerAiMeta, setCenterAiMeta] = useState<{ providerUsed?: "openai" | "anthropic"; modelUsed?: string; fallbackUsed?: boolean } | null>(null);
   const [centerPrevRespId, setCenterPrevRespId] = useState<string | null>(null);
+  const [centerLockContext, setCenterLockContext] = useState<boolean>(true);
   const [detail, setDetail] = useState<"short" | "normal" | "long">("normal");
   const [rightTab, setRightTab] = useState<"relations" | "writer">("relations");
   const [writerQaId, setWriterQaId] = useState<string | null>(null);
@@ -336,6 +337,9 @@ export default function Home() {
             aiModel={!selectedQaId ? centerAiMeta?.modelUsed : undefined}
             aiFallbackUsed={!selectedQaId ? centerAiMeta?.fallbackUsed : undefined}
             aiResponseId={!selectedQaId ? (centerPrevRespId || undefined) : undefined}
+            lockContext={centerLockContext}
+            onToggleLock={(v) => setCenterLockContext(v)}
+            onSetPrevRespId={(rid) => setCenterPrevRespId(rid)}
             onOpenThread={() => setThreadOpen(true)}
             onKeywordClick={(kw) => { setLeftKeywords(null); setLeftPhrases(null); setLeftKeyword(kw); }}
             onKeywordSearch={({ keywords, phrases, mode }) => {

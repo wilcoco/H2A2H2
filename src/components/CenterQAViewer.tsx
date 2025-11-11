@@ -11,6 +11,9 @@ type Props = {
   aiModel?: string;
   aiFallbackUsed?: boolean;
   aiResponseId?: string;
+  lockContext?: boolean;
+  onToggleLock?: (v: boolean) => void;
+  onSetPrevRespId?: (rid: string | null) => void;
   onOpenThread?: () => void;
   onShared?: (id: string) => void;
   onPinned?: (id: string) => void;
@@ -24,7 +27,7 @@ type Props = {
   onSetCard?: (id: string) => void;
 };
 
-export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, aiModel, aiFallbackUsed, aiResponseId, onOpenThread, onShared, onPinned, refreshKey, onSelectQA, currentUserEmail, onKeywordClick, onKeywordSearch, onSetSource, onSetTarget, onSetCard }: Props) {
+export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, aiModel, aiFallbackUsed, aiResponseId, lockContext, onToggleLock, onSetPrevRespId, onOpenThread, onShared, onPinned, refreshKey, onSelectQA, currentUserEmail, onKeywordClick, onKeywordSearch, onSetSource, onSetTarget, onSetCard }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<any | null>(null);
@@ -183,6 +186,12 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
     return () => { active = false; };
   }, [qaId]);
 
+  useEffect(() => {
+    if (!lockContext) { onSetPrevRespId?.(null); return; }
+    if (qaId && data?.lastResponseId) { onSetPrevRespId?.(String(data.lastResponseId)); return; }
+    if (!qaId && aiResponseId) { onSetPrevRespId?.(String(aiResponseId)); return; }
+  }, [lockContext, qaId, data?.lastResponseId, aiResponseId]);
+
   async function vote(v: 1 | -1) {
     if (!qaId) return;
     try {
@@ -259,7 +268,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
     if (!q || !a) return;
     try {
       setSaving(true);
-      const res = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q, answer: a, summary: newSummary.trim() || undefined }) });
+      const res = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q, answer: a, summary: newSummary.trim() || undefined, responseId: aiResponseId || undefined }) });
       if (!res.ok) throw new Error("Share failed");
       const j = await res.json();
       const id = String(j?.id || "");
@@ -344,6 +353,9 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           <span className={`px-2 py-0.5 rounded-full border ${data.published !== false ? 'bg-green-50 border-green-200 text-green-700' : 'bg-yellow-50 border-yellow-200 text-yellow-700'}`}>{data.published !== false ? 'Published' : 'Draft'}</span>
           {data.createdBy && <span>by {data.createdBy}</span>}
           {data.lastResponseId && <span className="truncate max-w-[50%]" title={data.lastResponseId}>RID: {data.lastResponseId}</span>}
+          <label className="ml-auto inline-flex items-center gap-1">
+            <input type="checkbox" checked={!!lockContext} onChange={(e) => { onToggleLock?.(e.target.checked); const rid = String(data?.lastResponseId || ""); if (e.target.checked) onSetPrevRespId?.(rid || null); else onSetPrevRespId?.(null); }} /> 이 RID로 맥락 고정
+          </label>
         </div>
         <div className="mt-2 flex items-center gap-2">
           <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white" onClick={() => { if (qaId) onSetCard?.(qaId); }}>가이드에 추가</button>
@@ -540,6 +552,9 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             {aiModel ? ` · ${aiModel}` : ""}
             {aiFallbackUsed ? " · fallback" : ""}
             {aiResponseId ? ` · RID: ${aiResponseId}` : ""}
+            <label className="ml-2 inline-flex items-center gap-1">
+              <input type="checkbox" checked={!!lockContext} onChange={(e) => { onToggleLock?.(e.target.checked); const rid = String(aiResponseId || ""); if (e.target.checked) onSetPrevRespId?.(rid || null); else onSetPrevRespId?.(null); }} /> 이 RID로 맥락 고정
+            </label>
           </div>
         )}
         <div className="mt-2 flex items-center gap-2">
