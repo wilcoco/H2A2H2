@@ -165,8 +165,8 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
             <div className="text-[11px] text-gray-600 mt-0.5">{node.hasAnswer ? "답변 있음" : "미답변"}</div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <button className="text-[11px] px-2 py-1 rounded border" disabled={!!busyVote[fid]} onClick={() => void sendVote(fid, 1)}>Helpful ({node.helpful})</button>
-            <button className="text-[11px] px-2 py-1 rounded border" disabled={!!busyVote[fid]} onClick={() => void sendVote(fid, -1)}>Not ({node.unhelpful})</button>
+            <button className="text-[11px] px-2 py-1 rounded border" disabled={!!busyVote[fid]} onClick={() => void sendVote(fid, 1)}>도움됨 ({node.helpful})</button>
+            <button className="text-[11px] px-2 py-1 rounded border" disabled={!!busyVote[fid]} onClick={() => void sendVote(fid, -1)}>도움 안됨 ({node.unhelpful})</button>
             {!node.hasAnswer && (
               <button className="text-[11px] px-2 py-1 rounded border" onClick={() => void aiAnswer(fid, node.question)}>AI 답변 생성</button>
             )}
@@ -233,7 +233,7 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
                     <li key={n.id} className="p-2 border rounded flex items-center justify-between gap-2">
                       <div className="min-w-0">
                         <div className="text-xs font-medium line-clamp-1">{n.question}</div>
-                        <div className="text-[10px] text-gray-500">Helpful {n.helpful} · {n.hasAnswer ? "답변 있음" : "미답변"}</div>
+                        <div className="text-[10px] text-gray-500">도움됨 {n.helpful} · {n.hasAnswer ? "답변 있음" : "미답변"}</div>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         <button className={`text-[11px] px-2 py-1 rounded border ${fromId === n.id ? "bg-gray-100" : ""}`} onClick={() => setFromId(n.id)}>From</button>

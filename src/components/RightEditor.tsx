@@ -218,8 +218,8 @@ export default function RightEditor({ qaId, question, aiAnswer, user, onRequireL
       <div>
         <div className="text-xs text-gray-600 mb-1">평가</div>
         <div className="flex items-center gap-2">
-          <button className="text-xs px-3 py-2 rounded border" disabled={!qaId || voteBusy} onClick={() => void vote(1)}>Helpful</button>
-          <button className="text-xs px-3 py-2 rounded border" disabled={!qaId || voteBusy} onClick={() => void vote(-1)}>Not helpful</button>
+          <button className="text-xs px-3 py-2 rounded border" disabled={!qaId || voteBusy} onClick={() => void vote(1)}>도움됨</button>
+          <button className="text-xs px-3 py-2 rounded border" disabled={!qaId || voteBusy} onClick={() => void vote(-1)}>도움 안됨</button>
         </div>
       </div>
 

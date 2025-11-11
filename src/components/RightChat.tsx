@@ -556,8 +556,8 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
             <div className="text-[11px] text-gray-600 mt-0.5">{node.hasAnswer ? "답변 있음" : "미답변"}</div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <button className="text-[11px] px-2 py-1 rounded border" disabled={voteBusy[qaId]} onClick={() => void sendVote(qaId, 1)}>Helpful ({node.helpful || 0})</button>
-            <button className="text-[11px] px-2 py-1 rounded border" disabled={voteBusy[qaId]} onClick={() => void sendVote(qaId, -1)}>Not ({node.unhelpful || 0})</button>
+            <button className="text-[11px] px-2 py-1 rounded border" disabled={voteBusy[qaId]} onClick={() => void sendVote(qaId, 1)}>도움됨 ({node.helpful || 0})</button>
+            <button className="text-[11px] px-2 py-1 rounded border" disabled={voteBusy[qaId]} onClick={() => void sendVote(qaId, -1)}>도움 안됨 ({node.unhelpful || 0})</button>
             {!node.hasAnswer && (
               <button className="text-[11px] px-2 py-1 rounded border" onClick={() => void aiAnswer(qaId, node.question)}>AI 답변 생성</button>
             )}

@@ -343,6 +343,11 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           <span className={`px-2 py-0.5 rounded-full border ${data.published !== false ? 'bg-green-50 border-green-200 text-green-700' : 'bg-yellow-50 border-yellow-200 text-yellow-700'}`}>{data.published !== false ? 'Published' : 'Draft'}</span>
           {data.createdBy && <span>by {data.createdBy}</span>}
         </div>
+        <div className="mt-2 flex items-center gap-2">
+          <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white" onClick={() => { if (qaId) onSetCard?.(qaId); }}>가이드에 추가</button>
+          <button className="text-xs px-2 py-1 rounded border" onClick={() => setEditing((v) => !v)}>{editing ? "편집 취소" : "개선하기"}</button>
+          <button className="text-xs px-2 py-1 rounded border" onClick={() => { if (!qaId) return; try { const url = location.origin + "/?qa=" + encodeURIComponent(qaId); navigator.clipboard?.writeText(url); } catch {} }}>공유하기</button>
+        </div>
         {data.answer && <div className="text-sm whitespace-pre-wrap">A: {data.answer}</div>}
         {(() => { const s = String(data.summary || "").trim(); const a = String(data.answer || "").trim(); const distinct = s && s !== a; return (!editing && distinct) ? (<div className="text-xs text-gray-700 whitespace-pre-wrap">Summary: {data.summary}</div>) : null; })()}
         <div className="mt-2">
@@ -428,7 +433,13 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           )}
         </div>
         {editing && (
-          <textarea className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" rows={4} value={editSummary} onChange={(e) => setEditSummary(e.target.value)} />
+          <>
+            <textarea className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" rows={4} value={editSummary} onChange={(e) => setEditSummary(e.target.value)} />
+            <div className="mt-1 flex items-center gap-2">
+              <button className="text-xs px-2 py-1 rounded bg-blue-600 text-white disabled:opacity-50" disabled={saving || !editSummary.trim()} onClick={() => void saveSummary()}>{saving ? "Saving..." : "변경 저장"}</button>
+              <button className="text-xs px-2 py-1 rounded border" onClick={() => setEditing(false)}>취소</button>
+            </div>
+          </>
         )}
         <div className="flex items-center gap-2 mt-2">
           <button className="text-xs px-2 py-1 rounded border" disabled={!qaId} onClick={() => qaId && onSetSource?.(qaId)}>Set Source</button>
@@ -528,6 +539,22 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             {aiFallbackUsed ? " · fallback" : ""}
           </div>
         )}
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50"
+            disabled={saving}
+            onClick={() => void shareAnd("card")}
+          >{saving ? "Sharing..." : "가이드에 추가"}</button>
+          <button
+            className="text-xs px-2 py-1 rounded border"
+            onClick={() => { try { document.getElementById("new-summary")?.focus(); } catch {} }}
+          >개선하기</button>
+          <button
+            className="text-xs px-2 py-1 rounded border disabled:opacity-50"
+            disabled={saving}
+            onClick={() => void shareNew()}
+          >{saving ? "Sharing..." : "공유하기"}</button>
+        </div>
         <div className="text-xs text-gray-600">요약 또는 키워드를 확인하고 공유하면 지식 체계에 등록됩니다.</div>
         <div>
           <div className="text-xs text-gray-600 mb-1">복합어</div>
@@ -597,7 +624,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             </div>
           )}
         </div>
-        <textarea className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" rows={4} placeholder="핵심 요약을 작성하세요" value={newSummary} onChange={(e) => setNewSummary(e.target.value)} />
+        <textarea id="new-summary" name="new-summary" className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" rows={4} placeholder="핵심 요약을 작성하세요" value={newSummary} onChange={(e) => setNewSummary(e.target.value)} />
         <div className="flex items-center gap-2">
           <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={saving} onClick={() => void shareAnd("source")}>{saving ? "Sharing..." : "Set Source"}</button>
           <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={saving} onClick={() => void shareAnd("target")}>{saving ? "Sharing..." : "Set Target"}</button>
