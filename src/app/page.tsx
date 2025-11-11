@@ -335,6 +335,7 @@ export default function Home() {
             aiProvider={!selectedQaId ? centerAiMeta?.providerUsed : undefined}
             aiModel={!selectedQaId ? centerAiMeta?.modelUsed : undefined}
             aiFallbackUsed={!selectedQaId ? centerAiMeta?.fallbackUsed : undefined}
+            aiResponseId={!selectedQaId ? (centerPrevRespId || undefined) : undefined}
             onOpenThread={() => setThreadOpen(true)}
             onKeywordClick={(kw) => { setLeftKeywords(null); setLeftPhrases(null); setLeftKeyword(kw); }}
             onKeywordSearch={({ keywords, phrases, mode }) => {

@@ -71,14 +71,15 @@ export async function POST(req: Request) {
     const promptText = input.prompt || "";
     // Retrieve top similar Q&As as lightweight context (best-effort)
     let relatedText = "";
+    let anchorPrevId: string | undefined;
     try {
       await ensureTables();
       const q = promptText.trim().toLowerCase();
       if (q) {
-        const rows: Array<{ question: string; answer?: string; summary?: string }> = await withConn(async (c) => {
+        const rows: Array<{ id: string; question: string; answer?: string; summary?: string; last_response_id?: string | null }> = await withConn(async (c) => {
           try {
             const r = await c.query(
-              `select question, answer, summary
+              `select id, question, answer, summary, last_response_id
                  from qa_entries
                 where (
                   similarity(lower(question), $1) > 0.2
@@ -94,13 +95,13 @@ export async function POST(req: Request) {
                 limit 5`,
               [q]
             );
-            const trgm = r.rows as Array<{ question: string; answer?: string; summary?: string }>;
+            const trgm = r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; last_response_id?: string | null }>;
             // Keyword-based retrieval
             const kws = kwHeuristic(q, 8);
-            let byKw: Array<{ question: string; answer?: string; summary?: string }> = [];
+            let byKw: Array<{ id: string; question: string; answer?: string; summary?: string; last_response_id?: string | null }> = [];
             if (kws.length) {
               const rk = await c.query(
-                `select e.question, e.answer, e.summary
+                `select e.id, e.question, e.answer, e.summary, e.last_response_id
                    from qa_entries e
                   join (
                     select qa_id, sum(weight) as score
@@ -113,11 +114,11 @@ export async function POST(req: Request) {
                  limit 5`,
                 [q, kws]
               );
-              byKw = rk.rows as Array<{ question: string; answer?: string; summary?: string }>;
+              byKw = rk.rows as Array<{ id: string; question: string; answer?: string; summary?: string; last_response_id?: string | null }>;
             }
             // Merge and dedup by question text
             const seen = new Set<string>();
-            const merged: Array<{ question: string; answer?: string; summary?: string }> = [];
+            const merged: Array<{ id: string; question: string; answer?: string; summary?: string; last_response_id?: string | null }> = [];
             for (const item of [...byKw, ...trgm]) {
               const key = (item.question || "").toLowerCase().slice(0, 300);
               if (key && !seen.has(key)) {
@@ -128,7 +129,7 @@ export async function POST(req: Request) {
             return merged.slice(0, 5);
           } catch {
             const r = await c.query(
-              `select question, answer, summary
+              `select id, question, answer, summary, last_response_id
                  from qa_entries
                 where (lower(question) like ('%' || $1 || '%')
                    or lower(coalesce(summary,'')) like ('%' || $1 || '%'))
@@ -137,7 +138,7 @@ export async function POST(req: Request) {
                 limit 5`,
               [q]
             );
-            return r.rows as Array<{ question: string; answer?: string; summary?: string }>;
+            return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; last_response_id?: string | null }>;
           }
         });
         const snips = rows.map((r, i) => {
@@ -146,6 +147,9 @@ export async function POST(req: Request) {
           return `${i + 1}) Q: ${qx}\n   A: ${a}`;
         });
         if (snips.length) relatedText = `Relevant prior Q&A (may be partial, for context only):\n${snips.join("\n\n")}`;
+        // pick an anchor previous_response_id if not provided
+        const cand = rows.find((r) => (r.last_response_id || "").toString().trim());
+        if (cand?.last_response_id) anchorPrevId = String(cand.last_response_id);
       }
     } catch {}
 
@@ -189,6 +193,7 @@ export async function POST(req: Request) {
           if (model.startsWith("o3")) base.reasoning = { effort: "high" };
           try {
             if (input.previousResponseId) base.previous_response_id = input.previousResponseId;
+            else if (anchorPrevId) base.previous_response_id = anchorPrevId;
             const res = await client.responses.create(base);
             answer = (res as any).output_text?.trim() ?? "";
             responseId = (res as any)?.id;
@@ -263,6 +268,7 @@ export async function POST(req: Request) {
           if (model.startsWith("o3")) base.reasoning = { effort: "high" };
           try {
             if (input.previousResponseId) base.previous_response_id = input.previousResponseId;
+            else if (anchorPrevId) base.previous_response_id = anchorPrevId;
             const res = await client.responses.create(base);
             answer = (res as any).output_text?.trim() ?? "";
             responseId = (res as any)?.id;

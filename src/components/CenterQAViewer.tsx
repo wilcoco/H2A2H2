@@ -10,6 +10,7 @@ type Props = {
   aiProvider?: "openai" | "anthropic";
   aiModel?: string;
   aiFallbackUsed?: boolean;
+  aiResponseId?: string;
   onOpenThread?: () => void;
   onShared?: (id: string) => void;
   onPinned?: (id: string) => void;
@@ -23,7 +24,7 @@ type Props = {
   onSetCard?: (id: string) => void;
 };
 
-export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, aiModel, aiFallbackUsed, onOpenThread, onShared, onPinned, refreshKey, onSelectQA, currentUserEmail, onKeywordClick, onKeywordSearch, onSetSource, onSetTarget, onSetCard }: Props) {
+export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, aiModel, aiFallbackUsed, aiResponseId, onOpenThread, onShared, onPinned, refreshKey, onSelectQA, currentUserEmail, onKeywordClick, onKeywordSearch, onSetSource, onSetTarget, onSetCard }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<any | null>(null);
@@ -237,7 +238,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
     if (!q || !a) return;
     try {
       setSaving(true);
-      const res = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q, answer: a, summary: newSummary.trim() || undefined }) });
+      const res = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: q, answer: a, summary: newSummary.trim() || undefined, responseId: aiResponseId || undefined }) });
       if (!res.ok) throw new Error("Share failed");
       const j = await res.json();
       const id = String(j?.id || "");
@@ -342,6 +343,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         <div className="flex items-center gap-2 text-[11px] text-gray-600">
           <span className={`px-2 py-0.5 rounded-full border ${data.published !== false ? 'bg-green-50 border-green-200 text-green-700' : 'bg-yellow-50 border-yellow-200 text-yellow-700'}`}>{data.published !== false ? 'Published' : 'Draft'}</span>
           {data.createdBy && <span>by {data.createdBy}</span>}
+          {data.lastResponseId && <span className="truncate max-w-[50%]" title={data.lastResponseId}>RID: {data.lastResponseId}</span>}
         </div>
         <div className="mt-2 flex items-center gap-2">
           <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white" onClick={() => { if (qaId) onSetCard?.(qaId); }}>가이드에 추가</button>
@@ -532,11 +534,12 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       <div className="flex flex-col gap-2">
         <div className="text-sm font-semibold">Q: {question}</div>
         <div className="text-sm whitespace-pre-wrap">AI Answer: {aiAnswer}</div>
-        {(aiProvider || aiModel) && (
+        {(aiProvider || aiModel || aiResponseId) && (
           <div className="text-[11px] text-gray-600">
             via {aiProvider === "anthropic" ? "Anthropic (Claude)" : aiProvider === "openai" ? "OpenAI" : "AI"}
             {aiModel ? ` · ${aiModel}` : ""}
             {aiFallbackUsed ? " · fallback" : ""}
+            {aiResponseId ? ` · RID: ${aiResponseId}` : ""}
           </div>
         )}
         <div className="mt-2 flex items-center gap-2">

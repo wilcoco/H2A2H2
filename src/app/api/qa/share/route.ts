@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
     let summary: string | undefined = body?.summary ? String(body.summary) : undefined;
     const patch: any | undefined = body?.patch ?? undefined;
     const workId: string | undefined = body?.workId ? String(body.workId) : undefined;
+    const responseId: string | undefined = body?.responseId ? String(body.responseId) : undefined;
     const token = req.cookies.get("session")?.value;
     const user = token ? await verifySession(token) : null;
     const createdBy: string | undefined = user?.email ?? undefined;
@@ -55,9 +56,9 @@ export async function POST(req: NextRequest) {
     }
     await withConn(async (c) => {
       await c.query(
-        `insert into qa_entries (id, question, norm_question, answer, summary, patch, work_id, created_by, parent_id, root_id, published)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-        [id, q, normalize(q), answer ?? null, summary ?? null, patch ?? null, workId ?? null, createdBy ?? null, parentId ?? null, rootId ?? id, published]
+        `insert into qa_entries (id, question, norm_question, answer, summary, patch, work_id, created_by, parent_id, root_id, published, last_response_id)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        [id, q, normalize(q), answer ?? null, summary ?? null, patch ?? null, workId ?? null, createdBy ?? null, parentId ?? null, rootId ?? id, published, (responseId || "").trim() ? responseId : null]
       );
 
       if (parentId) {

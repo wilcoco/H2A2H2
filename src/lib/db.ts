@@ -60,6 +60,7 @@ export async function ensureTables() {
     await c.query(`alter table qa_entries add column if not exists parent_id text`);
     await c.query(`alter table qa_entries add column if not exists root_id text`);
     await c.query(`alter table qa_entries add column if not exists published boolean not null default true`);
+    await c.query(`alter table qa_entries add column if not exists last_response_id text`);
     await c.query(`create index if not exists qa_entries_question_idx on qa_entries (lower(question))`);
     await c.query(`create index if not exists qa_entries_created_at_idx on qa_entries (created_at)`);
     await c.query(`create index if not exists qa_entries_parent_idx on qa_entries (parent_id)`);

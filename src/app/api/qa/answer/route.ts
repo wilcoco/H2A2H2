@@ -12,6 +12,7 @@ export async function POST(req: NextRequest) {
     let summary: string | undefined = typeof body?.summary === "string" ? String(body.summary) : undefined;
     const question: string | undefined = typeof body?.question === "string" ? String(body.question) : undefined;
     const patch: any | undefined = body?.patch ?? undefined;
+    const responseId: string | undefined = typeof body?.responseId === "string" ? String(body.responseId) : undefined;
     if (!qaId || (!((answer || "").trim()) && !(summary && summary.trim()) && !(question && question.trim()))) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
     }
@@ -33,9 +34,10 @@ export async function POST(req: NextRequest) {
                 summary = coalesce($3, summary),
                 patch = coalesce($4, patch),
                 question = coalesce($5, question),
-                norm_question = case when $5 is not null and length(trim($5)) > 0 then $6 else norm_question end
+                norm_question = case when $5 is not null and length(trim($5)) > 0 then $6 else norm_question end,
+                last_response_id = coalesce($7, last_response_id)
           where id = $1`,
-        [qaId, (answer || "").trim() ? answer : null, summary ?? null, patch ?? null, (question || "").trim() ? question : null, (question || "").trim() ? normalize(question as string) : null]
+        [qaId, (answer || "").trim() ? answer : null, summary ?? null, patch ?? null, (question || "").trim() ? question : null, (question || "").trim() ? normalize(question as string) : null, (responseId || "").trim() ? responseId : null]
       );
     });
 

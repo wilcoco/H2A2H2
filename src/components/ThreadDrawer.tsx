@@ -7,6 +7,7 @@ type ThreadNode = {
   parentId?: string;
   question: string;
   hasAnswer: boolean;
+  lastResponseId?: string;
   helpful: number;
   unhelpful: number;
   myVote: number;
@@ -94,7 +95,7 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
       if (j?.responseId) try { setPrevRespId(String(j.responseId)); } catch {}
       const answer = String(j?.answer || "");
       if (!answer) return;
-      const u = await fetch("/api/qa/answer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId: id, answer }) });
+      const u = await fetch("/api/qa/answer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId: id, answer, responseId: j?.responseId || undefined }) });
       if (!u.ok) throw new Error("Save failed");
       await refresh();
     } catch {}
@@ -164,7 +165,7 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="text-sm font-medium">Q: {node.question}</div>
-            <div className="text-[11px] text-gray-600 mt-0.5">{node.hasAnswer ? "답변 있음" : "미답변"}</div>
+            <div className="text-[11px] text-gray-600 mt-0.5">{node.hasAnswer ? "답변 있음" : "미답변"}{node.lastResponseId ? ` · RID: ${node.lastResponseId}` : ""}</div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <button className="text-[11px] px-2 py-1 rounded border" disabled={!!busyVote[fid]} onClick={() => void sendVote(fid, 1)}>도움됨 ({node.helpful})</button>

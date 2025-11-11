@@ -140,7 +140,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
       const answer = String(data?.answer || "");
       if (!answer) return;
       if (data?.responseId) try { setPrevRespId(String(data.responseId)); } catch {}
-      const u = await fetch("/api/qa/answer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId, answer }) });
+      const u = await fetch("/api/qa/answer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId, answer, responseId: data?.responseId || undefined }) });
       if (!u.ok) {
         const err = await u.json().catch(() => ({}));
         throw new Error(err?.error || "Save failed");
@@ -188,6 +188,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
       const payload: any = { question };
       if (lastAnswer) payload.answer = lastAnswer;
       if (proposedPatch) payload.patch = proposedPatch;
+      if (prevRespId) payload.responseId = prevRespId;
       const res = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));

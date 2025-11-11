@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
     const rows = await withConn(async (c) => {
       const r = await c.query(
-        `select q.id, q.parent_id, q.root_id, q.question, q.answer, q.created_at,
+        `select q.id, q.parent_id, q.root_id, q.question, q.answer, q.created_at, q.last_response_id,
                 coalesce(sum(case when f.vote = 1 then 1 else 0 end),0) as helpful,
                 coalesce(sum(case when f.vote = -1 then 1 else 0 end),0) as unhelpful,
                 max(case when f.user_id = $2 then f.vote else null end) as my_vote
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
          order by q.created_at asc`,
         [rootId, userId]
       );
-      return r.rows as Array<{ id: string; parent_id: string | null; root_id: string | null; question: string; answer: string | null; created_at: string; helpful: string; unhelpful: string; my_vote: number | null }>;
+      return r.rows as Array<{ id: string; parent_id: string | null; root_id: string | null; question: string; answer: string | null; created_at: string; last_response_id?: string | null; helpful: string; unhelpful: string; my_vote: number | null }>;
     });
 
     const byId = new Map<string, any>();
@@ -39,6 +39,7 @@ export async function GET(req: NextRequest) {
         parentId: r.parent_id ?? undefined,
         question: r.question,
         hasAnswer: !!r.answer,
+        lastResponseId: r.last_response_id ?? undefined,
         helpful: Number(r.helpful || 0),
         unhelpful: Number(r.unhelpful || 0),
         myVote: r.my_vote === 1 ? 1 : r.my_vote === -1 ? -1 : 0,
