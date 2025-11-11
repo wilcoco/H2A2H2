@@ -94,6 +94,11 @@ export default function Home() {
   }, [provider]);
 
   useEffect(() => {
+    // Reset center chat response chain when provider changes
+    setCenterPrevRespId(null);
+  }, [provider]);
+
+  useEffect(() => {
     try { localStorage.setItem("ai_detail", detail); } catch {}
   }, [detail]);
 

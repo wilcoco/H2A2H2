@@ -605,6 +605,11 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
   }, []);
 
   useEffect(() => {
+    // Reset response chain when provider changes
+    setPrevRespId(null);
+  }, [provider]);
+
+  useEffect(() => {
     try { localStorage.setItem("ai_provider", provider); } catch {}
   }, [provider]);
 
