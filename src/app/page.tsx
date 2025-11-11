@@ -62,6 +62,7 @@ export default function Home() {
   const [centerAiMeta, setCenterAiMeta] = useState<{ providerUsed?: "openai" | "anthropic"; modelUsed?: string; fallbackUsed?: boolean } | null>(null);
   const [detail, setDetail] = useState<"short" | "normal" | "long">("normal");
   const [rightTab, setRightTab] = useState<"relations" | "writer">("relations");
+  const [writerQaId, setWriterQaId] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -397,8 +398,10 @@ export default function Home() {
               />
             ) : (
               <RightWriter
-                qaId={selectedQaId || undefined}
+                qaId={writerQaId || undefined}
+                centerQaId={selectedQaId || undefined}
                 currentUserEmail={user?.email || null}
+                onSetQaId={(id) => setWriterQaId(id)}
                 onSaved={() => {
                   setGraphRefreshKey((k) => k + 1);
                 }}

@@ -4,11 +4,13 @@ import { useEffect, useRef, useState } from "react";
 
 type Props = {
   qaId?: string;
+  centerQaId?: string;
   currentUserEmail?: string | null;
+  onSetQaId?: (id: string) => void;
   onSaved?: () => void;
 };
 
-export default function RightWriter({ qaId, currentUserEmail, onSaved }: Props) {
+export default function RightWriter({ qaId, centerQaId, currentUserEmail, onSetQaId, onSaved }: Props) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +42,35 @@ export default function RightWriter({ qaId, currentUserEmail, onSaved }: Props) 
       } finally {
         if (active) setLoading(false);
       }
+
+  async function fetchQa(id: string): Promise<{ question: string; summary?: string; answer?: string; createdBy?: string } | null> {
+    try {
+      const r = await fetch(`/api/qa/${encodeURIComponent(id)}`, { cache: "no-store" });
+      const j = await r.json().catch(() => null);
+      if (!j) return null;
+      return { question: String(j.question || ""), summary: j.summary ? String(j.summary) : undefined, answer: j.answer ? String(j.answer) : undefined, createdBy: j.createdBy ? String(j.createdBy) : undefined };
+    } catch { return null; }
+  }
+
+  async function setTargetFromCenter() {
+    if (!centerQaId) return;
+    onSetQaId?.(centerQaId);
+  }
+
+  async function appendFromCenter() {
+    if (!centerQaId) return;
+    const data = await fetchQa(centerQaId);
+    if (!data) return;
+    const block = [
+      `<p><strong>Q:</strong> ${escapeHtml(data.question)}</p>`,
+      ...(data.summary || data.answer ? [
+        `<div>${escapeHtml(String(data.summary || data.answer || "")).replace(/\n/g, "<br/>")}</div>`
+      ] : [])
+    ].join("");
+    const next = (editorRef.current?.innerHTML || contentHtml || "") + (block ? `<hr/>${block}` : "");
+    if (editorRef.current) editorRef.current.innerHTML = next;
+    setContentHtml(next);
+  }
     })();
     return () => { active = false; };
   }, [qaId]);
@@ -115,10 +146,14 @@ export default function RightWriter({ qaId, currentUserEmail, onSaved }: Props) 
     <div className="flex flex-col gap-3">
       <div className="text-sm font-semibold">문서 작성</div>
       {error && <div className="text-xs text-red-600">{error}</div>}
-      <div className="text-[11px] text-gray-600">{qaId ? `Editing: ${qaId}` : "왼쪽에서 항목을 선택하세요."}</div>
+      <div className="text-[11px] text-gray-600">{qaId ? `Editing: ${qaId}` : "오른쪽 상단에서 대상 설정 또는 좌측 선택 후 '대상=센터'를 누르세요."}</div>
       {(createdBy || currentUserEmail) && (
         <div className="text-[11px] text-gray-600">{createdBy ? `by ${createdBy}` : (currentUserEmail ? `by ${currentUserEmail}` : null)}</div>
       )}
+      <div className="flex items-center gap-2">
+        <button className="text-[11px] px-2 py-1 rounded border" disabled={!centerQaId} onClick={() => void setTargetFromCenter()}>대상=센터</button>
+        <button className="text-[11px] px-2 py-1 rounded border" disabled={!centerQaId} onClick={() => void appendFromCenter()}>센터 내용 추가</button>
+      </div>
       <div>
         <div className="text-xs text-gray-600 mb-1">제목</div>
         <input
