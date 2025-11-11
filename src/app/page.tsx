@@ -63,6 +63,7 @@ export default function Home() {
   const [detail, setDetail] = useState<"short" | "normal" | "long">("normal");
   const [rightTab, setRightTab] = useState<"relations" | "writer">("relations");
   const [writerQaId, setWriterQaId] = useState<string | null>(null);
+  const [rightSplit, setRightSplit] = useState<boolean>(false);
 
   useEffect(() => {
     let mounted = true;
@@ -372,42 +373,86 @@ export default function Home() {
 
         <aside className="rounded border border-gray-200/60 p-0 overflow-hidden flex flex-col">
           <div className="flex items-center border-b border-gray-200/60">
-            <button
-              className={`text-xs px-3 py-2 ${rightTab === 'relations' ? 'border-b-2 border-blue-600 text-blue-700' : 'text-gray-600'}`}
-              onClick={() => setRightTab('relations')}
-            >관계 편집</button>
-            <button
-              className={`text-xs px-3 py-2 ${rightTab === 'writer' ? 'border-b-2 border-blue-600 text-blue-700' : 'text-gray-600'}`}
-              onClick={() => setRightTab('writer')}
-            >문서 작성</button>
+            {!rightSplit && (
+              <>
+                <button
+                  className={`text-xs px-3 py-2 ${rightTab === 'relations' ? 'border-b-2 border-blue-600 text-blue-700' : 'text-gray-600'}`}
+                  onClick={() => setRightTab('relations')}
+                >관계 편집</button>
+                <button
+                  className={`text-xs px-3 py-2 ${rightTab === 'writer' ? 'border-b-2 border-blue-600 text-blue-700' : 'text-gray-600'}`}
+                  onClick={() => setRightTab('writer')}
+                >문서 작성</button>
+              </>
+            )}
+            <div className="ml-auto flex items-center gap-2 p-1">
+              <label className="text-[11px] flex items-center gap-1">
+                <input type="checkbox" checked={rightSplit} onChange={(e) => setRightSplit(e.target.checked)} /> 동시 보기
+              </label>
+            </div>
           </div>
           <div className="p-2 md:p-3 overflow-auto flex-1">
-            {rightTab === 'relations' ? (
-              <RightRelations
-                qaId={selectedQaId || undefined}
-                targetId={relTargetId}
-                onTargetChange={(id) => setRelTargetId(id)}
-                connectMode={connectMode}
-                onConnectModeChange={(v) => setConnectMode(v)}
-                pinnedIds={pinnedIds}
-                onUnpin={(id) => setPinnedIds((arr) => arr.filter((x) => x !== id))}
-                onGraphChanged={() => setGraphRefreshKey((k) => k + 1)}
-                navDirection={relNavDirection}
-                onNavDirectionChange={(d) => setRelNavDirection(d)}
-                forceSourceId={forceSourceId}
-                writerQaId={writerQaId}
-                onEdit={(id) => { setWriterQaId(id); setRightTab('writer'); }}
-              />
+            {rightSplit ? (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-2 h-full">
+                <div className="overflow-auto">
+                  <RightRelations
+                    qaId={selectedQaId || undefined}
+                    targetId={relTargetId}
+                    onTargetChange={(id) => setRelTargetId(id)}
+                    connectMode={connectMode}
+                    onConnectModeChange={(v) => setConnectMode(v)}
+                    pinnedIds={pinnedIds}
+                    onUnpin={(id) => setPinnedIds((arr) => arr.filter((x) => x !== id))}
+                    onGraphChanged={() => setGraphRefreshKey((k) => k + 1)}
+                    navDirection={relNavDirection}
+                    onNavDirectionChange={(d) => setRelNavDirection(d)}
+                    forceSourceId={forceSourceId}
+                    writerQaId={writerQaId}
+                    onEdit={(id) => { setWriterQaId(id); setRightTab('writer'); }}
+                  />
+                </div>
+                <div className="overflow-auto">
+                  <RightWriter
+                    qaId={writerQaId || undefined}
+                    centerQaId={selectedQaId || undefined}
+                    currentUserEmail={user?.email || null}
+                    onSetQaId={(id: string) => setWriterQaId(id)}
+                    onSaved={() => {
+                      setGraphRefreshKey((k) => k + 1);
+                    }}
+                  />
+                </div>
+              </div>
             ) : (
-              <RightWriter
-                qaId={writerQaId || undefined}
-                centerQaId={selectedQaId || undefined}
-                currentUserEmail={user?.email || null}
-                onSetQaId={(id: string) => setWriterQaId(id)}
-                onSaved={() => {
-                  setGraphRefreshKey((k) => k + 1);
-                }}
-              />
+              <>
+                {rightTab === 'relations' ? (
+                  <RightRelations
+                    qaId={selectedQaId || undefined}
+                    targetId={relTargetId}
+                    onTargetChange={(id) => setRelTargetId(id)}
+                    connectMode={connectMode}
+                    onConnectModeChange={(v) => setConnectMode(v)}
+                    pinnedIds={pinnedIds}
+                    onUnpin={(id) => setPinnedIds((arr) => arr.filter((x) => x !== id))}
+                    onGraphChanged={() => setGraphRefreshKey((k) => k + 1)}
+                    navDirection={relNavDirection}
+                    onNavDirectionChange={(d) => setRelNavDirection(d)}
+                    forceSourceId={forceSourceId}
+                    writerQaId={writerQaId}
+                    onEdit={(id) => { setWriterQaId(id); setRightTab('writer'); }}
+                  />
+                ) : (
+                  <RightWriter
+                    qaId={writerQaId || undefined}
+                    centerQaId={selectedQaId || undefined}
+                    currentUserEmail={user?.email || null}
+                    onSetQaId={(id: string) => setWriterQaId(id)}
+                    onSaved={() => {
+                      setGraphRefreshKey((k) => k + 1);
+                    }}
+                  />
+                )}
+              </>
             )}
           </div>
         </aside>
