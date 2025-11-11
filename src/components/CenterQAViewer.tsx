@@ -331,7 +331,10 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   if (error) return <div className="text-xs text-red-600">{error}</div>;
 
   if (qaId && data) {
-    const patch: LlmPatch | undefined = data?.patch;
+    const rawPatch = (data as any)?.patch;
+    let patchAny: any = rawPatch;
+    try { if (typeof rawPatch === "string") patchAny = JSON.parse(rawPatch as string); } catch {}
+    const hasLlmPatch = !!(patchAny && Array.isArray(patchAny?.ops));
     return (
       <div className="flex flex-col gap-2">
         <div className="text-sm font-semibold">Q: {data.question}</div>
@@ -454,9 +457,9 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             </ul>
           )}
         </div>
-        {patch && (
+        {hasLlmPatch && (
           <div className="mt-2">
-            <PatchPreviewGraph patch={patch} />
+            <PatchPreviewGraph patch={patchAny as LlmPatch} />
           </div>
         )}
         <div className="mt-3">
