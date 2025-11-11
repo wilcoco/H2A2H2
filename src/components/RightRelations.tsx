@@ -14,9 +14,11 @@ type Props = {
   navDirection?: "prev_to_current" | "current_to_prev";
   onNavDirectionChange?: (d: "prev_to_current" | "current_to_prev") => void;
   forceSourceId?: string | null;
+  writerQaId?: string | null;
+  onEdit?: (id: string) => void;
 };
 
-export default function RightRelations({ qaId, targetId, onTargetChange, connectMode, onConnectModeChange, pinnedIds = [], onUnpin, onGraphChanged, navDirection = "prev_to_current", onNavDirectionChange, forceSourceId }: Props) {
+export default function RightRelations({ qaId, targetId, onTargetChange, connectMode, onConnectModeChange, pinnedIds = [], onUnpin, onGraphChanged, navDirection = "prev_to_current", onNavDirectionChange, forceSourceId, writerQaId, onEdit }: Props) {
   const [relType, setRelType] = useState<string>("precedes");
   const [busy, setBusy] = useState(false);
   const [edges, setEdges] = useState<Array<{ sourceId: string; targetId: string; type: string; synthetic?: boolean }>>([]);
@@ -34,6 +36,7 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
   const [relNodes, setRelNodes] = useState<Map<string, { id: string; question: string; summary?: string; answer?: string }>>(new Map());
   const [autoType, setAutoType] = useState(true);
   const [manualSource, setManualSource] = useState(false);
+  const [writerInfo, setWriterInfo] = useState<{ id: string; question: string; createdBy?: string } | null>(null);
 
   useEffect(() => { setError(null); }, [qaId]);
 
@@ -61,6 +64,20 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
     })();
     return () => { active = false; };
   }, [targetId]);
+
+  // Load writer doc info
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (!writerQaId) { if (active) setWriterInfo(null); return; }
+      try {
+        const r = await fetch(`/api/qa/${encodeURIComponent(writerQaId)}`, { cache: "no-store" });
+        const j = await r.json();
+        if (active) setWriterInfo({ id: writerQaId, question: String(j?.question || writerQaId), createdBy: j?.createdBy ? String(j.createdBy) : undefined });
+      } catch { if (active) setWriterInfo(null); }
+    })();
+    return () => { active = false; };
+  }, [writerQaId]);
 
   // Heuristic suggestion for relation type when both sides are known
   useEffect(() => {
@@ -210,6 +227,19 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
     <div className="flex flex-col gap-3">
       <div className="text-sm font-semibold">질문 간 관계 편집</div>
       {error && <div className="text-xs text-red-600">{error}</div>}
+      {writerInfo && (
+        <div className="rounded border p-2 bg-white/60 dark:bg-gray-900/40 text-[12px]">
+          <div className="flex items-center justify-between gap-2">
+            <div className="truncate">현재 문서 · Q: {writerInfo.question}</div>
+            <div className="flex items-center gap-1">
+              <button className="text-[10px] px-2 py-0.5 rounded border" onClick={() => { setSrcOverrideId(writerInfo.id); setManualSource(true); }}>Src</button>
+              <button className="text-[10px] px-2 py-0.5 rounded border" onClick={() => onTargetChange?.(writerInfo.id)}>Trg</button>
+              <button className="text-[10px] px-2 py-0.5 rounded border" onClick={() => onEdit?.(writerInfo.id)}>편집</button>
+            </div>
+          </div>
+          {writerInfo.createdBy && <div className="text-[10px] text-gray-500 mt-0.5">by {writerInfo.createdBy}</div>}
+        </div>
+      )}
       <div className="flex items-center gap-2 flex-wrap">
         <label className="text-[11px] flex items-center gap-1">
           <input type="checkbox" checked={!!connectMode} onChange={(e) => onConnectModeChange?.(e.target.checked)} /> 연결 모드
@@ -227,7 +257,10 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
         <div className="text-[12px] rounded border p-2 bg-white/60 dark:bg-gray-900/40 min-h-[40px]">
           <div className="flex items-center justify-between gap-2">
             <div className="truncate">{srcOverrideId ? (srcOverride ? `Q: ${srcOverride.question}` : `Q: ${srcOverrideId}`) : "선택된 질문이 없습니다."}</div>
-            {srcOverride && <button className="text-[11px] px-2 py-1 rounded border" onClick={() => { setSrcOverrideId(null); setManualSource(false); }}>Clear</button>}
+            <div className="flex items-center gap-1">
+              {srcOverrideId && <button className="text-[11px] px-2 py-1 rounded border" onClick={() => onEdit?.(srcOverrideId!)}>편집</button>}
+              {srcOverride && <button className="text-[11px] px-2 py-1 rounded border" onClick={() => { setSrcOverrideId(null); setManualSource(false); }}>Clear</button>}
+            </div>
           </div>
           {srcOverride?.createdBy && <div className="text-[10px] text-gray-500 mt-0.5">by {srcOverride.createdBy}</div>}
         </div>
@@ -254,7 +287,10 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
         <div className="text-[12px] rounded border p-2 bg-white/60 dark:bg-gray-900/40 min-h-[40px]">
           <div className="flex items-center justify-between gap-2">
             <div className="truncate">{target ? `Q: ${target.question}` : "좌측에서 항목의 '연결' 버튼으로 대상 선택"}</div>
-            {target && <button className="text-[11px] px-2 py-1 rounded border" onClick={() => onTargetChange?.(null)}>Clear</button>}
+            <div className="flex items-center gap-1">
+              {targetId && <button className="text-[11px] px-2 py-1 rounded border" onClick={() => onEdit?.(targetId!)}>편집</button>}
+              {target && <button className="text-[11px] px-2 py-1 rounded border" onClick={() => onTargetChange?.(null)}>Clear</button>}
+            </div>
           </div>
           {target?.createdBy && <div className="text-[10px] text-gray-500 mt-0.5">by {target.createdBy}</div>}
         </div>
@@ -276,6 +312,7 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
                 <div className="mt-1 flex items-center gap-1 justify-end">
                   <button title="Set Source" className={`text-[10px] px-2 py-0.5 rounded border ${srcOverrideId === it.id ? 'bg-blue-600 text-white' : ''}`} onClick={() => { setSrcOverrideId(it.id); setManualSource(true); }}>{srcOverrideId === it.id ? "Src" : "Src"}</button>
                   <button title="Set Target" className={`text-[10px] px-2 py-0.5 rounded border ${targetId === it.id ? 'bg-blue-600 text-white' : ''}`} onClick={() => onTargetChange?.(it.id)}>{targetId === it.id ? "Trg" : "Trg"}</button>
+                  <button title="Edit" className="text-[10px] px-2 py-0.5 rounded border" onClick={() => onEdit?.(it.id)}>Ed</button>
                   <button title="Unpin" className="text-[10px] px-2 py-0.5 rounded border" onClick={() => onUnpin?.(it.id)}>X</button>
                 </div>
               </li>
@@ -329,6 +366,9 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
                       <li key={`in-${i}`} className="truncate">
                         <div>Q: {src.question} · {e.type}</div>
                         {snippet && <div className="text-[10px] text-gray-600 truncate">A: {snippet}</div>}
+                        <div className="mt-0.5 flex items-center gap-1 justify-end">
+                          <button className="text-[10px] px-2 py-0.5 rounded border" onClick={() => onEdit?.(src.id)}>편집</button>
+                        </div>
                       </li>
                     );
                   })}
@@ -349,6 +389,9 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
                       <li key={`out-${i}`} className="truncate">
                         <div>{e.type} · Q: {trg.question}</div>
                         {snippet && <div className="text-[10px] text-gray-600 truncate">A: {snippet}</div>}
+                        <div className="mt-0.5 flex items-center gap-1 justify-end">
+                          <button className="text-[10px] px-2 py-0.5 rounded border" onClick={() => onEdit?.(trg.id)}>편집</button>
+                        </div>
                       </li>
                     );
                   })}

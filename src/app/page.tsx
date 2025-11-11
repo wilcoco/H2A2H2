@@ -395,13 +395,15 @@ export default function Home() {
                 navDirection={relNavDirection}
                 onNavDirectionChange={(d) => setRelNavDirection(d)}
                 forceSourceId={forceSourceId}
+                writerQaId={writerQaId}
+                onEdit={(id) => { setWriterQaId(id); setRightTab('writer'); }}
               />
             ) : (
               <RightWriter
                 qaId={writerQaId || undefined}
                 centerQaId={selectedQaId || undefined}
                 currentUserEmail={user?.email || null}
-                onSetQaId={(id) => setWriterQaId(id)}
+                onSetQaId={(id: string) => setWriterQaId(id)}
                 onSaved={() => {
                   setGraphRefreshKey((k) => k + 1);
                 }}
