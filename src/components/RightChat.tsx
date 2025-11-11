@@ -44,6 +44,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
   const [extendId, setExtendId] = useState<string | null>(null);
   const [extendText, setExtendText] = useState<string>("");
   const [extendLoading, setExtendLoading] = useState(false);
+  const [prevRespId, setPrevRespId] = useState<string | null>(null);
   const [threadRootId, setThreadRootId] = useState<string | null>(null);
   const [threadTree, setThreadTree] = useState<any | null>(null);
   const [threadLoading, setThreadLoading] = useState(false);
@@ -130,7 +131,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
 
   async function aiAnswer(qaId: string, question: string) {
     try {
-      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: question, history: [], provider, detail }) });
+      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: question, history: [], provider, detail, previousResponseId: prevRespId || undefined }) });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err?.error || "Chat failed");
@@ -138,6 +139,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
       const data = await res.json();
       const answer = String(data?.answer || "");
       if (!answer) return;
+      if (data?.responseId) try { setPrevRespId(String(data.responseId)); } catch {}
       const u = await fetch("/api/qa/answer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId, answer }) });
       if (!u.ok) {
         const err = await u.json().catch(() => ({}));
@@ -316,18 +318,19 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
       const res = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: question, history, provider, detail }),
+        body: JSON.stringify({ prompt: question, history, provider, detail, previousResponseId: prevRespId || undefined }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err?.error || "Chat failed");
       }
-      const data = (await res.json()) as { answer?: string; providerUsed?: "openai" | "anthropic"; modelUsed?: string; fallbackUsed?: boolean };
+      const data = (await res.json()) as { answer?: string; providerUsed?: "openai" | "anthropic"; modelUsed?: string; fallbackUsed?: boolean; responseId?: string };
       const answer = data.answer ?? "";
       if (answer) {
         setHistory((h) => [...h, { role: "user", content: question }, { role: "assistant", content: answer }]);
         setLastMeta({ providerUsed: data.providerUsed, modelUsed: data.modelUsed, fallbackUsed: Boolean(data.fallbackUsed) });
         setLastAnswer(answer);
+        if (data.responseId) try { setPrevRespId(String(data.responseId)); } catch {}
         setPrompt("");
         try {
           setGeneratingPatch(true);

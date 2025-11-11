@@ -36,6 +36,7 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
   const [connecting, setConnecting] = useState(false);
   const [provider, setProvider] = useState<"openai" | "anthropic">("openai");
   const [detail, setDetail] = useState<"short" | "normal" | "long">("normal");
+  const [prevRespId, setPrevRespId] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -87,9 +88,10 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
 
   async function aiAnswer(id: string, q: string) {
     try {
-      const r = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider, detail }) });
+      const r = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider, detail, previousResponseId: prevRespId || undefined }) });
       if (!r.ok) throw new Error("AI failed");
       const j = await r.json();
+      if (j?.responseId) try { setPrevRespId(String(j.responseId)); } catch {}
       const answer = String(j?.answer || "");
       if (!answer) return;
       const u = await fetch("/api/qa/answer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId: id, answer }) });

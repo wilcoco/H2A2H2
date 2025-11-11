@@ -16,6 +16,7 @@ const Body = z.object({
   history: z.array(ChatMsg).optional().default([]),
   provider: z.enum(["openai", "anthropic"]).optional(),
   detail: z.enum(["short", "normal", "long"]).optional(),
+  previousResponseId: z.string().optional(),
 });
 
 function kwHeuristic(text: string, max = 8): string[] {
@@ -156,6 +157,7 @@ export async function POST(req: Request) {
       let providerUsed: "openai" | "anthropic" | "fallback" = provider;
       let modelUsed: string = "";
       let fallbackUsed = false;
+      let responseId: string | undefined;
       if (provider === "anthropic") {
         const antKey = process.env.ANTHROPIC_API_KEY;
         if (antKey) {
@@ -186,13 +188,16 @@ export async function POST(req: Request) {
           const base: any = { model, input: combined, temperature: 0.2, max_output_tokens: maxTokens };
           if (model.startsWith("o3")) base.reasoning = { effort: "high" };
           try {
+            if (input.previousResponseId) base.previous_response_id = input.previousResponseId;
             const res = await client.responses.create(base);
             answer = (res as any).output_text?.trim() ?? "";
+            responseId = (res as any)?.id;
           } catch {
             if (model !== "gpt-4o") {
               try {
                 const res2 = await client.responses.create({ ...base, model: "gpt-4o", reasoning: undefined });
                 answer = (res2 as any).output_text?.trim() ?? "";
+                responseId = (res2 as any)?.id;
               } catch {}
             }
           }
@@ -232,15 +237,18 @@ export async function POST(req: Request) {
             } else if (client) {
               const refineBody: any = { model, input: refineInput, temperature: 0.2, max_output_tokens: refineTokens };
               if (model.startsWith("o3")) refineBody.reasoning = { effort: "high" };
+              if (responseId) refineBody.previous_response_id = responseId;
               let improved = "";
               try {
                 const r1 = await client.responses.create(refineBody);
                 improved = (r1 as any).output_text?.trim() ?? "";
+                responseId = (r1 as any)?.id ?? responseId;
               } catch {
                 if (model !== "gpt-4o") {
                   try {
                     const r2 = await client.responses.create({ ...refineBody, model: "gpt-4o", reasoning: undefined });
                     improved = (r2 as any).output_text?.trim() ?? "";
+                    responseId = (r2 as any)?.id ?? responseId;
                   } catch {}
                 }
               }
@@ -248,19 +256,22 @@ export async function POST(req: Request) {
             }
           } catch {}
         }
-        return NextResponse.json({ answer, providerUsed, modelUsed, fallbackUsed, detailUsed: detail });
+        return NextResponse.json({ answer, providerUsed, modelUsed, fallbackUsed, detailUsed: detail, responseId });
       } else {
         if (client) {
           const base: any = { model, input: combined, temperature: 0.2, max_output_tokens: maxTokens };
           if (model.startsWith("o3")) base.reasoning = { effort: "high" };
           try {
+            if (input.previousResponseId) base.previous_response_id = input.previousResponseId;
             const res = await client.responses.create(base);
             answer = (res as any).output_text?.trim() ?? "";
+            responseId = (res as any)?.id;
           } catch {
             if (model !== "gpt-4o") {
               try {
                 const res2 = await client.responses.create({ ...base, model: "gpt-4o", reasoning: undefined });
                 answer = (res2 as any).output_text?.trim() ?? "";
+                responseId = (res2 as any)?.id;
               } catch {}
             }
           }
@@ -298,22 +309,25 @@ export async function POST(req: Request) {
             const refineInput = `${refineInstr}\n\nQuestion: ${promptText}\n\nDraft:\n${answer}\n\n${relatedText ? `Context (may be partial):\n${relatedText}\n` : ""}`;
             const refineBody: any = { model, input: refineInput, temperature: 0.2, max_output_tokens: refineTokens };
             if (model.startsWith("o3")) refineBody.reasoning = { effort: "high" };
+            if (responseId) refineBody.previous_response_id = responseId;
             let improved = "";
             try {
               const r1 = await client.responses.create(refineBody);
               improved = (r1 as any).output_text?.trim() ?? "";
+              responseId = (r1 as any)?.id ?? responseId;
             } catch {
               if (model !== "gpt-4o") {
                 try {
                   const r2 = await client.responses.create({ ...refineBody, model: "gpt-4o", reasoning: undefined });
                   improved = (r2 as any).output_text?.trim() ?? "";
+                  responseId = (r2 as any)?.id ?? responseId;
                 } catch {}
               }
             }
             if (improved) answer = improved;
           } catch {}
         }
-        return NextResponse.json({ answer, providerUsed, modelUsed, fallbackUsed, detailUsed: detail });
+        return NextResponse.json({ answer, providerUsed, modelUsed, fallbackUsed, detailUsed: detail, responseId });
       }
     } catch {
       return fallback();

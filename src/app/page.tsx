@@ -60,6 +60,7 @@ export default function Home() {
   const [forceSourceId, setForceSourceId] = useState<string | null>(null);
   const [provider, setProvider] = useState<"openai" | "anthropic">("openai");
   const [centerAiMeta, setCenterAiMeta] = useState<{ providerUsed?: "openai" | "anthropic"; modelUsed?: string; fallbackUsed?: boolean } | null>(null);
+  const [centerPrevRespId, setCenterPrevRespId] = useState<string | null>(null);
   const [detail, setDetail] = useState<"short" | "normal" | "long">("normal");
   const [rightTab, setRightTab] = useState<"relations" | "writer">("relations");
   const [writerQaId, setWriterQaId] = useState<string | null>(null);
@@ -152,11 +153,12 @@ export default function Home() {
       setCenterQuestion(question);
       setCenterAiAnswer("");
       setCenterAiMeta(null);
-      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: question, history: [], provider, detail }) });
+      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: question, history: [], provider, detail, previousResponseId: centerPrevRespId || undefined }) });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
       setCenterAiAnswer(String(j?.answer || ""));
       setCenterAiMeta({ providerUsed: j?.providerUsed as any, modelUsed: j?.modelUsed as any, fallbackUsed: Boolean(j?.fallbackUsed) });
+      if (j?.responseId) try { setCenterPrevRespId(String(j.responseId)); } catch {}
     } catch {}
   }
 
