@@ -15,9 +15,11 @@ type Props = {
   keywords?: string[] | null;
   phrases?: string[] | null;
   onClearKeyword?: () => void;
+  contextIds?: string[];
+  onToggleContext?: (id: string, next: boolean) => void;
 };
 
-export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId, onPickTarget, refreshKey, keyword, keywordMode = "any", keywords = null, phrases = null, onClearKeyword }: Props) {
+export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId, onPickTarget, refreshKey, keyword, keywordMode = "any", keywords = null, phrases = null, onClearKeyword, contextIds = [], onToggleContext }: Props) {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<QAEntry[]>([]);
@@ -173,14 +175,14 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
       )}
       <ul className="space-y-2">
         {items.map((it) => (
-          <SuggestItem key={it.id} it={it} onSelectQA={onSelectQA} connectMode={!!connectMode} targetId={targetId || null} onPickTarget={onPickTarget} refreshKey={refreshKey || 0} />
+          <SuggestItem key={it.id} it={it} onSelectQA={onSelectQA} connectMode={!!connectMode} targetId={targetId || null} onPickTarget={onPickTarget} refreshKey={refreshKey || 0} inContext={contextIds.includes(it.id)} onToggleContext={onToggleContext} />
         ))}
       </ul>
     </div>
   );
 }
 
-function SuggestItem({ it, onSelectQA, connectMode, targetId, onPickTarget, refreshKey }: { it: QAEntry; onSelectQA: (id: string) => void; connectMode: boolean; targetId: string | null; onPickTarget?: (id: string) => void; refreshKey: number }) {
+function SuggestItem({ it, onSelectQA, connectMode, targetId, onPickTarget, refreshKey, inContext, onToggleContext }: { it: QAEntry; onSelectQA: (id: string) => void; connectMode: boolean; targetId: string | null; onPickTarget?: (id: string) => void; refreshKey: number; inContext?: boolean; onToggleContext?: (id: string, next: boolean) => void }) {
   const [loading, setLoading] = useState(true);
   const [count, setCount] = useState<number | null>(null);
   const [preview, setPreview] = useState<Array<{ id: string; question: string; summary?: string }>>([]);
@@ -225,6 +227,9 @@ function SuggestItem({ it, onSelectQA, connectMode, targetId, onPickTarget, refr
       </div>
       <div className="mt-1 flex items-center gap-2 justify-end">
         <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 border">Chain {loading ? "…" : (count ?? 0)}</span>
+        <label className="text-[10px] inline-flex items-center gap-1">
+          <input type="checkbox" checked={!!inContext} onChange={(e) => onToggleContext?.(it.id, e.target.checked)} /> 컨텍스트
+        </label>
         <button className="text-[10px] px-2 py-0.5 rounded border" onClick={() => setExpanded((v) => !v)}>{expanded ? "접기" : "자세히"}</button>
       </div>
       {expanded && (

@@ -17,6 +17,7 @@ const Body = z.object({
   provider: z.enum(["openai", "anthropic"]).optional(),
   detail: z.enum(["short", "normal", "long"]).optional(),
   previousResponseId: z.string().optional(),
+  contextIds: z.array(z.string()).optional().default([]),
 });
 
 function kwHeuristic(text: string, max = 8): string[] {
@@ -69,12 +70,32 @@ export async function POST(req: Request) {
       .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
       .join("\n");
     const promptText = input.prompt || "";
-    // Retrieve top similar Q&As as lightweight context (best-effort)
+    // Retrieve selected Q&As and top similar Q&As as lightweight context (best-effort)
     let relatedText = "";
+    let selectedText = "";
     let anchorPrevId: string | undefined;
     try {
       await ensureTables();
       const q = promptText.trim().toLowerCase();
+      // Selected context by explicit IDs
+      try {
+        const ids = Array.isArray((input as any)?.contextIds) ? (input as any).contextIds.filter((x: any) => typeof x === "string") as string[] : [];
+        if (ids.length) {
+          const rows = await withConn(async (c) => {
+            const r = await c.query(
+              `select id, question, answer, summary from qa_entries where id = any($1) and published = true limit 8`,
+              [ids]
+            );
+            return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string }>;
+          });
+          const items = rows.slice(0, 5).map((r, i) => {
+            const a = (r.summary || r.answer || "").toString().slice(0, 400);
+            const qx = r.question.toString().slice(0, 200);
+            return `${i + 1}) Q: ${qx}\n   A: ${a}`;
+          });
+          if (items.length) selectedText = `Selected context (user-picked):\n${items.join("\n\n")}`;
+        }
+      } catch {}
       if (q) {
         const rows: Array<{ id: string; question: string; answer?: string; summary?: string; last_response_id?: string | null }> = await withConn(async (c) => {
           try {
@@ -153,8 +174,8 @@ export async function POST(req: Request) {
       }
     } catch {}
 
-    const combined = `${sys}\n\n${relatedText ? relatedText + "\n\n" : ""}${historyText ? `Conversation:\n${historyText}\n\n` : ""}User: ${promptText}`;
-    const anthUser = `${relatedText ? relatedText + "\n\n" : ""}${historyText ? `Conversation:\n${historyText}\n\n` : ""}User: ${promptText}`;
+    const combined = `${sys}\n\n${selectedText ? selectedText + "\n\n" : ""}${relatedText ? relatedText + "\n\n" : ""}${historyText ? `Conversation:\n${historyText}\n\n` : ""}User: ${promptText}`;
+    const anthUser = `${selectedText ? selectedText + "\n\n" : ""}${relatedText ? relatedText + "\n\n" : ""}${historyText ? `Conversation:\n${historyText}\n\n` : ""}User: ${promptText}`;
 
     try {
       let answer = "";
@@ -214,7 +235,7 @@ export async function POST(req: Request) {
         if (doRefine) {
           try {
             const refineInstr = `Rewrite into a final, direct answer only. Remove any meta-analysis, review-style sections, or numbered structure. Keep the user's language and tone. Do not add follow-up questions. ${detail === "short" ? "Keep it concise (3–5 sentences)." : detail === "long" ? "Make it thorough and well-structured." : "Balance brevity and completeness."}`;
-            const refineInput = `${refineInstr}\n\nQuestion: ${promptText}\n\nDraft:\n${answer}\n\n${relatedText ? `Context (may be partial):\n${relatedText}\n` : ""}`;
+            const refineInput = `${refineInstr}\n\nQuestion: ${promptText}\n\nDraft:\n${answer}\n\n${selectedText ? `Selected context (user-picked):\n${selectedText}\n\n` : ""}${relatedText ? `Context (may be partial):\n${relatedText}\n` : ""}`;
             if (antKey) {
               try {
                 const resp2 = await fetch("https://api.anthropic.com/v1/messages", {
@@ -312,7 +333,7 @@ export async function POST(req: Request) {
         if (doRefine && client) {
           try {
             const refineInstr = `Rewrite into a final, direct answer only. Remove any meta-analysis, review-style sections, or numbered structure. Keep the user's language and tone. Do not add follow-up questions. ${detail === "short" ? "Keep it concise (3–5 sentences)." : detail === "long" ? "Make it thorough and well-structured." : "Balance brevity and completeness."}`;
-            const refineInput = `${refineInstr}\n\nQuestion: ${promptText}\n\nDraft:\n${answer}\n\n${relatedText ? `Context (may be partial):\n${relatedText}\n` : ""}`;
+            const refineInput = `${refineInstr}\n\nQuestion: ${promptText}\n\nDraft:\n${answer}\n\n${selectedText ? `Selected context (user-picked):\n${selectedText}\n\n` : ""}${relatedText ? `Context (may be partial):\n${relatedText}\n` : ""}`;
             const refineBody: any = { model, input: refineInput, temperature: 0.2, max_output_tokens: refineTokens };
             if (model.startsWith("o3")) refineBody.reasoning = { effort: "high" };
             if (responseId) refineBody.previous_response_id = responseId;

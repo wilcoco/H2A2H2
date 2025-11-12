@@ -62,6 +62,7 @@ export default function Home() {
   const [centerAiMeta, setCenterAiMeta] = useState<{ providerUsed?: "openai" | "anthropic"; modelUsed?: string; fallbackUsed?: boolean } | null>(null);
   const [centerPrevRespId, setCenterPrevRespId] = useState<string | null>(null);
   const [centerLockContext, setCenterLockContext] = useState<boolean>(true);
+  const [selectedContextIds, setSelectedContextIds] = useState<string[]>([]);
   const [detail, setDetail] = useState<"short" | "normal" | "long">("normal");
   const [rightTab, setRightTab] = useState<"relations" | "writer">("relations");
   const [writerQaId, setWriterQaId] = useState<string | null>(null);
@@ -159,7 +160,7 @@ export default function Home() {
       setCenterQuestion(question);
       setCenterAiAnswer("");
       setCenterAiMeta(null);
-      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: question, history: [], provider, detail, previousResponseId: centerPrevRespId || undefined }) });
+      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: question, history: [], provider, detail, previousResponseId: centerPrevRespId || undefined, contextIds: selectedContextIds || [] }) });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
       setCenterAiAnswer(String(j?.answer || ""));
@@ -325,6 +326,8 @@ export default function Home() {
             keywords={leftKeywords}
             phrases={leftPhrases}
             onClearKeyword={() => { setLeftKeyword(null); setLeftKeywords(null); setLeftPhrases(null); setLeftKeywordMode("any"); }}
+            contextIds={selectedContextIds}
+            onToggleContext={(id, next) => setSelectedContextIds((prev) => next ? (prev.includes(id) ? prev : [...prev, id]) : prev.filter((x) => x !== id))}
           />
         </aside>
 
