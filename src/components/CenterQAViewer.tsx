@@ -57,11 +57,103 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   const [relType, setRelType] = useState<string>("precedes");
   const [relDir, setRelDir] = useState<"current_to_new" | "new_to_current">("current_to_new");
   const [pairBusy, setPairBusy] = useState(false);
+  const [fuMap, setFuMap] = useState<Record<string, { input: string; loading: boolean; items: Array<{ q: string; a: string; respId: string | null; savedId?: string }> }>>({});
 
   function startSelect(mode: "any" | "all") {
     setSelectMode(mode);
     setSelWords([]);
     setSelPhrases([]);
+  }
+
+  async function savePairAndRelAtFor(baseQaId: string, index: number) {
+    const entry = fuMap[baseQaId];
+    if (!entry) return;
+    const i = index;
+    if (i < 0 || i >= entry.items.length) return;
+    const nextQ = entry.items[i].q.trim();
+    const nextA = entry.items[i].a.trim();
+    if (!nextQ || !nextA) return;
+    try {
+      setPairBusy(true);
+      // Base is an existing QA (connected item)
+      let baseId: string | undefined = baseQaId;
+      let baseQ = "";
+      let baseA = "";
+      let baseRid: string | undefined = undefined;
+      if (i === 0) {
+        const base = mapNodes.find((n) => n.id === baseQaId);
+        baseQ = String(base?.question || "");
+        baseA = String(base?.answer || base?.summary || "");
+      } else {
+        const prev = entry.items[i - 1];
+        baseQ = prev.q;
+        baseA = prev.a;
+        baseRid = prev.respId || undefined;
+        baseId = entry.items[i - 1].savedId;
+      }
+      // Ensure previous follow-up is saved if needed
+      if (!baseId) {
+        const r1 = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: baseQ, answer: baseA, summary: undefined, responseId: baseRid || undefined, published: false }) });
+        if (!r1.ok) throw new Error("Base save failed");
+        const j1 = await r1.json();
+        baseId = String(j1?.id || "");
+        if (!baseId) throw new Error("No baseId");
+        setFuMap((m) => {
+          const prev = m[baseQaId]!;
+          const arr = [...prev.items];
+          arr[i - 1] = { ...arr[i - 1], savedId: baseId! };
+          return { ...m, [baseQaId]: { ...prev, items: arr } };
+        });
+      }
+      // Save current follow-up item if not yet saved
+      let newId: string | undefined = entry.items[i].savedId;
+      if (!newId) {
+        const r2 = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: nextQ, answer: nextA, summary: undefined, responseId: entry.items[i].respId || undefined, parentId: undefined, published: false }) });
+        if (!r2.ok) throw new Error("Follow-up save failed");
+        const j2 = await r2.json();
+        newId = String(j2?.id || "");
+        if (!newId) throw new Error("No newId");
+        setFuMap((m) => {
+          const prev = m[baseQaId]!;
+          const arr = [...prev.items];
+          arr[i] = { ...arr[i], savedId: newId! };
+          return { ...m, [baseQaId]: { ...prev, items: arr } };
+        });
+      }
+      const sourceId = relDir === "current_to_new" ? baseId! : newId!;
+      const targetId = relDir === "current_to_new" ? newId! : baseId!;
+      const r3 = await fetch("/api/qa/relation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceId, targetId, type: relType, weight: 1 }) });
+      if (!r3.ok) throw new Error("Relation failed");
+      onGraphChanged?.();
+      if (relDir === "current_to_new") { onSetSource?.(baseId!); onSetTarget?.(newId!); }
+      else { onSetSource?.(newId!); onSetTarget?.(baseId!); }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally { setPairBusy(false); }
+  }
+
+  async function askFollowUpFor(baseQaId: string) {
+    const entry = fuMap[baseQaId] || { input: "", loading: false, items: [] };
+    const q = (entry.input || "").trim();
+    if (!q) return;
+    try {
+      setFuMap((m) => ({ ...m, [baseQaId]: { ...entry, loading: true } }));
+      const ctxIds: string[] = [baseQaId];
+      const lastRid = entry.items.length > 0 ? entry.items[entry.items.length - 1].respId : undefined;
+      const prevRid = lockContext ? (lastRid || undefined) : undefined;
+      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider, detail, previousResponseId: prevRid, contextIds: ctxIds }) });
+      if (!res.ok) throw new Error("AI call failed");
+      const j = await res.json();
+      const a = String(j?.answer || "");
+      const rid = j?.responseId ? String(j.responseId) : null;
+      setFuMap((m) => {
+        const prev = m[baseQaId] || { input: "", loading: false, items: [] };
+        return { ...m, [baseQaId]: { input: "", loading: false, items: [...prev.items, { q, a, respId: rid }] } };
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+      setFuMap((m) => ({ ...m, [baseQaId]: { ...(m[baseQaId] || { input: "", items: [] } as any), loading: false } }));
+    }
   }
 
   async function askFollowUp() {
@@ -239,6 +331,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   useEffect(() => {
     setFuItems([]);
     setFuInput("");
+    setFuMap({});
   }, [qaId, question, aiAnswer]);
 
   useEffect(() => {
@@ -569,20 +662,51 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         <div className="mt-3">
           <div className="text-xs text-gray-600 mb-1">연결(소스 → 현재)</div>
           {mapEdges.filter((e: any) => e.targetId === qaId).length > 0 ? (
-            <ul className="space-y-1">
+            <ul className="space-y-2">
               {mapEdges
                 .filter((e: any) => e.targetId === qaId)
                 .map((e: any, idx: number) => {
                   const src = mapNodes.find((n) => n.id === e.sourceId);
                   if (!src) return null;
-                  const snippet = src.answer || src.summary;
                   return (
-                    <li key={`in-${idx}`} className="text-[12px] flex items-start justify-between gap-2">
+                    <li key={`in-${idx}`} className="text-[12px] border rounded p-2">
                       <div className="min-w-0">
-                        <div className="truncate">{e.type} · Q: {src.question}</div>
-                        {snippet && <div className="text-[11px] text-gray-600 truncate">A: {snippet}</div>}
+                        <div className="font-medium">{e.type} · Q: {src.question}</div>
+                        {src.answer && <div className="mt-1 whitespace-pre-wrap">A: {src.answer}</div>}
+                        {(() => { const s = String(src.summary || "").trim(); const a = String(src.answer || "").trim(); const distinct = s && s !== a; return distinct ? (<div className="text-[11px] text-gray-700 whitespace-pre-wrap">Summary: {src.summary}</div>) : null; })()}
+                        {((fuMap[src.id]?.items?.length ?? 0) > 0) && (
+                          <div className="mt-2 space-y-2">
+                            {(fuMap[src.id]?.items || []).map((it, i2) => (
+                              <div key={`in-fu-${src.id}-${i2}`} className="rounded border p-2 bg-white/70 dark:bg-gray-900/50">
+                                <div className="text-[12px] text-gray-800">Q: {it.q}</div>
+                                <div className="text-[12px] text-gray-600 mt-1">AI: {it.a}</div>
+                                <div className="mt-1 text-[10px] text-gray-500">{it.respId ? `RID: ${it.respId}` : ''}</div>
+                                <div className="mt-2 flex items-center gap-2 flex-wrap">
+                                  <select className="text-xs border rounded px-2 py-1" value={relType} onChange={(ev) => setRelType(ev.target.value)}>
+                                    <option value="precedes">precedes</option>
+                                    <option value="prerequisite">prerequisite</option>
+                                    <option value="narrows">narrows</option>
+                                    <option value="elaborates">elaborates</option>
+                                    <option value="clarifies">clarifies</option>
+                                    <option value="supports">supports</option>
+                                    <option value="refutes">refutes</option>
+                                    <option value="alternative">alternative</option>
+                                  </select>
+                                  <select className="text-xs border rounded px-2 py-1" value={relDir} onChange={(ev) => setRelDir(ev.target.value as any)}>
+                                    <option value="current_to_new">현재 → 후속</option>
+                                    <option value="new_to_current">후속 → 현재</option>
+                                  </select>
+                                  <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50" disabled={pairBusy} onClick={() => void savePairAndRelAtFor(src.id, i2)}>{pairBusy ? "저장 중…" : "두 Q&A 저장 및 관계 생성"}</button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className="mt-2 flex items-center gap-2">
+                          <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 답변을 기반으로 이어서 물어보기" value={fuMap[src.id]?.input ?? ''} onChange={(ev) => setFuMap((m) => ({ ...m, [src.id]: { ...(m[src.id] || { input: '', loading: false, items: [] }), input: ev.target.value } }))} />
+                          <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!!(fuMap[src.id]?.loading) || !((fuMap[src.id]?.input ?? '').trim())} onClick={() => void askFollowUpFor(src.id)}>{fuMap[src.id]?.loading ? "요청 중…" : "답변 받기"}</button>
+                        </div>
                       </div>
-                      <button className="text-[11px] px-2 py-1 rounded border shrink-0" onClick={() => onSelectQA?.(src.id)}>보기</button>
                     </li>
                   );
                 })}
@@ -594,20 +718,51 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         <div className="mt-3">
           <div className="text-xs text-gray-600 mb-1">연결(현재 → 타겟)</div>
           {mapEdges.filter((e: any) => e.sourceId === qaId).length > 0 ? (
-            <ul className="space-y-1">
+            <ul className="space-y-2">
               {mapEdges
                 .filter((e: any) => e.sourceId === qaId)
                 .map((e: any, idx: number) => {
                   const trg = mapNodes.find((n) => n.id === e.targetId);
                   if (!trg) return null;
-                  const snippet = trg.answer || trg.summary;
                   return (
-                    <li key={`out-${idx}`} className="text-[12px] flex items-start justify-between gap-2">
+                    <li key={`out-${idx}`} className="text-[12px] border rounded p-2">
                       <div className="min-w-0">
-                        <div className="truncate">{e.type} · Q: {trg.question}</div>
-                        {snippet && <div className="text-[11px] text-gray-600 truncate">A: {snippet}</div>}
+                        <div className="font-medium">{e.type} · Q: {trg.question}</div>
+                        {trg.answer && <div className="mt-1 whitespace-pre-wrap">A: {trg.answer}</div>}
+                        {(() => { const s = String(trg.summary || "").trim(); const a = String(trg.answer || "").trim(); const distinct = s && s !== a; return distinct ? (<div className="text-[11px] text-gray-700 whitespace-pre-wrap">Summary: {trg.summary}</div>) : null; })()}
+                        {((fuMap[trg.id]?.items?.length ?? 0) > 0) && (
+                          <div className="mt-2 space-y-2">
+                            {(fuMap[trg.id]?.items || []).map((it, i2) => (
+                              <div key={`out-fu-${trg.id}-${i2}`} className="rounded border p-2 bg-white/70 dark:bg-gray-900/50">
+                                <div className="text-[12px] text-gray-800">Q: {it.q}</div>
+                                <div className="text-[12px] text-gray-600 mt-1">AI: {it.a}</div>
+                                <div className="mt-1 text-[10px] text-gray-500">{it.respId ? `RID: ${it.respId}` : ''}</div>
+                                <div className="mt-2 flex items-center gap-2 flex-wrap">
+                                  <select className="text-xs border rounded px-2 py-1" value={relType} onChange={(ev) => setRelType(ev.target.value)}>
+                                    <option value="precedes">precedes</option>
+                                    <option value="prerequisite">prerequisite</option>
+                                    <option value="narrows">narrows</option>
+                                    <option value="elaborates">elaborates</option>
+                                    <option value="clarifies">clarifies</option>
+                                    <option value="supports">supports</option>
+                                    <option value="refutes">refutes</option>
+                                    <option value="alternative">alternative</option>
+                                  </select>
+                                  <select className="text-xs border rounded px-2 py-1" value={relDir} onChange={(ev) => setRelDir(ev.target.value as any)}>
+                                    <option value="current_to_new">현재 → 후속</option>
+                                    <option value="new_to_current">후속 → 현재</option>
+                                  </select>
+                                  <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50" disabled={pairBusy} onClick={() => void savePairAndRelAtFor(trg.id, i2)}>{pairBusy ? "저장 중…" : "두 Q&A 저장 및 관계 생성"}</button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className="mt-2 flex items-center gap-2">
+                          <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 답변을 기반으로 이어서 물어보기" value={fuMap[trg.id]?.input ?? ''} onChange={(ev) => setFuMap((m) => ({ ...m, [trg.id]: { ...(m[trg.id] || { input: '', loading: false, items: [] }), input: ev.target.value } }))} />
+                          <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!!(fuMap[trg.id]?.loading) || !((fuMap[trg.id]?.input ?? '').trim())} onClick={() => void askFollowUpFor(trg.id)}>{fuMap[trg.id]?.loading ? "요청 중…" : "답변 받기"}</button>
+                        </div>
                       </div>
-                      <button className="text-[11px] px-2 py-1 rounded border shrink-0" onClick={() => onSelectQA?.(trg.id)}>보기</button>
                     </li>
                   );
                 })}
