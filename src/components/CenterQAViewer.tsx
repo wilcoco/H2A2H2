@@ -53,7 +53,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   const [selPhrases, setSelPhrases] = useState<string[]>([]);
   const [fuInput, setFuInput] = useState("");
   const [fuLoading, setFuLoading] = useState(false);
-  const [fuItems, setFuItems] = useState<Array<{ q: string; a: string; respId: string | null; savedId?: string }>>([]);
+  const [fuItems, setFuItems] = useState<Array<{ q: string; a: string; respId: string | null; savedId?: string; baseQaId?: string; baseFuIndex?: number; baseIsAiMain?: boolean; relType?: string; relDir?: "current_to_new" | "new_to_current" }>>([]);
   const [relType, setRelType] = useState<string>("precedes");
   const [relDir, setRelDir] = useState<"current_to_new" | "new_to_current">("current_to_new");
   const [pairBusy, setPairBusy] = useState(false);
@@ -140,17 +140,15 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
     try {
       setFuMap((m) => ({ ...m, [baseQaId]: { ...entry, loading: true } }));
       const ctxIds: string[] = [baseQaId];
-      const lastRid = entry.items.length > 0 ? entry.items[entry.items.length - 1].respId : undefined;
+      const lastRid = fuItems.length > 0 ? fuItems[fuItems.length - 1].respId : undefined;
       const prevRid = lockContext ? (lastRid || undefined) : undefined;
       const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider, detail, previousResponseId: prevRid, contextIds: ctxIds }) });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
       const a = String(j?.answer || "");
       const rid = j?.responseId ? String(j.responseId) : null;
-      setFuMap((m) => {
-        const prev = m[baseQaId] || { input: "", loading: false, items: [] };
-        return { ...m, [baseQaId]: { input: "", loading: false, items: [...prev.items, { q, a, respId: rid }] } };
-      });
+      setFuMap((m) => ({ ...m, [baseQaId]: { input: "", loading: false, items: [] } }));
+      setFuItems((prev) => [...prev, { q, a, respId: rid, baseQaId, relType, relDir }]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
       setFuMap((m) => ({ ...m, [baseQaId]: { ...(m[baseQaId] || { input: "", items: [] } as any), loading: false } }));
@@ -171,7 +169,15 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       const j = await res.json();
       const a = String(j?.answer || "");
       const rid = j?.responseId ? String(j.responseId) : null;
-      setFuItems((prev) => [...prev, { q, a, respId: rid }]);
+      setFuItems((prev) => {
+        const hasPrev = prev.length > 0;
+        if (hasPrev) {
+          return [...prev, { q, a, respId: rid, baseFuIndex: prev.length - 1, relType, relDir }];
+        } else {
+          if (qaId) return [...prev, { q, a, respId: rid, baseQaId: qaId, relType, relDir }];
+          return [...prev, { q, a, respId: rid, baseIsAiMain: true, relType, relDir }];
+        }
+      });
       setFuInput("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
@@ -186,45 +192,54 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
     if (!nextQ || !nextA) return;
     try {
       setPairBusy(true);
-      // Determine base
-      let baseId: string | undefined = qaId as string | undefined;
+      // Determine base (flat chain aware)
+      let baseId: string | undefined;
       let baseQ = "";
       let baseA = "";
       let baseRid: string | undefined = undefined;
-      if (i === 0) {
+      const item = fuItems[i];
+      if (item.baseQaId) {
+        baseId = item.baseQaId;
+        const node = mapNodes.find((n) => n.id === baseId);
+        baseQ = String(node?.question || "");
+        baseA = String(node?.answer || node?.summary || "");
+      } else if (typeof item.baseFuIndex === "number" && item.baseFuIndex >= 0 && item.baseFuIndex < fuItems.length) {
+        const prevItem = fuItems[item.baseFuIndex];
+        baseQ = prevItem.q;
+        baseA = prevItem.a;
+        baseRid = prevItem.respId || undefined;
+        baseId = prevItem.savedId;
+      } else {
         if (qaId) {
+          baseId = qaId as string;
           baseQ = String(data?.question || "");
           baseA = String(data?.answer || data?.summary || "");
+          baseRid = String(data?.lastResponseId || "") || undefined;
         } else {
           baseQ = String(question || "");
           baseA = String(aiAnswer || "");
           baseRid = aiResponseId || undefined;
         }
-      } else {
-        const prev = fuItems[i - 1];
-        baseQ = prev.q;
-        baseA = prev.a;
-        baseRid = prev.respId || undefined;
-        baseId = fuItems[i - 1].savedId;
       }
       // Ensure base saved if needed
       if (!baseId) {
-        const ok = typeof window !== "undefined" ? window.confirm(i === 0 ? "현재 중앙 AI 답변을 초안으로 저장하고 관계를 생성할까요?" : "이전 후속 질문도 초안으로 저장하고 관계를 생성할까요?") : true;
+        const ok = typeof window !== "undefined" ? window.confirm("기준 Q&A를 초안으로 저장하고 관계를 생성할까요?") : true;
         if (!ok) { setPairBusy(false); return; }
         const r1 = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: baseQ, answer: baseA, summary: undefined, responseId: baseRid || undefined, published: false }) });
         if (!r1.ok) throw new Error("Base save failed");
         const j1 = await r1.json();
         baseId = String(j1?.id || "");
         if (!baseId) throw new Error("No baseId");
-        if (i === 0) {
-          onShared?.(baseId);
-        } else {
-          // persist savedId for previous item
+        // Persist savedId onto referenced previous fu item if applicable
+        if (typeof item.baseFuIndex === "number" && item.baseFuIndex >= 0) {
           setFuItems((prevArr) => {
             const arr = [...prevArr];
-            arr[i - 1] = { ...arr[i - 1], savedId: baseId! };
+            const baseIdx = item.baseFuIndex as number;
+            arr[baseIdx] = { ...arr[baseIdx], savedId: baseId! } as any;
             return arr;
           });
+        } else if (!qaId) {
+          onShared?.(baseId);
         }
       }
       // Save current follow-up item if not yet saved
@@ -241,12 +256,14 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           return arr;
         });
       }
-      const sourceId = relDir === "current_to_new" ? baseId! : newId!;
-      const targetId = relDir === "current_to_new" ? newId! : baseId!;
-      const r3 = await fetch("/api/qa/relation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceId, targetId, type: relType, weight: 1 }) });
+      const rType = fuItems[i].relType || relType;
+      const rDir = fuItems[i].relDir || relDir;
+      const sourceId = rDir === "current_to_new" ? baseId! : newId!;
+      const targetId = rDir === "current_to_new" ? newId! : baseId!;
+      const r3 = await fetch("/api/qa/relation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceId, targetId, type: rType, weight: 1 }) });
       if (!r3.ok) throw new Error("Relation failed");
       onGraphChanged?.();
-      if (relDir === "current_to_new") { onSetSource?.(baseId!); onSetTarget?.(newId); }
+      if (rDir === "current_to_new") { onSetSource?.(baseId!); onSetTarget?.(newId); }
       else { onSetSource?.(newId); onSetTarget?.(baseId!); }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unknown error");
@@ -618,11 +635,14 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             <div className="space-y-2">
               {fuItems.map((it, i) => (
                 <div key={`fu-${i}`} className="rounded border p-2 bg-white/70 dark:bg-gray-900/50">
-                  <div className="text-[12px] text-gray-800">Q: {it.q}</div>
-                  <div className="text-[12px] text-gray-600 mt-1">AI: {it.a}</div>
+                  <div className="text-[11px] text-gray-600 mb-1">
+                    관계: {(it.relDir || relDir) === 'current_to_new' ? '기준 → 후속' : '후속 → 기준'} · {(it.relType || relType)}
+                  </div>
+                  <div className="text-sm font-semibold">Q: {it.q}</div>
+                  <div className="text-sm whitespace-pre-wrap mt-1">A: {it.a}</div>
                   <div className="mt-1 text-[10px] text-gray-500">{it.respId ? `RID: ${it.respId}` : ''}</div>
                   <div className="mt-2 flex items-center gap-2 flex-wrap">
-                    <select className="text-xs border rounded px-2 py-1" value={relType} onChange={(e) => setRelType(e.target.value)}>
+                    <select className="text-xs border rounded px-2 py-1" value={it.relType || relType} onChange={(e) => setFuItems((prev) => { const arr = [...prev]; arr[i] = { ...arr[i], relType: e.target.value }; return arr; })}>
                       <option value="precedes">precedes</option>
                       <option value="prerequisite">prerequisite</option>
                       <option value="narrows">narrows</option>
@@ -632,7 +652,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                       <option value="refutes">refutes</option>
                       <option value="alternative">alternative</option>
                     </select>
-                    <select className="text-xs border rounded px-2 py-1" value={relDir} onChange={(e) => setRelDir(e.target.value as any)}>
+                    <select className="text-xs border rounded px-2 py-1" value={it.relDir || relDir} onChange={(e) => setFuItems((prev) => { const arr = [...prev]; arr[i] = { ...arr[i], relDir: e.target.value as any }; return arr; })}>
                       <option value="current_to_new">현재 → 후속</option>
                       <option value="new_to_current">후속 → 현재</option>
                     </select>
@@ -717,35 +737,6 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                             </div>
                           ) : null;
                         })()}
-                        <div className="text-xs text-gray-700 mt-2 mb-1">후속 질문</div>
-                        {((fuMap[src.id]?.items?.length ?? 0) > 0) && (
-                          <div className="mt-2 space-y-2">
-                            {(fuMap[src.id]?.items || []).map((it, i2) => (
-                              <div key={`in-fu-${src.id}-${i2}`} className="rounded border p-2 bg-white/70 dark:bg-gray-900/50">
-                                <div className="text-[12px] text-gray-800">Q: {it.q}</div>
-                                <div className="text-[12px] text-gray-600 mt-1">AI: {it.a}</div>
-                                <div className="mt-1 text-[10px] text-gray-500">{it.respId ? `RID: ${it.respId}` : ''}</div>
-                                <div className="mt-2 flex items-center gap-2 flex-wrap">
-                                  <select className="text-xs border rounded px-2 py-1" value={relType} onChange={(ev) => setRelType(ev.target.value)}>
-                                    <option value="precedes">precedes</option>
-                                    <option value="prerequisite">prerequisite</option>
-                                    <option value="narrows">narrows</option>
-                                    <option value="elaborates">elaborates</option>
-                                    <option value="clarifies">clarifies</option>
-                                    <option value="supports">supports</option>
-                                    <option value="refutes">refutes</option>
-                                    <option value="alternative">alternative</option>
-                                  </select>
-                                  <select className="text-xs border rounded px-2 py-1" value={relDir} onChange={(ev) => setRelDir(ev.target.value as any)}>
-                                    <option value="current_to_new">현재 → 후속</option>
-                                    <option value="new_to_current">후속 → 현재</option>
-                                  </select>
-                                  <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50" disabled={pairBusy} onClick={() => void savePairAndRelAtFor(src.id, i2)}>{pairBusy ? "저장 중…" : "두 Q&A 저장 및 관계 생성"}</button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
                         <div className="mt-2 flex items-center gap-2">
                           <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 답변을 기반으로 이어서 물어보기" value={fuMap[src.id]?.input ?? ''} onChange={(ev) => setFuMap((m) => ({ ...m, [src.id]: { ...(m[src.id] || { input: '', loading: false, items: [] }), input: ev.target.value } }))} />
                           <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!!(fuMap[src.id]?.loading) || !((fuMap[src.id]?.input ?? '').trim())} onClick={() => void askFollowUpFor(src.id)}>{fuMap[src.id]?.loading ? "요청 중…" : "답변 받기"}</button>
@@ -788,35 +779,6 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                             </div>
                           ) : null;
                         })()}
-                        <div className="text-xs text-gray-700 mt-2 mb-1">후속 질문</div>
-                        {((fuMap[trg.id]?.items?.length ?? 0) > 0) && (
-                          <div className="mt-2 space-y-2">
-                            {(fuMap[trg.id]?.items || []).map((it, i2) => (
-                              <div key={`out-fu-${trg.id}-${i2}`} className="rounded border p-2 bg-white/70 dark:bg-gray-900/50">
-                                <div className="text-[12px] text-gray-800">Q: {it.q}</div>
-                                <div className="text-[12px] text-gray-600 mt-1">AI: {it.a}</div>
-                                <div className="mt-1 text-[10px] text-gray-500">{it.respId ? `RID: ${it.respId}` : ''}</div>
-                                <div className="mt-2 flex items-center gap-2 flex-wrap">
-                                  <select className="text-xs border rounded px-2 py-1" value={relType} onChange={(ev) => setRelType(ev.target.value)}>
-                                    <option value="precedes">precedes</option>
-                                    <option value="prerequisite">prerequisite</option>
-                                    <option value="narrows">narrows</option>
-                                    <option value="elaborates">elaborates</option>
-                                    <option value="clarifies">clarifies</option>
-                                    <option value="supports">supports</option>
-                                    <option value="refutes">refutes</option>
-                                    <option value="alternative">alternative</option>
-                                  </select>
-                                  <select className="text-xs border rounded px-2 py-1" value={relDir} onChange={(ev) => setRelDir(ev.target.value as any)}>
-                                    <option value="current_to_new">현재 → 후속</option>
-                                    <option value="new_to_current">후속 → 현재</option>
-                                  </select>
-                                  <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50" disabled={pairBusy} onClick={() => void savePairAndRelAtFor(trg.id, i2)}>{pairBusy ? "저장 중…" : "두 Q&A 저장 및 관계 생성"}</button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
                         <div className="mt-2 flex items-center gap-2">
                           <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 답변을 기반으로 이어서 물어보기" value={fuMap[trg.id]?.input ?? ''} onChange={(ev) => setFuMap((m) => ({ ...m, [trg.id]: { ...(m[trg.id] || { input: '', loading: false, items: [] }), input: ev.target.value } }))} />
                           <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!!(fuMap[trg.id]?.loading) || !((fuMap[trg.id]?.input ?? '').trim())} onClick={() => void askFollowUpFor(trg.id)}>{fuMap[trg.id]?.loading ? "요청 중…" : "답변 받기"}</button>
