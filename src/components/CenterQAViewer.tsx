@@ -51,10 +51,9 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   const [selectMode, setSelectMode] = useState<"any" | "all" | null>(null);
   const [selWords, setSelWords] = useState<string[]>([]);
   const [selPhrases, setSelPhrases] = useState<string[]>([]);
-  const [fuQ, setFuQ] = useState("");
+  const [fuInput, setFuInput] = useState("");
   const [fuLoading, setFuLoading] = useState(false);
-  const [fuA, setFuA] = useState("");
-  const [fuRespId, setFuRespId] = useState<string | null>(null);
+  const [fuItems, setFuItems] = useState<Array<{ q: string; a: string; respId: string | null; savedId?: string }>>([]);
   const [relType, setRelType] = useState<string>("precedes");
   const [relDir, setRelDir] = useState<"current_to_new" | "new_to_current">("current_to_new");
   const [pairBusy, setPairBusy] = useState(false);
@@ -66,49 +65,91 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   }
 
   async function askFollowUp() {
-    const q = fuQ.trim();
+    const q = fuInput.trim();
     if (!q) return;
     try {
-      setFuLoading(true); setFuA(""); setFuRespId(null);
+      setFuLoading(true);
       const ctxIds: string[] = qaId ? [qaId] : [];
-      const prevRid = (lockContext && (qaId ? (data?.lastResponseId as string | undefined) : aiResponseId)) || undefined;
+      const lastRid = fuItems.length > 0 ? fuItems[fuItems.length - 1].respId : undefined;
+      const baseRid = qaId ? (data?.lastResponseId as string | undefined) : aiResponseId;
+      const prevRid = lockContext ? (lastRid || baseRid) : undefined;
       const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider, detail, previousResponseId: prevRid, contextIds: ctxIds }) });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
-      setFuA(String(j?.answer || ""));
-      if (j?.responseId) setFuRespId(String(j.responseId));
+      const a = String(j?.answer || "");
+      const rid = j?.responseId ? String(j.responseId) : null;
+      setFuItems((prev) => [...prev, { q, a, respId: rid }]);
+      setFuInput("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally { setFuLoading(false); }
   }
 
-  async function savePairAndRel() {
-    const baseIsExisting = !!qaId;
-    const baseQ = baseIsExisting ? String(data?.question || "") : String(question || "");
-    const baseA = baseIsExisting ? String(data?.answer || data?.summary || "") : String(aiAnswer || "");
-    const nextQ = fuQ.trim();
-    const nextA = fuA.trim();
-    if (!baseQ || !baseA || !nextQ || !nextA) return;
+  async function savePairAndRelAt(index: number) {
+    const i = index;
+    if (i < 0 || i >= fuItems.length) return;
+    const nextQ = fuItems[i].q.trim();
+    const nextA = fuItems[i].a.trim();
+    if (!nextQ || !nextA) return;
     try {
       setPairBusy(true);
-      let baseId = qaId as string | undefined;
+      // Determine base
+      let baseId: string | undefined = qaId as string | undefined;
+      let baseQ = "";
+      let baseA = "";
+      let baseRid: string | undefined = undefined;
+      if (i === 0) {
+        if (qaId) {
+          baseQ = String(data?.question || "");
+          baseA = String(data?.answer || data?.summary || "");
+        } else {
+          baseQ = String(question || "");
+          baseA = String(aiAnswer || "");
+          baseRid = aiResponseId || undefined;
+        }
+      } else {
+        const prev = fuItems[i - 1];
+        baseQ = prev.q;
+        baseA = prev.a;
+        baseRid = prev.respId || undefined;
+        baseId = fuItems[i - 1].savedId;
+      }
+      // Ensure base saved if needed
       if (!baseId) {
-        const ok = typeof window !== "undefined" ? window.confirm("현재 중앙 AI 답변을 초안으로 저장하고 관계를 생성할까요?") : true;
+        const ok = typeof window !== "undefined" ? window.confirm(i === 0 ? "현재 중앙 AI 답변을 초안으로 저장하고 관계를 생성할까요?" : "이전 후속 질문도 초안으로 저장하고 관계를 생성할까요?") : true;
         if (!ok) { setPairBusy(false); return; }
-        const r1 = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: baseQ, answer: baseA, summary: undefined, responseId: aiResponseId || undefined, published: false }) });
+        const r1 = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: baseQ, answer: baseA, summary: undefined, responseId: baseRid || undefined, published: false }) });
         if (!r1.ok) throw new Error("Base save failed");
         const j1 = await r1.json();
         baseId = String(j1?.id || "");
         if (!baseId) throw new Error("No baseId");
-        onShared?.(baseId);
+        if (i === 0) {
+          onShared?.(baseId);
+        } else {
+          // persist savedId for previous item
+          setFuItems((prevArr) => {
+            const arr = [...prevArr];
+            arr[i - 1] = { ...arr[i - 1], savedId: baseId! };
+            return arr;
+          });
+        }
       }
-      const r2 = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: nextQ, answer: nextA, summary: undefined, responseId: fuRespId || undefined, parentId: undefined, published: false }) });
-      if (!r2.ok) throw new Error("Follow-up save failed");
-      const j2 = await r2.json();
-      const newId = String(j2?.id || "");
-      if (!newId) throw new Error("No newId");
-      const sourceId = relDir === "current_to_new" ? baseId! : newId;
-      const targetId = relDir === "current_to_new" ? newId : baseId!;
+      // Save current follow-up item if not yet saved
+      let newId: string | undefined = fuItems[i].savedId;
+      if (!newId) {
+        const r2 = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: nextQ, answer: nextA, summary: undefined, responseId: fuItems[i].respId || undefined, parentId: undefined, published: false }) });
+        if (!r2.ok) throw new Error("Follow-up save failed");
+        const j2 = await r2.json();
+        newId = String(j2?.id || "");
+        if (!newId) throw new Error("No newId");
+        setFuItems((prevArr) => {
+          const arr = [...prevArr];
+          arr[i] = { ...arr[i], savedId: newId! };
+          return arr;
+        });
+      }
+      const sourceId = relDir === "current_to_new" ? baseId! : newId!;
+      const targetId = relDir === "current_to_new" ? newId! : baseId!;
       const r3 = await fetch("/api/qa/relation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceId, targetId, type: relType, weight: 1 }) });
       if (!r3.ok) throw new Error("Relation failed");
       onGraphChanged?.();
@@ -194,6 +235,11 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
     })();
     return () => { active = false; };
   }, [qaId, data?.summary, data?.answer, data?.question, aiAnswer]);
+
+  useEffect(() => {
+    setFuItems([]);
+    setFuInput("");
+  }, [qaId, question, aiAnswer]);
 
   useEffect(() => {
     let active = true;
@@ -421,35 +467,6 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             <input type="checkbox" checked={!!lockContext} onChange={(e) => { onToggleLock?.(e.target.checked); const rid = String(data?.lastResponseId || ""); if (e.target.checked) onSetPrevRespId?.(rid || null); else onSetPrevRespId?.(null); }} /> 이 RID로 맥락 고정
           </label>
         </div>
-        <div className="mt-3 rounded border p-2 bg-white/60 dark:bg-gray-900/40">
-          <div className="text-xs text-gray-700 mb-1">후속 질문</div>
-          <div className="flex items-center gap-2">
-            <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 답변을 기반으로 이어서 물어보기" value={fuQ} onChange={(e) => setFuQ(e.target.value)} />
-            <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={fuLoading || !fuQ.trim()} onClick={() => void askFollowUp()}>{fuLoading ? "요청 중…" : "답변 받기"}</button>
-          </div>
-          {fuA && (
-            <div className="mt-2">
-              <div className="text-[12px] text-gray-600">AI: {fuA}</div>
-              <div className="mt-2 flex items-center gap-2 flex-wrap">
-                <select className="text-xs border rounded px-2 py-1" value={relType} onChange={(e) => setRelType(e.target.value)}>
-                  <option value="precedes">precedes</option>
-                  <option value="prerequisite">prerequisite</option>
-                  <option value="narrows">narrows</option>
-                  <option value="elaborates">elaborates</option>
-                  <option value="clarifies">clarifies</option>
-                  <option value="supports">supports</option>
-                  <option value="refutes">refutes</option>
-                  <option value="alternative">alternative</option>
-                </select>
-                <select className="text-xs border rounded px-2 py-1" value={relDir} onChange={(e) => setRelDir(e.target.value as any)}>
-                  <option value="current_to_new">현재 → 후속</option>
-                  <option value="new_to_current">후속 → 현재</option>
-                </select>
-                <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50" disabled={pairBusy} onClick={() => void savePairAndRel()}>{pairBusy ? "저장 중…" : "두 Q&A 저장 및 관계 생성"}</button>
-              </div>
-            </div>
-          )}
-        </div>
         <div className="mt-2 flex items-center gap-2">
           <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white" onClick={() => { if (qaId) onSetCard?.(qaId); }}>가이드에 추가</button>
           <button className="text-xs px-2 py-1 rounded border" onClick={() => setEditing((v) => !v)}>{editing ? "편집 취소" : "개선하기"}</button>
@@ -457,87 +474,56 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         </div>
         {data.answer && <div className="text-sm whitespace-pre-wrap">A: {data.answer}</div>}
         {(() => { const s = String(data.summary || "").trim(); const a = String(data.answer || "").trim(); const distinct = s && s !== a; return (!editing && distinct) ? (<div className="text-xs text-gray-700 whitespace-pre-wrap">Summary: {data.summary}</div>) : null; })()}
-        <div className="mt-2">
-          <div className="text-xs text-gray-600 mb-1">복합어</div>
-          {kwLoading ? (
-            <div className="text-[11px] text-gray-600">추출 중…</div>
-          ) : (phrases.length > 0 ? (
-            <div className="flex flex-wrap gap-1">
-              {phrases.map((p, i) => {
-                const active = selPhrases.includes(p) && !!selectMode;
-                return (
-                  <button
-                    key={`ph-${i}`}
-                    className={`text-[11px] px-2 py-0.5 rounded-full border ${active ? 'bg-blue-600 text-white border-blue-600' : 'hover:bg-blue-50'}`}
-                    onClick={() => toggleSelPhrase(p)}
-                  >{p}</button>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-[11px] text-gray-600">없음</div>
-          ))}
-        </div>
-        <div>
-          <div className="text-xs text-gray-600 mb-1">단어</div>
-          {kwLoading ? (
-            <div className="text-[11px] text-gray-600">추출 중…</div>
-          ) : (keywords.length > 0 ? (
-            <div className="flex flex-wrap gap-1">
-              {keywords.map((k, i) => {
-                const active = selWords.includes(k) && !!selectMode;
-                return (
-                  <button
-                    key={`kw-${i}`}
-                    className={`text-[11px] px-2 py-0.5 rounded-full border ${active ? 'bg-blue-600 text-white border-blue-600' : 'hover:bg-blue-50'}`}
-                    onClick={() => toggleSelWord(k)}
-                  >{k}</button>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-[11px] text-gray-600">없음</div>
-          ))}
-          <div className="mt-2 flex items-center gap-2 flex-wrap">
-            <button
-              className={`text-[11px] px-2 py-0.5 rounded border ${selectMode === 'all' ? 'bg-blue-600 text-white border-blue-600' : ''}`}
-              onClick={() => startSelect('all')}
-            >AND 모드</button>
-            <button
-              className={`text-[11px] px-2 py-0.5 rounded border ${selectMode === 'any' ? 'bg-blue-600 text-white border-blue-600' : ''}`}
-              onClick={() => startSelect('any')}
-            >OR 모드</button>
-            {selectMode && (
-              <>
-                <span className="text-[10px] text-gray-600">선택됨:</span>
-                <div className="flex items-center gap-1 flex-wrap">
-                  {selPhrases.map((p, i) => (
-                    <span key={`sel-ph-${i}`} className="text-[10px] px-2 py-0.5 rounded-full border bg-purple-50 border-purple-200 text-purple-700">{p}</span>
-                  ))}
-                  {selWords.map((w, i) => (
-                    <span key={`sel-kw-${i}`} className="text-[10px] px-2 py-0.5 rounded-full border">{w}</span>
-                  ))}
+        <div className="mt-3 rounded border p-2 bg-white/60 dark:bg-gray-900/40">
+          <div className="text-xs text-gray-700 mb-1">후속 질문</div>
+          {fuItems.length > 0 && (
+            <div className="space-y-2">
+              {fuItems.map((it, i) => (
+                <div key={`fu-${i}`} className="rounded border p-2 bg-white/70 dark:bg-gray-900/50">
+                  <div className="text-[12px] text-gray-800">Q: {it.q}</div>
+                  <div className="text-[12px] text-gray-600 mt-1">AI: {it.a}</div>
+                  <div className="mt-1 text-[10px] text-gray-500">{it.respId ? `RID: ${it.respId}` : ''}</div>
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
+                    <select className="text-xs border rounded px-2 py-1" value={relType} onChange={(e) => setRelType(e.target.value)}>
+                      <option value="precedes">precedes</option>
+                      <option value="prerequisite">prerequisite</option>
+                      <option value="narrows">narrows</option>
+                      <option value="elaborates">elaborates</option>
+                      <option value="clarifies">clarifies</option>
+                      <option value="supports">supports</option>
+                      <option value="refutes">refutes</option>
+                      <option value="alternative">alternative</option>
+                    </select>
+                    <select className="text-xs border rounded px-2 py-1" value={relDir} onChange={(e) => setRelDir(e.target.value as any)}>
+                      <option value="current_to_new">현재 → 후속</option>
+                      <option value="new_to_current">후속 → 현재</option>
+                    </select>
+                    <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50" disabled={pairBusy} onClick={() => void savePairAndRelAt(i)}>{pairBusy ? "저장 중…" : "두 Q&A 저장 및 관계 생성"}</button>
+                  </div>
                 </div>
-                <button className="ml-auto text-[11px] px-2 py-0.5 rounded border border-emerald-600 text-emerald-700" onClick={doSearch}>검색</button>
-                <button className="text-[11px] px-2 py-0.5 rounded border" onClick={cancelSelect}>취소</button>
-              </>
-            )}
-          </div>
-          {(!selectMode && keywords.length >= 2) && (
-            <div className="mt-1">
-              <div className="text-[10px] text-gray-600 mb-1">조합 보기(AND)</div>
-              <div className="flex flex-wrap gap-1">
-                {(() => {
-                  const tops = keywords.slice(0, 5);
-                  const pairs: Array<[string,string]> = [];
-                  for (let i = 0; i < tops.length; i++) for (let j = i+1; j < tops.length; j++) pairs.push([tops[i], tops[j]]);
-                  return pairs.slice(0, 6).map((pair, idx) => (
-                    <button key={`pair-${idx}`} className="text-[10px] px-2 py-0.5 rounded border" onClick={() => onKeywordSearch?.({ keywords: pair, mode: "all" })}>{pair[0]} + {pair[1]}</button>
-                  ));
-                })()}
-              </div>
+              ))}
             </div>
           )}
+          <div className="mt-2 flex items-center gap-2">
+            <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 답변을 기반으로 이어서 물어보기" value={fuInput} onChange={(e) => setFuInput(e.target.value)} />
+            <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={fuLoading || !fuInput.trim()} onClick={() => void askFollowUp()}>{fuLoading ? "요청 중…" : "답변 받기"}</button>
+          </div>
+        </div>
+        <div className="mt-2">
+          {kwLoading ? (
+            <div className="text-[11px] text-gray-600">추출 중…</div>
+          ) : ((phrases.length + keywords.length) > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {phrases.map((p, i) => (
+                <button key={`ph-chip-${i}`} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => toggleSelPhrase(p)}>{p}</button>
+              ))}
+              {keywords.map((k, i) => (
+                <button key={`kw-chip-${i}`} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => toggleSelWord(k)}>{k}</button>
+              ))}
+            </div>
+          ) : (
+            <div className="text-[11px] text-gray-600">없음</div>
+          ))}
         </div>
         {editing && (
           <>
@@ -667,73 +653,21 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           >{saving ? "Sharing..." : "공유하기"}</button>
         </div>
         <div className="text-xs text-gray-600">요약 또는 키워드를 확인하고 공유하면 지식 체계에 등록됩니다.</div>
-        <div>
-          <div className="text-xs text-gray-600 mb-1">복합어</div>
+        <div className="mt-2">
           {kwLoading ? (
             <div className="text-[11px] text-gray-600">추출 중…</div>
-          ) : (phrases.length > 0 ? (
+          ) : ((phrases.length + keywords.length) > 0 ? (
             <div className="flex flex-wrap gap-1">
-              {phrases.map((p, i) => {
-                const active = selPhrases.includes(p) && !!selectMode;
-                return (
-                  <button key={`ph2-${i}`} className={`text-[11px] px-2 py-0.5 rounded-full border ${active ? 'bg-blue-600 text-white border-blue-600' : 'hover:bg-blue-50'}`} onClick={() => toggleSelPhrase(p)}>{p}</button>
-                );
-              })}
+              {phrases.map((p, i) => (
+                <button key={`ph2-chip-${i}`} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => toggleSelPhrase(p)}>{p}</button>
+              ))}
+              {keywords.map((k, i) => (
+                <button key={`kw2-chip-${i}`} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => toggleSelWord(k)}>{k}</button>
+              ))}
             </div>
           ) : (
             <div className="text-[11px] text-gray-600">없음</div>
           ))}
-        </div>
-        <div>
-          <div className="text-xs text-gray-600 mb-1">단어</div>
-          {kwLoading ? (
-            <div className="text-[11px] text-gray-600">추출 중…</div>
-          ) : (keywords.length > 0 ? (
-            <div className="flex flex-wrap gap-1">
-              {keywords.map((k, i) => {
-                const active = selWords.includes(k) && !!selectMode;
-                return (
-                  <button key={`kw2-${i}`} className={`text-[11px] px-2 py-0.5 rounded-full border ${active ? 'bg-blue-600 text-white border-blue-600' : 'hover:bg-blue-50'}`} onClick={() => toggleSelWord(k)}>{k}</button>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-[11px] text-gray-600">없음</div>
-          ))}
-          <div className="mt-2 flex items-center gap-2 flex-wrap">
-            <button className={`text-[11px] px-2 py-0.5 rounded border ${selectMode === 'all' ? 'bg-blue-600 text-white border-blue-600' : ''}`} onClick={() => startSelect('all')}>AND 모드</button>
-            <button className={`text-[11px] px-2 py-0.5 rounded border ${selectMode === 'any' ? 'bg-blue-600 text-white border-blue-600' : ''}`} onClick={() => startSelect('any')}>OR 모드</button>
-            {selectMode && (
-              <>
-                <span className="text-[10px] text-gray-600">선택됨:</span>
-                <div className="flex items-center gap-1 flex-wrap">
-                  {selPhrases.map((p, i) => (
-                    <span key={`sel2-ph-${i}`} className="text-[10px] px-2 py-0.5 rounded-full border bg-purple-50 border-purple-200 text-purple-700">{p}</span>
-                  ))}
-                  {selWords.map((w, i) => (
-                    <span key={`sel2-kw-${i}`} className="text-[10px] px-2 py-0.5 rounded-full border">{w}</span>
-                  ))}
-                </div>
-                <button className="ml-auto text-[11px] px-2 py-0.5 rounded border border-emerald-600 text-emerald-700" onClick={doSearch}>검색</button>
-                <button className="text-[11px] px-2 py-0.5 rounded border" onClick={cancelSelect}>취소</button>
-              </>
-            )}
-          </div>
-          {(!selectMode && keywords.length >= 2) && (
-            <div className="mt-1">
-              <div className="text-[10px] text-gray-600 mb-1">조합 보기(AND)</div>
-              <div className="flex flex-wrap gap-1">
-                {(() => {
-                  const tops = keywords.slice(0, 5);
-                  const pairs: Array<[string,string]> = [];
-                  for (let i = 0; i < tops.length; i++) for (let j = i+1; j < tops.length; j++) pairs.push([tops[i], tops[j]]);
-                  return pairs.slice(0, 6).map((pair, idx) => (
-                    <button key={`pair2-${idx}`} className="text-[10px] px-2 py-0.5 rounded border" onClick={() => onKeywordSearch?.({ keywords: pair, mode: "all" })}>{pair[0]} + {pair[1]}</button>
-                  ));
-                })()}
-              </div>
-            </div>
-          )}
         </div>
         <textarea id="new-summary" name="new-summary" className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" rows={4} placeholder="핵심 요약을 작성하세요" value={newSummary} onChange={(e) => setNewSummary(e.target.value)} />
         <div className="flex items-center gap-2">
@@ -743,32 +677,38 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         </div>
         <div className="mt-3 rounded border p-2 bg-white/60 dark:bg-gray-900/40">
           <div className="text-xs text-gray-700 mb-1">후속 질문</div>
-          <div className="flex items-center gap-2">
-            <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 답변을 기반으로 이어서 물어보기" value={fuQ} onChange={(e) => setFuQ(e.target.value)} />
-            <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={fuLoading || !fuQ.trim()} onClick={() => void askFollowUp()}>{fuLoading ? "요청 중…" : "답변 받기"}</button>
-          </div>
-          {fuA && (
-            <div className="mt-2">
-              <div className="text-[12px] text-gray-600">AI: {fuA}</div>
-              <div className="mt-2 flex items-center gap-2 flex-wrap">
-                <select className="text-xs border rounded px-2 py-1" value={relType} onChange={(e) => setRelType(e.target.value)}>
-                  <option value="precedes">precedes</option>
-                  <option value="prerequisite">prerequisite</option>
-                  <option value="narrows">narrows</option>
-                  <option value="elaborates">elaborates</option>
-                  <option value="clarifies">clarifies</option>
-                  <option value="supports">supports</option>
-                  <option value="refutes">refutes</option>
-                  <option value="alternative">alternative</option>
-                </select>
-                <select className="text-xs border rounded px-2 py-1" value={relDir} onChange={(e) => setRelDir(e.target.value as any)}>
-                  <option value="current_to_new">현재 → 후속</option>
-                  <option value="new_to_current">후속 → 현재</option>
-                </select>
-                <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50" disabled={pairBusy} onClick={() => void savePairAndRel()}>{pairBusy ? "저장 중…" : "두 Q&A 저장 및 관계 생성"}</button>
-              </div>
+          {fuItems.length > 0 && (
+            <div className="space-y-2">
+              {fuItems.map((it, i) => (
+                <div key={`fu2-${i}`} className="rounded border p-2 bg-white/70 dark:bg-gray-900/50">
+                  <div className="text-[12px] text-gray-800">Q: {it.q}</div>
+                  <div className="text-[12px] text-gray-600 mt-1">AI: {it.a}</div>
+                  <div className="mt-1 text-[10px] text-gray-500">{it.respId ? `RID: ${it.respId}` : ''}</div>
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
+                    <select className="text-xs border rounded px-2 py-1" value={relType} onChange={(e) => setRelType(e.target.value)}>
+                      <option value="precedes">precedes</option>
+                      <option value="prerequisite">prerequisite</option>
+                      <option value="narrows">narrows</option>
+                      <option value="elaborates">elaborates</option>
+                      <option value="clarifies">clarifies</option>
+                      <option value="supports">supports</option>
+                      <option value="refutes">refutes</option>
+                      <option value="alternative">alternative</option>
+                    </select>
+                    <select className="text-xs border rounded px-2 py-1" value={relDir} onChange={(e) => setRelDir(e.target.value as any)}>
+                      <option value="current_to_new">현재 → 후속</option>
+                      <option value="new_to_current">후속 → 현재</option>
+                    </select>
+                    <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50" disabled={pairBusy} onClick={() => void savePairAndRelAt(i)}>{pairBusy ? "저장 중…" : "두 Q&A 저장 및 관계 생성"}</button>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
+          <div className="mt-2 flex items-center gap-2">
+            <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 답변을 기반으로 이어서 물어보기" value={fuInput} onChange={(e) => setFuInput(e.target.value)} />
+            <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={fuLoading || !fuInput.trim()} onClick={() => void askFollowUp()}>{fuLoading ? "요청 중…" : "답변 받기"}</button>
+          </div>
         </div>
       </div>
     );
