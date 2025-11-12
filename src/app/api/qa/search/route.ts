@@ -81,8 +81,70 @@ export async function POST(req: NextRequest) {
               limit $2`,
             [q.toLowerCase(), limit, userId]
           );
-          return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string }>;
+          return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string }>; 
         });
+      }
+
+      // If no results (common with very long queries), fall back to keyword index matching
+      if (!rows.length) {
+        const kws = heuristic(q, 8);
+        if (kws.length) {
+          // ANY keyword match via qa_keywords
+          let kwRows = await withConn(async (c) => {
+            const r = await c.query(
+              `select e.id, e.question, e.answer, e.summary, e.work_id, e.created_by
+                 from qa_entries e
+                 join qa_keywords k on k.qa_id = e.id
+                where k.keyword = any($1)
+                  and (e.published = true or e.created_by = $3)
+                group by e.id
+                order by e.created_at desc
+                limit $2`,
+              [kws, limit, userId]
+            );
+            return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string; created_by?: string }>;
+          });
+          // Partial match on keywords if exact keyword hits are empty
+          if (!kwRows.length) {
+            const pats = kws.map((k) => `%${k}%`);
+            kwRows = await withConn(async (c) => {
+              const r = await c.query(
+                `select e.id, e.question, e.answer, e.summary, e.work_id, e.created_by
+                   from qa_entries e
+                  where (e.published = true or e.created_by = $3)
+                    and exists (
+                      select 1 from qa_keywords k
+                       where k.qa_id = e.id and k.keyword ilike any($1)
+                    )
+                  group by e.id
+                  order by e.created_at desc
+                  limit $2`,
+                [pats, limit, userId]
+              );
+              return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string; created_by?: string }>;
+            });
+          }
+          // As last resort, partial match tokens in question/summary
+          if (!kwRows.length) {
+            const pats = kws.map((k) => `%${k}%`);
+            kwRows = await withConn(async (c) => {
+              const r = await c.query(
+                `select id, question, answer, summary, work_id, created_by
+                   from qa_entries
+                  where (published = true or created_by = $3)
+                    and (
+                      question ilike any($1)
+                      or coalesce(summary,'') ilike any($1)
+                    )
+                  order by created_at desc
+                  limit $2`,
+                [pats, limit, userId]
+              );
+              return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string; created_by?: string }>;
+            });
+          }
+          rows = kwRows;
+        }
       }
     }
     // Fallback to recent if no matches
