@@ -58,6 +58,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   const [relDir, setRelDir] = useState<"current_to_new" | "new_to_current">("current_to_new");
   const [pairBusy, setPairBusy] = useState(false);
   const [fuMap, setFuMap] = useState<Record<string, { input: string; loading: boolean; items: Array<{ q: string; a: string; respId: string | null; savedId?: string }> }>>({});
+  const [connectedKw, setConnectedKw] = useState<Record<string, { keywords: string[]; phrases: string[] }>>({});
 
   function startSelect(mode: "any" | "all") {
     setSelectMode(mode);
@@ -335,6 +336,34 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   }, [qaId, question, aiAnswer]);
 
   useEffect(() => {
+    // Preload keyword chips for connected QAs (source->current and current->target)
+    (async () => {
+      try {
+        if (!qaId) return;
+        const showIds = new Set<string>();
+        for (const e of mapEdges) {
+          if (e.targetId === qaId) showIds.add(e.sourceId);
+          if (e.sourceId === qaId) showIds.add(e.targetId);
+        }
+        const ids = Array.from(showIds).filter((id) => connectedKw[id] === undefined);
+        if (ids.length === 0) return;
+        const next: Record<string, { keywords: string[]; phrases: string[] }> = {};
+        for (const id of ids) {
+          const node = mapNodes.find((n) => n.id === id);
+          const text = String(node?.answer || node?.summary || "");
+          if (!text.trim()) { next[id] = { keywords: [], phrases: [] }; continue; }
+          try {
+            const r = await fetch("/api/ai/keywords", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, max: 8 }) });
+            const j = await r.json().catch(() => ({ keywords: [], phrases: [] }));
+            next[id] = { keywords: Array.isArray(j?.keywords) ? j.keywords : [], phrases: Array.isArray(j?.phrases) ? j.phrases : [] };
+          } catch { next[id] = { keywords: [], phrases: [] }; }
+        }
+        setConnectedKw((prev) => ({ ...prev, ...next }));
+      } catch {}
+    })();
+  }, [qaId, JSON.stringify(mapEdges), JSON.stringify(mapNodes.map((n) => [n.id, n.answer, n.summary]))]);
+
+  useEffect(() => {
     let active = true;
     (async () => {
       if (!qaId) { if (active) { setMapNodes([]); setMapEdges([]); } return; }
@@ -567,6 +596,22 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         </div>
         {data.answer && <div className="text-sm whitespace-pre-wrap">A: {data.answer}</div>}
         {(() => { const s = String(data.summary || "").trim(); const a = String(data.answer || "").trim(); const distinct = s && s !== a; return (!editing && distinct) ? (<div className="text-xs text-gray-700 whitespace-pre-wrap">Summary: {data.summary}</div>) : null; })()}
+        <div className="mt-2">
+          {kwLoading ? (
+            <div className="text-[11px] text-gray-600">추출 중…</div>
+          ) : ((phrases.length + keywords.length) > 0 ? (
+            <div className="flex flex-wrap gap-1">
+              {phrases.map((p, i) => (
+                <button key={`ph-chip-${i}`} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => toggleSelPhrase(p)}>{p}</button>
+              ))}
+              {keywords.map((k, i) => (
+                <button key={`kw-chip-${i}`} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => toggleSelWord(k)}>{k}</button>
+              ))}
+            </div>
+          ) : (
+            <div className="text-[11px] text-gray-600">없음</div>
+          ))}
+        </div>
         <div className="mt-3 rounded border p-2 bg-white/60 dark:bg-gray-900/40">
           <div className="text-xs text-gray-700 mb-1">후속 질문</div>
           {fuItems.length > 0 && (
@@ -601,22 +646,6 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 답변을 기반으로 이어서 물어보기" value={fuInput} onChange={(e) => setFuInput(e.target.value)} />
             <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={fuLoading || !fuInput.trim()} onClick={() => void askFollowUp()}>{fuLoading ? "요청 중…" : "답변 받기"}</button>
           </div>
-        </div>
-        <div className="mt-2">
-          {kwLoading ? (
-            <div className="text-[11px] text-gray-600">추출 중…</div>
-          ) : ((phrases.length + keywords.length) > 0 ? (
-            <div className="flex flex-wrap gap-1">
-              {phrases.map((p, i) => (
-                <button key={`ph-chip-${i}`} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => toggleSelPhrase(p)}>{p}</button>
-              ))}
-              {keywords.map((k, i) => (
-                <button key={`kw-chip-${i}`} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => toggleSelWord(k)}>{k}</button>
-              ))}
-            </div>
-          ) : (
-            <div className="text-[11px] text-gray-600">없음</div>
-          ))}
         </div>
         {editing && (
           <>
@@ -671,9 +700,24 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                   return (
                     <li key={`in-${idx}`} className="text-[12px] border rounded p-2">
                       <div className="min-w-0">
-                        <div className="font-medium">{e.type} · Q: {src.question}</div>
-                        {src.answer && <div className="mt-1 whitespace-pre-wrap">A: {src.answer}</div>}
+                        <div className="text-sm font-semibold">Q: {src.question}</div>
+                        {src.answer && <div className="mt-1 text-sm whitespace-pre-wrap">A: {src.answer}</div>}
                         {(() => { const s = String(src.summary || "").trim(); const a = String(src.answer || "").trim(); const distinct = s && s !== a; return distinct ? (<div className="text-[11px] text-gray-700 whitespace-pre-wrap">Summary: {src.summary}</div>) : null; })()}
+                        {(() => {
+                          const kw = connectedKw[src.id] || { keywords: [], phrases: [] };
+                          const has = (kw.keywords?.length || 0) + (kw.phrases?.length || 0) > 0;
+                          return has ? (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {kw.phrases.map((p, i) => (
+                                <button key={`in-ph-${src.id}-${i}`} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => toggleSelPhrase(p)}>{p}</button>
+                              ))}
+                              {kw.keywords.map((k, i) => (
+                                <button key={`in-kw-${src.id}-${i}`} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => toggleSelWord(k)}>{k}</button>
+                              ))}
+                            </div>
+                          ) : null;
+                        })()}
+                        <div className="text-xs text-gray-700 mt-2 mb-1">후속 질문</div>
                         {((fuMap[src.id]?.items?.length ?? 0) > 0) && (
                           <div className="mt-2 space-y-2">
                             {(fuMap[src.id]?.items || []).map((it, i2) => (
@@ -727,9 +771,24 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                   return (
                     <li key={`out-${idx}`} className="text-[12px] border rounded p-2">
                       <div className="min-w-0">
-                        <div className="font-medium">{e.type} · Q: {trg.question}</div>
-                        {trg.answer && <div className="mt-1 whitespace-pre-wrap">A: {trg.answer}</div>}
+                        <div className="text-sm font-semibold">Q: {trg.question}</div>
+                        {trg.answer && <div className="mt-1 text-sm whitespace-pre-wrap">A: {trg.answer}</div>}
                         {(() => { const s = String(trg.summary || "").trim(); const a = String(trg.answer || "").trim(); const distinct = s && s !== a; return distinct ? (<div className="text-[11px] text-gray-700 whitespace-pre-wrap">Summary: {trg.summary}</div>) : null; })()}
+                        {(() => {
+                          const kw = connectedKw[trg.id] || { keywords: [], phrases: [] };
+                          const has = (kw.keywords?.length || 0) + (kw.phrases?.length || 0) > 0;
+                          return has ? (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {kw.phrases.map((p, i) => (
+                                <button key={`out-ph-${trg.id}-${i}`} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => toggleSelPhrase(p)}>{p}</button>
+                              ))}
+                              {kw.keywords.map((k, i) => (
+                                <button key={`out-kw-${trg.id}-${i}`} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => toggleSelWord(k)}>{k}</button>
+                              ))}
+                            </div>
+                          ) : null;
+                        })()}
+                        <div className="text-xs text-gray-700 mt-2 mb-1">후속 질문</div>
                         {((fuMap[trg.id]?.items?.length ?? 0) > 0) && (
                           <div className="mt-2 space-y-2">
                             {(fuMap[trg.id]?.items || []).map((it, i2) => (
