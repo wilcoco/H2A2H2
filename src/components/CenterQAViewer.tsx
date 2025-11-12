@@ -11,6 +11,8 @@ type Props = {
   aiModel?: string;
   aiFallbackUsed?: boolean;
   aiResponseId?: string;
+  provider?: "openai" | "anthropic";
+  detail?: "short" | "normal" | "long";
   lockContext?: boolean;
   onToggleLock?: (v: boolean) => void;
   onSetPrevRespId?: (rid: string | null) => void;
@@ -25,9 +27,10 @@ type Props = {
   onSetSource?: (id: string) => void;
   onSetTarget?: (id: string) => void;
   onSetCard?: (id: string) => void;
+  onGraphChanged?: () => void;
 };
 
-export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, aiModel, aiFallbackUsed, aiResponseId, lockContext, onToggleLock, onSetPrevRespId, onOpenThread, onShared, onPinned, refreshKey, onSelectQA, currentUserEmail, onKeywordClick, onKeywordSearch, onSetSource, onSetTarget, onSetCard }: Props) {
+export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, aiModel, aiFallbackUsed, aiResponseId, provider, detail, lockContext, onToggleLock, onSetPrevRespId, onOpenThread, onShared, onPinned, refreshKey, onSelectQA, currentUserEmail, onKeywordClick, onKeywordSearch, onSetSource, onSetTarget, onSetCard, onGraphChanged }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<any | null>(null);
@@ -48,11 +51,72 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   const [selectMode, setSelectMode] = useState<"any" | "all" | null>(null);
   const [selWords, setSelWords] = useState<string[]>([]);
   const [selPhrases, setSelPhrases] = useState<string[]>([]);
+  const [fuQ, setFuQ] = useState("");
+  const [fuLoading, setFuLoading] = useState(false);
+  const [fuA, setFuA] = useState("");
+  const [fuRespId, setFuRespId] = useState<string | null>(null);
+  const [relType, setRelType] = useState<string>("precedes");
+  const [relDir, setRelDir] = useState<"current_to_new" | "new_to_current">("current_to_new");
+  const [pairBusy, setPairBusy] = useState(false);
 
   function startSelect(mode: "any" | "all") {
     setSelectMode(mode);
     setSelWords([]);
     setSelPhrases([]);
+  }
+
+  async function askFollowUp() {
+    const q = fuQ.trim();
+    if (!q) return;
+    try {
+      setFuLoading(true); setFuA(""); setFuRespId(null);
+      const ctxIds: string[] = qaId ? [qaId] : [];
+      const prevRid = (lockContext && (qaId ? (data?.lastResponseId as string | undefined) : aiResponseId)) || undefined;
+      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider, detail, previousResponseId: prevRid, contextIds: ctxIds }) });
+      if (!res.ok) throw new Error("AI call failed");
+      const j = await res.json();
+      setFuA(String(j?.answer || ""));
+      if (j?.responseId) setFuRespId(String(j.responseId));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally { setFuLoading(false); }
+  }
+
+  async function savePairAndRel() {
+    const baseIsExisting = !!qaId;
+    const baseQ = baseIsExisting ? String(data?.question || "") : String(question || "");
+    const baseA = baseIsExisting ? String(data?.answer || data?.summary || "") : String(aiAnswer || "");
+    const nextQ = fuQ.trim();
+    const nextA = fuA.trim();
+    if (!baseQ || !baseA || !nextQ || !nextA) return;
+    try {
+      setPairBusy(true);
+      let baseId = qaId as string | undefined;
+      if (!baseId) {
+        const ok = typeof window !== "undefined" ? window.confirm("현재 중앙 AI 답변을 초안으로 저장하고 관계를 생성할까요?") : true;
+        if (!ok) { setPairBusy(false); return; }
+        const r1 = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: baseQ, answer: baseA, summary: undefined, responseId: aiResponseId || undefined, published: false }) });
+        if (!r1.ok) throw new Error("Base save failed");
+        const j1 = await r1.json();
+        baseId = String(j1?.id || "");
+        if (!baseId) throw new Error("No baseId");
+        onShared?.(baseId);
+      }
+      const r2 = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: nextQ, answer: nextA, summary: undefined, responseId: fuRespId || undefined, parentId: undefined, published: false }) });
+      if (!r2.ok) throw new Error("Follow-up save failed");
+      const j2 = await r2.json();
+      const newId = String(j2?.id || "");
+      if (!newId) throw new Error("No newId");
+      const sourceId = relDir === "current_to_new" ? baseId! : newId;
+      const targetId = relDir === "current_to_new" ? newId : baseId!;
+      const r3 = await fetch("/api/qa/relation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceId, targetId, type: relType, weight: 1 }) });
+      if (!r3.ok) throw new Error("Relation failed");
+      onGraphChanged?.();
+      if (relDir === "current_to_new") { onSetSource?.(baseId!); onSetTarget?.(newId); }
+      else { onSetSource?.(newId); onSetTarget?.(baseId!); }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally { setPairBusy(false); }
   }
   function cancelSelect() {
     setSelectMode(null);
@@ -357,6 +421,35 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             <input type="checkbox" checked={!!lockContext} onChange={(e) => { onToggleLock?.(e.target.checked); const rid = String(data?.lastResponseId || ""); if (e.target.checked) onSetPrevRespId?.(rid || null); else onSetPrevRespId?.(null); }} /> 이 RID로 맥락 고정
           </label>
         </div>
+        <div className="mt-3 rounded border p-2 bg-white/60 dark:bg-gray-900/40">
+          <div className="text-xs text-gray-700 mb-1">후속 질문</div>
+          <div className="flex items-center gap-2">
+            <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 답변을 기반으로 이어서 물어보기" value={fuQ} onChange={(e) => setFuQ(e.target.value)} />
+            <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={fuLoading || !fuQ.trim()} onClick={() => void askFollowUp()}>{fuLoading ? "요청 중…" : "답변 받기"}</button>
+          </div>
+          {fuA && (
+            <div className="mt-2">
+              <div className="text-[12px] text-gray-600">AI: {fuA}</div>
+              <div className="mt-2 flex items-center gap-2 flex-wrap">
+                <select className="text-xs border rounded px-2 py-1" value={relType} onChange={(e) => setRelType(e.target.value)}>
+                  <option value="precedes">precedes</option>
+                  <option value="prerequisite">prerequisite</option>
+                  <option value="narrows">narrows</option>
+                  <option value="elaborates">elaborates</option>
+                  <option value="clarifies">clarifies</option>
+                  <option value="supports">supports</option>
+                  <option value="refutes">refutes</option>
+                  <option value="alternative">alternative</option>
+                </select>
+                <select className="text-xs border rounded px-2 py-1" value={relDir} onChange={(e) => setRelDir(e.target.value as any)}>
+                  <option value="current_to_new">현재 → 후속</option>
+                  <option value="new_to_current">후속 → 현재</option>
+                </select>
+                <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50" disabled={pairBusy} onClick={() => void savePairAndRel()}>{pairBusy ? "저장 중…" : "두 Q&A 저장 및 관계 생성"}</button>
+              </div>
+            </div>
+          )}
+        </div>
         <div className="mt-2 flex items-center gap-2">
           <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white" onClick={() => { if (qaId) onSetCard?.(qaId); }}>가이드에 추가</button>
           <button className="text-xs px-2 py-1 rounded border" onClick={() => setEditing((v) => !v)}>{editing ? "편집 취소" : "개선하기"}</button>
@@ -647,6 +740,35 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={saving} onClick={() => void shareAnd("source")}>{saving ? "Sharing..." : "Set Source"}</button>
           <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={saving} onClick={() => void shareAnd("target")}>{saving ? "Sharing..." : "Set Target"}</button>
           <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={saving} onClick={() => void shareAnd("card")}>{saving ? "Sharing..." : "Set Card"}</button>
+        </div>
+        <div className="mt-3 rounded border p-2 bg-white/60 dark:bg-gray-900/40">
+          <div className="text-xs text-gray-700 mb-1">후속 질문</div>
+          <div className="flex items-center gap-2">
+            <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 답변을 기반으로 이어서 물어보기" value={fuQ} onChange={(e) => setFuQ(e.target.value)} />
+            <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={fuLoading || !fuQ.trim()} onClick={() => void askFollowUp()}>{fuLoading ? "요청 중…" : "답변 받기"}</button>
+          </div>
+          {fuA && (
+            <div className="mt-2">
+              <div className="text-[12px] text-gray-600">AI: {fuA}</div>
+              <div className="mt-2 flex items-center gap-2 flex-wrap">
+                <select className="text-xs border rounded px-2 py-1" value={relType} onChange={(e) => setRelType(e.target.value)}>
+                  <option value="precedes">precedes</option>
+                  <option value="prerequisite">prerequisite</option>
+                  <option value="narrows">narrows</option>
+                  <option value="elaborates">elaborates</option>
+                  <option value="clarifies">clarifies</option>
+                  <option value="supports">supports</option>
+                  <option value="refutes">refutes</option>
+                  <option value="alternative">alternative</option>
+                </select>
+                <select className="text-xs border rounded px-2 py-1" value={relDir} onChange={(e) => setRelDir(e.target.value as any)}>
+                  <option value="current_to_new">현재 → 후속</option>
+                  <option value="new_to_current">후속 → 현재</option>
+                </select>
+                <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50" disabled={pairBusy} onClick={() => void savePairAndRel()}>{pairBusy ? "저장 중…" : "두 Q&A 저장 및 관계 생성"}</button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );

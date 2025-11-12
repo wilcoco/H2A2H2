@@ -11,6 +11,7 @@ type Props = {
   pinnedIds?: string[];
   onUnpin?: (id: string) => void;
   onGraphChanged?: () => void;
+  refreshKey?: number;
   navDirection?: "prev_to_current" | "current_to_prev";
   onNavDirectionChange?: (d: "prev_to_current" | "current_to_prev") => void;
   forceSourceId?: string | null;
@@ -18,7 +19,7 @@ type Props = {
   onEdit?: (id: string) => void;
 };
 
-export default function RightRelations({ qaId, targetId, onTargetChange, connectMode, onConnectModeChange, pinnedIds = [], onUnpin, onGraphChanged, navDirection = "prev_to_current", onNavDirectionChange, forceSourceId, writerQaId, onEdit }: Props) {
+export default function RightRelations({ qaId, targetId, onTargetChange, connectMode, onConnectModeChange, pinnedIds = [], onUnpin, onGraphChanged, refreshKey, navDirection = "prev_to_current", onNavDirectionChange, forceSourceId, writerQaId, onEdit }: Props) {
   const [relType, setRelType] = useState<string>("precedes");
   const [busy, setBusy] = useState(false);
   const [edges, setEdges] = useState<Array<{ sourceId: string; targetId: string; type: string; synthetic?: boolean }>>([]);
@@ -162,7 +163,7 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
     } catch {}
   }
 
-  useEffect(() => { void refreshEdges(); }, [qaId]);
+  useEffect(() => { void refreshEdges(); }, [qaId, refreshKey]);
 
   // Load node details for related nodes to display human-friendly titles/snippets
   useEffect(() => {

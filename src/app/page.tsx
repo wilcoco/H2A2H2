@@ -347,6 +347,8 @@ export default function Home() {
             aiModel={!selectedQaId ? centerAiMeta?.modelUsed : undefined}
             aiFallbackUsed={!selectedQaId ? centerAiMeta?.fallbackUsed : undefined}
             aiResponseId={!selectedQaId ? (centerPrevRespId || undefined) : undefined}
+            provider={provider}
+            detail={detail}
             lockContext={centerLockContext}
             onToggleLock={(v) => setCenterLockContext(v)}
             onSetPrevRespId={(rid) => setCenterPrevRespId(rid)}
@@ -384,6 +386,7 @@ export default function Home() {
               try { await fetch("/api/qa/pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId: id }) }); } catch {}
             }}
             refreshKey={graphRefreshKey}
+            onGraphChanged={() => setGraphRefreshKey((k) => k + 1)}
             onSelectQA={(id) => {
               setLastViewedQaId(id);
               setSelectedQaId(id);
@@ -425,6 +428,7 @@ export default function Home() {
                     onConnectModeChange={(v) => setConnectMode(v)}
                     pinnedIds={pinnedIds}
                     onUnpin={(id) => setPinnedIds((arr) => arr.filter((x) => x !== id))}
+                    refreshKey={graphRefreshKey}
                     onGraphChanged={() => setGraphRefreshKey((k) => k + 1)}
                     navDirection={relNavDirection}
                     onNavDirectionChange={(d) => setRelNavDirection(d)}
@@ -456,6 +460,7 @@ export default function Home() {
                     onConnectModeChange={(v) => setConnectMode(v)}
                     pinnedIds={pinnedIds}
                     onUnpin={(id) => setPinnedIds((arr) => arr.filter((x) => x !== id))}
+                    refreshKey={graphRefreshKey}
                     onGraphChanged={() => setGraphRefreshKey((k) => k + 1)}
                     navDirection={relNavDirection}
                     onNavDirectionChange={(d) => setRelNavDirection(d)}
