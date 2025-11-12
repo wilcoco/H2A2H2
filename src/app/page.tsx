@@ -84,8 +84,6 @@ export default function Home() {
       if (prov === "openai" || prov === "anthropic") setProvider(prov);
       const det = localStorage.getItem("ai_detail");
       if (det === "short" || det === "normal" || det === "long") setDetail(det);
-      const tab = localStorage.getItem("ui_top_tab");
-      if (tab === "connect" || tab === "editor") setTopTab(tab);
     } catch {}
     return () => { mounted = false; };
   }, []);
@@ -106,11 +104,6 @@ export default function Home() {
   useEffect(() => {
     try { localStorage.setItem("ai_detail", detail); } catch {}
   }, [detail]);
-
-  // Persist top-level tab selection to avoid accidental resets on refresh
-  useEffect(() => {
-    try { localStorage.setItem("ui_top_tab", topTab); } catch {}
-  }, [topTab]);
 
   // Hydrate pins when user changes
   useEffect(() => {
@@ -184,9 +177,7 @@ export default function Home() {
     } catch {}
   }
 
-  // Global hotkeys only when on the editor tab to avoid cross-tab side-effects
   useEffect(() => {
-    if (topTab !== "editor") return;
     function onKey(e: KeyboardEvent) {
       // Ignore when typing in fields or contenteditable
       const tgt = e.target as HTMLElement | null;
@@ -202,7 +193,7 @@ export default function Home() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [topTab]);
+  }, []);
 
   function applyPatch(patch: LlmPatch) {
     let nextNodes = [...nodes];
