@@ -83,10 +83,10 @@ export async function POST(req: Request) {
         if (ids.length) {
           const rows = await withConn(async (c) => {
             const r = await c.query(
-              `select id, question, answer, summary from qa_entries where id = any($1) and published = true limit 8`,
+              `select id, question, answer, summary, last_response_id from qa_entries where id = any($1) and published = true limit 8`,
               [ids]
             );
-            return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string }>;
+            return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; last_response_id?: string | null }>;
           });
           const items = rows.slice(0, 5).map((r, i) => {
             const a = (r.summary || r.answer || "").toString().slice(0, 400);
@@ -94,6 +94,11 @@ export async function POST(req: Request) {
             return `${i + 1}) Q: ${qx}\n   A: ${a}`;
           });
           if (items.length) selectedText = `Selected context (user-picked):\n${items.join("\n\n")}`;
+          // Prefer anchor from selected context when available
+          if (!input.previousResponseId && !anchorPrevId) {
+            const acand = rows.find((r) => (r.last_response_id || "").toString().trim());
+            if (acand?.last_response_id) anchorPrevId = String(acand.last_response_id);
+          }
         }
       } catch {}
       if (q) {
@@ -170,7 +175,7 @@ export async function POST(req: Request) {
         if (snips.length) relatedText = `Relevant prior Q&A (may be partial, for context only):\n${snips.join("\n\n")}`;
         // pick an anchor previous_response_id if not provided
         const cand = rows.find((r) => (r.last_response_id || "").toString().trim());
-        if (cand?.last_response_id) anchorPrevId = String(cand.last_response_id);
+        if (!anchorPrevId && cand?.last_response_id) anchorPrevId = String(cand.last_response_id);
       }
     } catch {}
 

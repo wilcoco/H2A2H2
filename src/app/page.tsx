@@ -160,7 +160,14 @@ export default function Home() {
       setCenterQuestion(question);
       setCenterAiAnswer("");
       setCenterAiMeta(null);
-      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: question, history: [], provider, detail, previousResponseId: centerPrevRespId || undefined, contextIds: selectedContextIds || [] }) });
+      const ctxIds = (() => {
+        const base = Array.isArray(selectedContextIds) ? selectedContextIds : [];
+        if (centerLockContext && lastViewedQaId) {
+          return base.includes(lastViewedQaId) ? base : [lastViewedQaId, ...base];
+        }
+        return base;
+      })();
+      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: question, history: [], provider, detail, previousResponseId: centerPrevRespId || undefined, contextIds: ctxIds }) });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
       setCenterAiAnswer(String(j?.answer || ""));
