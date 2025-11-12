@@ -67,6 +67,7 @@ export default function Home() {
   const [rightTab, setRightTab] = useState<"relations" | "writer">("relations");
   const [writerQaId, setWriterQaId] = useState<string | null>(null);
   const [rightSplit, setRightSplit] = useState<boolean>(false);
+  const [topTab, setTopTab] = useState<"editor" | "connect">("editor");
 
   useEffect(() => {
     let mounted = true;
@@ -263,7 +264,16 @@ export default function Home() {
   return (
     <div className="min-h-dvh grid grid-rows-[auto_1fr]">
       <header className="border-b border-gray-200/60 p-3 md:p-4 flex items-center justify-between">
-        <h1 className="text-base font-semibold">업무 지식 편집기</h1>
+        <div className="flex items-center">
+          <button
+            className={`text-sm px-3 py-2 ${topTab === 'editor' ? 'border-b-2 border-blue-600 text-blue-700' : 'text-gray-700'}`}
+            onClick={() => setTopTab('editor')}
+          >업무 지식 편집기</button>
+          <button
+            className={`text-sm px-3 py-2 ${topTab === 'connect' ? 'border-b-2 border-blue-600 text-blue-700' : 'text-gray-700'}`}
+            onClick={() => setTopTab('connect')}
+          >업무 지식 연결</button>
+        </div>
         <div className="flex items-center gap-3">
           <div className="text-xs text-gray-500 hidden sm:block">MVP · 3-panels</div>
           <div className="flex items-center gap-1 text-xs">
@@ -315,6 +325,7 @@ export default function Home() {
           )}
         </div>
       </header>
+      {topTab === 'editor' ? (
       <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr_360px] gap-3 md:gap-4 p-3 md:p-4 overflow-hidden">
         <aside className="rounded border border-gray-200/60 p-3 md:p-3 overflow-auto">
           <LeftAsk
@@ -479,6 +490,9 @@ export default function Home() {
           </div>
         </aside>
       </div>
+      ) : (
+        <div className="p-6 md:p-8 text-sm text-gray-500">업무 지식 연결</div>
+      )}
       <ThreadDrawer qaId={selectedQaId || undefined} open={threadOpen} onClose={() => setThreadOpen(false)} />
       <AuthModal
         open={authOpen}
