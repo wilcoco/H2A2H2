@@ -207,7 +207,26 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       const a = String(j?.answer || "");
       const rid = j?.responseId ? String(j.responseId) : null;
       setFuMap((m) => ({ ...m, [baseQaId]: { input: "", loading: false, items: [] } }));
-      setFuItems((prev) => [...prev, { q, a, respId: rid, baseQaId, relType, relDir }]);
+      setFuItems((prev) => {
+        const arr = [...prev];
+        if (qaId && baseQaId === qaId) {
+          // Option B for main QA: insert immediately under main (index 0)
+          const insertAt = 0;
+          arr.splice(insertAt, 0, { q, a, respId: rid, baseQaId, relType, relDir });
+          // reindex baseFuIndex for items shifted to the right
+          for (let k = 0; k < arr.length; k++) {
+            if (k === insertAt) continue;
+            const bf = (arr[k] as any).baseFuIndex;
+            if (typeof bf === "number" && bf >= insertAt) {
+              (arr[k] as any) = { ...(arr[k] as any), baseFuIndex: bf + 1 };
+            }
+          }
+          return arr;
+        }
+        // fallback: append for non-main anchors
+        arr.push({ q, a, respId: rid, baseQaId, relType, relDir });
+        return arr;
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
       setFuMap((m) => ({ ...m, [baseQaId]: { ...(m[baseQaId] || { input: "", items: [] } as any), loading: false } }));
@@ -230,17 +249,8 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       const rid = j?.responseId ? String(j.responseId) : null;
       setFuItems((prev) => {
         const arr = [...prev];
-        // find insertion position: after the last descendant of anchor idx
-        const ancestors = new Set<number>([idx]);
-        let last = idx;
-        for (let i = idx + 1; i < arr.length; i++) {
-          const p = arr[i]?.baseFuIndex;
-          if (typeof p === "number" && ancestors.has(p)) {
-            ancestors.add(i);
-            last = i;
-          }
-        }
-        const insertAt = Math.min(last + 1, arr.length);
+        // Option B: insert immediately under the anchor card
+        const insertAt = Math.min(idx + 1, arr.length);
         arr.splice(insertAt, 0, { q, a, respId: rid, baseFuIndex: idx, relType, relDir });
         // rebase indices for items shifted to the right
         for (let k = 0; k < arr.length; k++) {
@@ -264,23 +274,28 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
     if (!q) return;
     try {
       setFuLoading(true);
-      const ctxIds: string[] = qaId ? [qaId] : [];
-      const lastRid = fuItems.length > 0 ? fuItems[fuItems.length - 1].respId : undefined;
-      const baseRid = qaId ? (data?.lastResponseId as string | undefined) : aiResponseId;
-      const prevRid = lockContext ? (lastRid || baseRid) : undefined;
+      const ctxIds: string[] = [];
+      const baseRid = aiResponseId;
+      const prevRid = lockContext ? (baseRid || undefined) : undefined;
       const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider, detail: "long", previousResponseId: prevRid, contextIds: ctxIds }) });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
       const a = String(j?.answer || "");
       const rid = j?.responseId ? String(j.responseId) : null;
       setFuItems((prev) => {
-        const hasPrev = prev.length > 0;
-        if (hasPrev) {
-          return [...prev, { q, a, respId: rid, baseFuIndex: prev.length - 1, relType, relDir }];
-        } else {
-          if (qaId) return [...prev, { q, a, respId: rid, baseQaId: qaId, relType, relDir }];
-          return [...prev, { q, a, respId: rid, baseIsAiMain: true, relType, relDir }];
+        const arr = [...prev];
+        // Option B for AI main: insert immediately under main (top of list)
+        const insertAt = 0;
+        arr.splice(insertAt, 0, { q, a, respId: rid, baseIsAiMain: true, relType, relDir });
+        // reindex baseFuIndex for items shifted to the right
+        for (let k = 0; k < arr.length; k++) {
+          if (k === insertAt) continue;
+          const bf = (arr[k] as any).baseFuIndex;
+          if (typeof bf === "number" && bf >= insertAt) {
+            (arr[k] as any) = { ...(arr[k] as any), baseFuIndex: bf + 1 };
+          }
         }
+        return arr;
       });
       setFuInput("");
     } catch (e) {
@@ -734,12 +749,16 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             <div className="text-[11px] text-gray-600">없음</div>
           ))}
         </div>
+        <div className="mt-2 flex items-center gap-2">
+          <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 카드에서 이어서 물어보기" value={qaId ? (fuMap[qaId]?.input ?? '') : ''} onChange={(e) => { if (!qaId) return; setFuMap((m) => ({ ...m, [qaId]: { ...(m[qaId] || { input: '', loading: false, items: [] }), input: e.target.value } })); }} />
+          <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!qaId || !!(fuMap[qaId]?.loading) || !(((qaId && fuMap[qaId]?.input) ?? '').trim())} onClick={() => { if (qaId) void askFollowUpFor(qaId); }}>{qaId && fuMap[qaId]?.loading ? "요청 중…" : "이 카드에서 답변 받기"}</button>
+        </div>
         <div className="mt-3">
           <div className="text-xs text-gray-700 mb-1">후속 질문</div>
           {fuItems.length > 0 && (
             <div className="space-y-2">
               {fuItems.map((it, i) => (
-                <div key={`fu-${i}`} className="py-2">
+                <div key={`fu-${i}`} className={`py-2 ${((fuItems[i+1]?.baseFuIndex === i) || (fuItems[i]?.baseFuIndex === i-1)) ? 'pl-2 border-l border-gray-200' : ''}`}>
                   <div className="text-[11px] text-gray-600 mb-1">
                     관계: {(it.relDir || relDir) === 'current_to_new' ? '기준 → 후속' : '후속 → 기준'} · {labelKoForType(it.relType || relType)}
                   </div>
@@ -770,10 +789,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
               ))}
             </div>
           )}
-          <div className="mt-2 flex items-center gap-2">
-            <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 답변을 기반으로 이어서 물어보기" value={fuInput} onChange={(e) => setFuInput(e.target.value)} />
-            <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={fuLoading || !fuInput.trim()} onClick={() => void askFollowUp()}>{fuLoading ? "요청 중…" : "답변 받기"}</button>
-          </div>
+          
         </div>
         {editing && (
           <>
@@ -951,12 +967,16 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={saving} onClick={() => void shareAnd("target")}>{saving ? "Sharing..." : "Set Target"}</button>
           <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={saving} onClick={() => void shareAnd("card")}>{saving ? "Sharing..." : "Set Card"}</button>
         </div>
+        <div className="mt-2 flex items-center gap-2">
+          <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 카드에서 이어서 물어보기" value={fuInput} onChange={(e) => setFuInput(e.target.value)} />
+          <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={fuLoading || !fuInput.trim()} onClick={() => void askFollowUp()}>{fuLoading ? "요청 중…" : "이 카드에서 답변 받기"}</button>
+        </div>
         <div className="mt-3">
           <div className="text-xs text-gray-700 mb-1">후속 질문</div>
           {fuItems.length > 0 && (
             <div className="space-y-2">
               {fuItems.map((it, i) => (
-                <div key={`fu2-${i}`} className="py-2">
+                <div key={`fu2-${i}`} className={`py-2 ${((fuItems[i+1]?.baseFuIndex === i) || (fuItems[i]?.baseFuIndex === i-1)) ? 'pl-2 border-l border-gray-200' : ''}`}>
                   <div className="text-[11px] text-gray-600 mb-1">
                     관계: {(it.relDir || relDir) === 'current_to_new' ? '기준 → 후속' : '후속 → 기준'} · {labelKoForType(it.relType || relType)}
                   </div>
@@ -987,10 +1007,6 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
               ))}
             </div>
           )}
-          <div className="mt-2 flex items-center gap-2">
-            <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 답변을 기반으로 이어서 물어보기" value={fuInput} onChange={(e) => setFuInput(e.target.value)} />
-            <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={fuLoading || !fuInput.trim()} onClick={() => void askFollowUp()}>{fuLoading ? "요청 중…" : "답변 받기"}</button>
-          </div>
         </div>
       </div>
     );
