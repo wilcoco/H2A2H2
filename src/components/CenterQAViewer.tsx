@@ -204,8 +204,21 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
     try {
       setFuMap((m) => ({ ...m, [baseQaId]: { ...entry, loading: true } }));
       const ctxIds: string[] = [baseQaId];
-      const lastRid = fuItems.length > 0 ? fuItems[fuItems.length - 1].respId : undefined;
-      const prevRid = lockContext ? (lastRid || undefined) : undefined;
+      let prevRid: string | undefined = undefined;
+      if (lockContext) {
+        if (qaId && baseQaId === qaId) {
+          prevRid = (String(data?.lastResponseId || "").trim() || undefined) as string | undefined;
+        } else {
+          try {
+            const r0 = await fetch(`/api/qa/${encodeURIComponent(baseQaId)}`, { cache: "no-store" });
+            if (r0.ok) {
+              const j0 = await r0.json();
+              const rid0 = String(j0?.lastResponseId || "").trim();
+              if (rid0) prevRid = rid0;
+            }
+          } catch {}
+        }
+      }
       const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider, detail: "long", previousResponseId: prevRid, contextIds: ctxIds }) });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
