@@ -201,7 +201,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       const ctxIds: string[] = [baseQaId];
       const lastRid = fuItems.length > 0 ? fuItems[fuItems.length - 1].respId : undefined;
       const prevRid = lockContext ? (lastRid || undefined) : undefined;
-      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider, detail, previousResponseId: prevRid, contextIds: ctxIds }) });
+      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider, detail: "long", previousResponseId: prevRid, contextIds: ctxIds }) });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
       const a = String(j?.answer || "");
@@ -223,7 +223,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       const ctxIds: string[] = qaId ? [qaId] : [];
       const baseRid = fuItems[idx]?.respId || (qaId ? (data?.lastResponseId as string | undefined) : aiResponseId);
       const prevRid = lockContext ? (baseRid || undefined) : undefined;
-      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider, detail, previousResponseId: prevRid, contextIds: ctxIds }) });
+      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider, detail: "long", previousResponseId: prevRid, contextIds: ctxIds }) });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
       const a = String(j?.answer || "");
@@ -245,7 +245,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       const lastRid = fuItems.length > 0 ? fuItems[fuItems.length - 1].respId : undefined;
       const baseRid = qaId ? (data?.lastResponseId as string | undefined) : aiResponseId;
       const prevRid = lockContext ? (lastRid || baseRid) : undefined;
-      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider, detail, previousResponseId: prevRid, contextIds: ctxIds }) });
+      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider, detail: "long", previousResponseId: prevRid, contextIds: ctxIds }) });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
       const a = String(j?.answer || "");
@@ -693,8 +693,8 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           <button className="text-xs px-2 py-1 rounded border" onClick={() => setEditing((v) => !v)}>{editing ? "편집 취소" : "개선하기"}</button>
           <button className="text-xs px-2 py-1 rounded border" onClick={() => { if (!qaId) return; try { const url = location.origin + "/?qa=" + encodeURIComponent(qaId); navigator.clipboard?.writeText(url); } catch {} }}>공유하기</button>
         </div>
-        {data.answer && <div className="text-sm whitespace-pre-wrap">A: {data.answer}</div>}
-        {(() => { const s = String(data.summary || "").trim(); const a = String(data.answer || "").trim(); const distinct = s && s !== a; return (!editing && distinct) ? (<div className="text-xs text-gray-700 whitespace-pre-wrap">Summary: {data.summary}</div>) : null; })()}
+        {data.answer && <div className="text-sm whitespace-pre-wrap break-words">A: {data.answer}</div>}
+        {/* Summary display suppressed per UX request */}
         <div className="mt-2">
           {kwLoading ? (
             <div className="text-[11px] text-gray-600">추출 중…</div>
@@ -711,17 +711,17 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             <div className="text-[11px] text-gray-600">없음</div>
           ))}
         </div>
-        <div className="mt-3 rounded border p-2 bg-white/60 dark:bg-gray-900/40">
+        <div className="mt-3">
           <div className="text-xs text-gray-700 mb-1">후속 질문</div>
           {fuItems.length > 0 && (
             <div className="space-y-2">
               {fuItems.map((it, i) => (
-                <div key={`fu-${i}`} className="rounded border p-2 bg-white/70 dark:bg-gray-900/50">
+                <div key={`fu-${i}`} className="py-2">
                   <div className="text-[11px] text-gray-600 mb-1">
                     관계: {(it.relDir || relDir) === 'current_to_new' ? '기준 → 후속' : '후속 → 기준'} · {labelKoForType(it.relType || relType)}
                   </div>
                   <div className="text-sm font-semibold">Q: {it.q}</div>
-                  <div className="text-sm whitespace-pre-wrap mt-1">A: {it.a}</div>
+                  <div className="text-sm whitespace-pre-wrap break-words mt-1">A: {it.a}</div>
                   <div className="mt-1 text-[10px] text-gray-500">{it.respId ? `RID: ${it.respId}` : ''}</div>
                   <div className="mt-2 flex items-center gap-2 flex-wrap">
                     <select className="text-xs border rounded px-2 py-1" value={it.relType || relType} onChange={(e) => setFuItems((prev) => { const val = e.target.value; const arr = [...prev]; const dir = defaultDirForType(val); arr[i] = { ...arr[i], relType: val, relDir: dir }; return arr; })}>
@@ -803,11 +803,10 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                   const src = mapNodes.find((n) => n.id === e.sourceId);
                   if (!src) return null;
                   return (
-                    <li key={`in-${idx}`} className="text-[12px] border rounded p-2">
+                    <li key={`in-${idx}`} className="text-[12px] py-2">
                       <div className="min-w-0">
                         <div className="text-sm font-semibold">Q: {src.question}</div>
-                        {src.answer && <div className="mt-1 text-sm whitespace-pre-wrap">A: {src.answer}</div>}
-                        {(() => { const s = String(src.summary || "").trim(); const a = String(src.answer || "").trim(); const distinct = s && s !== a; return distinct ? (<div className="text-[11px] text-gray-700 whitespace-pre-wrap">Summary: {src.summary}</div>) : null; })()}
+                        {src.answer && <div className="mt-1 text-sm whitespace-pre-wrap break-words">A: {src.answer}</div>}
                         {(() => {
                           const kw = connectedKw[src.id] || { keywords: [], phrases: [] };
                           const has = (kw.keywords?.length || 0) + (kw.phrases?.length || 0) > 0;
@@ -845,11 +844,10 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                   const trg = mapNodes.find((n) => n.id === e.targetId);
                   if (!trg) return null;
                   return (
-                    <li key={`out-${idx}`} className="text-[12px] border rounded p-2">
+                    <li key={`out-${idx}`} className="text-[12px] py-2">
                       <div className="min-w-0">
                         <div className="text-sm font-semibold">Q: {trg.question}</div>
-                        {trg.answer && <div className="mt-1 text-sm whitespace-pre-wrap">A: {trg.answer}</div>}
-                        {(() => { const s = String(trg.summary || "").trim(); const a = String(trg.answer || "").trim(); const distinct = s && s !== a; return distinct ? (<div className="text-[11px] text-gray-700 whitespace-pre-wrap">Summary: {trg.summary}</div>) : null; })()}
+                        {trg.answer && <div className="mt-1 text-sm whitespace-pre-wrap break-words">A: {trg.answer}</div>}
                         {(() => {
                           const kw = connectedKw[trg.id] || { keywords: [], phrases: [] };
                           const has = (kw.keywords?.length || 0) + (kw.phrases?.length || 0) > 0;
@@ -885,7 +883,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
     return (
       <div className="flex flex-col gap-2">
         <div className="text-sm font-semibold">Q: {question}</div>
-        <div className="text-sm whitespace-pre-wrap">AI Answer: {aiAnswer}</div>
+        <div className="text-sm whitespace-pre-wrap break-words">A: {aiAnswer}</div>
         {(aiProvider || aiModel || aiResponseId) && (
           <div className="text-[11px] text-gray-600">
             via {aiProvider === "anthropic" ? "Anthropic (Claude)" : aiProvider === "openai" ? "OpenAI" : "AI"}
@@ -904,16 +902,11 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             onClick={() => void shareAnd("card")}
           >{saving ? "Sharing..." : "가이드에 추가"}</button>
           <button
-            className="text-xs px-2 py-1 rounded border"
-            onClick={() => { try { document.getElementById("new-summary")?.focus(); } catch {} }}
-          >개선하기</button>
-          <button
             className="text-xs px-2 py-1 rounded border disabled:opacity-50"
             disabled={saving}
             onClick={() => void shareNew()}
           >{saving ? "Sharing..." : "공유하기"}</button>
         </div>
-        <div className="text-xs text-gray-600">요약 또는 키워드를 확인하고 공유하면 지식 체계에 등록됩니다.</div>
         <div className="mt-2">
           {kwLoading ? (
             <div className="text-[11px] text-gray-600">추출 중…</div>
@@ -930,18 +923,17 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             <div className="text-[11px] text-gray-600">없음</div>
           ))}
         </div>
-        <textarea id="new-summary" name="new-summary" className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" rows={4} placeholder="핵심 요약을 작성하세요" value={newSummary} onChange={(e) => setNewSummary(e.target.value)} />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 mt-2">
           <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={saving} onClick={() => void shareAnd("source")}>{saving ? "Sharing..." : "Set Source"}</button>
           <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={saving} onClick={() => void shareAnd("target")}>{saving ? "Sharing..." : "Set Target"}</button>
           <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={saving} onClick={() => void shareAnd("card")}>{saving ? "Sharing..." : "Set Card"}</button>
         </div>
-        <div className="mt-3 rounded border p-2 bg-white/60 dark:bg-gray-900/40">
+        <div className="mt-3">
           <div className="text-xs text-gray-700 mb-1">후속 질문</div>
           {fuItems.length > 0 && (
             <div className="space-y-2">
               {fuItems.map((it, i) => (
-                <div key={`fu2-${i}`} className="rounded border p-2 bg-white/70 dark:bg-gray-900/50">
+                <div key={`fu2-${i}`} className="py-2">
                   <div className="text-[11px] text-gray-600 mb-1">
                     관계: {(it.relDir || relDir) === 'current_to_new' ? '기준 → 후속' : '후속 → 기준'} · {labelKoForType(it.relType || relType)}
                   </div>
