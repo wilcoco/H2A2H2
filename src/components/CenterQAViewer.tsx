@@ -228,7 +228,30 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       const j = await res.json();
       const a = String(j?.answer || "");
       const rid = j?.responseId ? String(j.responseId) : null;
-      setFuItems((prev) => [...prev, { q, a, respId: rid, baseFuIndex: idx, relType, relDir }]);
+      setFuItems((prev) => {
+        const arr = [...prev];
+        // find insertion position: after the last descendant of anchor idx
+        const ancestors = new Set<number>([idx]);
+        let last = idx;
+        for (let i = idx + 1; i < arr.length; i++) {
+          const p = arr[i]?.baseFuIndex;
+          if (typeof p === "number" && ancestors.has(p)) {
+            ancestors.add(i);
+            last = i;
+          }
+        }
+        const insertAt = Math.min(last + 1, arr.length);
+        arr.splice(insertAt, 0, { q, a, respId: rid, baseFuIndex: idx, relType, relDir });
+        // rebase indices for items shifted to the right
+        for (let k = 0; k < arr.length; k++) {
+          if (k === insertAt) continue; // skip the newly inserted item
+          const bf = (arr[k] as any).baseFuIndex;
+          if (typeof bf === "number" && bf >= insertAt) {
+            (arr[k] as any) = { ...(arr[k] as any), baseFuIndex: bf + 1 };
+          }
+        }
+        return arr;
+      });
       setFuPer((m) => ({ ...m, [idx]: { input: "", loading: false } }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
