@@ -3,6 +3,64 @@
 import { useEffect, useState } from "react";
 import type { LlmPatch, NodeType, EdgeType } from "@/types/graph";
 
+const REL_HEADS = {
+  critical: {
+    label: "비판/검증",
+    defaultDir: "new_to_current" as const,
+    types: [
+      { type: "supports", label: "근거 제시" },
+      { type: "refutes", label: "반박" },
+      { type: "prerequisite", label: "전제 점검" },
+    ],
+  },
+  drill: {
+    label: "세부화",
+    defaultDir: "current_to_new" as const,
+    types: [
+      { type: "elaborates", label: "상세화" },
+      { type: "narrows", label: "범위 축소" },
+      { type: "precedes", label: "다음 단계" },
+    ],
+  },
+  abstraction: {
+    label: "추상화",
+    defaultDir: "new_to_current" as const,
+    types: [
+      { type: "clarifies", label: "요약/상위화" },
+    ],
+  },
+  lateral: {
+    label: "수평/대안",
+    defaultDir: "current_to_new" as const,
+    types: [
+      { type: "alternative", label: "대안/비교/연관" },
+    ],
+  },
+} as const;
+
+type RelDir = "current_to_new" | "new_to_current";
+
+function headOfType(t: string): keyof typeof REL_HEADS | null {
+  for (const k of Object.keys(REL_HEADS) as (keyof typeof REL_HEADS)[]) {
+    if (REL_HEADS[k].types.some((x) => x.type === t)) return k;
+  }
+  return null;
+}
+
+function defaultDirForType(t: string): RelDir {
+  const h = headOfType(t);
+  if (!h) return "current_to_new";
+  return REL_HEADS[h].defaultDir;
+}
+
+function labelKoForType(t: string): string {
+  for (const k of Object.keys(REL_HEADS) as (keyof typeof REL_HEADS)[]) {
+    const f = REL_HEADS[k].types.find((x) => x.type === t);
+    if (f) return f.label;
+  }
+  return t;
+}
+
 type Props = {
   qaId?: string;
   question?: string;
@@ -636,21 +694,20 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
               {fuItems.map((it, i) => (
                 <div key={`fu-${i}`} className="rounded border p-2 bg-white/70 dark:bg-gray-900/50">
                   <div className="text-[11px] text-gray-600 mb-1">
-                    관계: {(it.relDir || relDir) === 'current_to_new' ? '기준 → 후속' : '후속 → 기준'} · {(it.relType || relType)}
+                    관계: {(it.relDir || relDir) === 'current_to_new' ? '기준 → 후속' : '후속 → 기준'} · {labelKoForType(it.relType || relType)}
                   </div>
                   <div className="text-sm font-semibold">Q: {it.q}</div>
                   <div className="text-sm whitespace-pre-wrap mt-1">A: {it.a}</div>
                   <div className="mt-1 text-[10px] text-gray-500">{it.respId ? `RID: ${it.respId}` : ''}</div>
                   <div className="mt-2 flex items-center gap-2 flex-wrap">
-                    <select className="text-xs border rounded px-2 py-1" value={it.relType || relType} onChange={(e) => setFuItems((prev) => { const arr = [...prev]; arr[i] = { ...arr[i], relType: e.target.value }; return arr; })}>
-                      <option value="precedes">precedes</option>
-                      <option value="prerequisite">prerequisite</option>
-                      <option value="narrows">narrows</option>
-                      <option value="elaborates">elaborates</option>
-                      <option value="clarifies">clarifies</option>
-                      <option value="supports">supports</option>
-                      <option value="refutes">refutes</option>
-                      <option value="alternative">alternative</option>
+                    <select className="text-xs border rounded px-2 py-1" value={it.relType || relType} onChange={(e) => setFuItems((prev) => { const val = e.target.value; const arr = [...prev]; const dir = defaultDirForType(val); arr[i] = { ...arr[i], relType: val, relDir: dir }; return arr; })}>
+                      {Object.entries(REL_HEADS).map(([hk, hv]) => (
+                        <optgroup key={hk} label={hv.label}>
+                          {hv.types.map((opt) => (
+                            <option key={opt.type} value={opt.type}>{opt.label}</option>
+                          ))}
+                        </optgroup>
+                      ))}
                     </select>
                     <select className="text-xs border rounded px-2 py-1" value={it.relDir || relDir} onChange={(e) => setFuItems((prev) => { const arr = [...prev]; arr[i] = { ...arr[i], relDir: e.target.value as any }; return arr; })}>
                       <option value="current_to_new">현재 → 후속</option>
@@ -857,21 +914,23 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             <div className="space-y-2">
               {fuItems.map((it, i) => (
                 <div key={`fu2-${i}`} className="rounded border p-2 bg-white/70 dark:bg-gray-900/50">
-                  <div className="text-[12px] text-gray-800">Q: {it.q}</div>
-                  <div className="text-[12px] text-gray-600 mt-1">AI: {it.a}</div>
+                  <div className="text-[11px] text-gray-600 mb-1">
+                    관계: {(it.relDir || relDir) === 'current_to_new' ? '기준 → 후속' : '후속 → 기준'} · {labelKoForType(it.relType || relType)}
+                  </div>
+                  <div className="text-sm font-semibold">Q: {it.q}</div>
+                  <div className="text-sm whitespace-pre-wrap mt-1">A: {it.a}</div>
                   <div className="mt-1 text-[10px] text-gray-500">{it.respId ? `RID: ${it.respId}` : ''}</div>
                   <div className="mt-2 flex items-center gap-2 flex-wrap">
-                    <select className="text-xs border rounded px-2 py-1" value={relType} onChange={(e) => setRelType(e.target.value)}>
-                      <option value="precedes">precedes</option>
-                      <option value="prerequisite">prerequisite</option>
-                      <option value="narrows">narrows</option>
-                      <option value="elaborates">elaborates</option>
-                      <option value="clarifies">clarifies</option>
-                      <option value="supports">supports</option>
-                      <option value="refutes">refutes</option>
-                      <option value="alternative">alternative</option>
+                    <select className="text-xs border rounded px-2 py-1" value={it.relType || relType} onChange={(e) => setFuItems((prev) => { const val = e.target.value; const arr = [...prev]; const dir = defaultDirForType(val); arr[i] = { ...arr[i], relType: val, relDir: dir }; return arr; })}>
+                      {Object.entries(REL_HEADS).map(([hk, hv]) => (
+                        <optgroup key={hk} label={hv.label}>
+                          {hv.types.map((opt) => (
+                            <option key={opt.type} value={opt.type}>{opt.label}</option>
+                          ))}
+                        </optgroup>
+                      ))}
                     </select>
-                    <select className="text-xs border rounded px-2 py-1" value={relDir} onChange={(e) => setRelDir(e.target.value as any)}>
+                    <select className="text-xs border rounded px-2 py-1" value={it.relDir || relDir} onChange={(e) => setFuItems((prev) => { const arr = [...prev]; arr[i] = { ...arr[i], relDir: e.target.value as any }; return arr; })}>
                       <option value="current_to_new">현재 → 후속</option>
                       <option value="new_to_current">후속 → 현재</option>
                     </select>
