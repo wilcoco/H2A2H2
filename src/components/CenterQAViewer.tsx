@@ -118,6 +118,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   const [fuMap, setFuMap] = useState<Record<string, { input: string; loading: boolean; items: Array<{ q: string; a: string; respId: string | null; savedId?: string }> }>>({});
   const [connectedKw, setConnectedKw] = useState<Record<string, { keywords: string[]; phrases: string[] }>>({});
   const [fuPer, setFuPer] = useState<Record<number, { input: string; loading: boolean }>>({});
+  const [anchor, setAnchor] = useState<{ type: "qa" | "ai" | "fu" | "node"; id?: string; index?: number } | null>(null);
 
   function startSelect(mode: "any" | "all") {
     setSelectMode(mode);
@@ -183,7 +184,11 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       const sourceId = relDir === "current_to_new" ? baseId! : newId!;
       const targetId = relDir === "current_to_new" ? newId! : baseId!;
       const r3 = await fetch("/api/qa/relation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceId, targetId, type: relType, weight: 1 }) });
-      if (!r3.ok) throw new Error("Relation failed");
+      if (!r3.ok) {
+        let msg = "Relation failed";
+        try { const ej = await r3.json(); if (ej?.error) msg = String(ej.error); } catch {}
+        throw new Error(msg);
+      }
       onGraphChanged?.();
       if (relDir === "current_to_new") { onSetSource?.(baseId!); onSetTarget?.(newId!); }
       else { onSetSource?.(newId!); onSetTarget?.(baseId!); }
@@ -227,6 +232,20 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         arr.push({ q, a, respId: rid, baseQaId, relType, relDir });
         return arr;
       });
+      if (qaId && baseQaId === qaId) {
+        setFuPer((m) => {
+          const out: Record<number, { input: string; loading: boolean }> = {};
+          const threshold = 0;
+          for (const k of Object.keys(m)) {
+            const n = Number(k);
+            if (!Number.isFinite(n)) continue;
+            const nk = n >= threshold ? n + 1 : n;
+            out[nk] = m[n];
+          }
+          out[0] = { input: "", loading: false };
+          return out;
+        });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
       setFuMap((m) => ({ ...m, [baseQaId]: { ...(m[baseQaId] || { input: "", items: [] } as any), loading: false } }));
@@ -262,7 +281,18 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         }
         return arr;
       });
-      setFuPer((m) => ({ ...m, [idx]: { input: "", loading: false } }));
+      setFuPer((m) => {
+        const out: Record<number, { input: string; loading: boolean }> = {};
+        const threshold = idx + 1;
+        for (const k of Object.keys(m)) {
+          const n = Number(k);
+          if (!Number.isFinite(n)) continue;
+          const nk = n >= threshold ? n + 1 : n;
+          out[nk] = m[n];
+        }
+        out[idx + 1] = { input: "", loading: false };
+        return out;
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
       setFuPer((m) => ({ ...m, [idx]: { ...(m[idx] || { input: "" }), loading: false } }));
@@ -296,6 +326,18 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           }
         }
         return arr;
+      });
+      setFuPer((m) => {
+        const out: Record<number, { input: string; loading: boolean }> = {};
+        const threshold = 0;
+        for (const k of Object.keys(m)) {
+          const n = Number(k);
+          if (!Number.isFinite(n)) continue;
+          const nk = n >= threshold ? n + 1 : n;
+          out[nk] = m[n];
+        }
+        out[0] = { input: "", loading: false };
+        return out;
       });
       setFuInput("");
     } catch (e) {
@@ -380,7 +422,11 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       const sourceId = rDir === "current_to_new" ? baseId! : newId!;
       const targetId = rDir === "current_to_new" ? newId! : baseId!;
       const r3 = await fetch("/api/qa/relation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceId, targetId, type: rType, weight: 1 }) });
-      if (!r3.ok) throw new Error("Relation failed");
+      if (!r3.ok) {
+        let msg = "Relation failed";
+        try { const ej = await r3.json(); if (ej?.error) msg = String(ej.error); } catch {}
+        throw new Error(msg);
+      }
       onGraphChanged?.();
       if (rDir === "current_to_new") { onSetSource?.(baseId!); onSetTarget?.(newId); }
       else { onSetSource?.(newId); onSetTarget?.(baseId!); }
@@ -750,9 +796,13 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           ))}
         </div>
         <div className="mt-2 flex items-center gap-2">
-          <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 카드에서 이어서 물어보기" value={qaId ? (fuMap[qaId]?.input ?? '') : ''} onChange={(e) => { if (!qaId) return; setFuMap((m) => ({ ...m, [qaId]: { ...(m[qaId] || { input: '', loading: false, items: [] }), input: e.target.value } })); }} />
-          <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!qaId || !!(fuMap[qaId]?.loading) || !(((qaId && fuMap[qaId]?.input) ?? '').trim())} onClick={() => { if (qaId) void askFollowUpFor(qaId); }}>{qaId && fuMap[qaId]?.loading ? "요청 중…" : "이 카드에서 답변 받기"}</button>
+          <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 카드에서 이어서 물어보기" value={qaId ? (fuMap[qaId]?.input ?? '') : ''} onFocus={() => { if (qaId) setAnchor({ type: 'qa', id: qaId }); }} onChange={(e) => { if (!qaId) return; setFuMap((m) => ({ ...m, [qaId]: { ...(m[qaId] || { input: '', loading: false, items: [] }), input: e.target.value } })); }} />
+          <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!qaId || !!(fuMap[qaId]?.loading) || !(((qaId && fuMap[qaId]?.input) ?? '').trim())} onClick={() => { if (qaId) { setAnchor({ type: 'qa', id: qaId }); void askFollowUpFor(qaId); } }}>{qaId && fuMap[qaId]?.loading ? "요청 중…" : "이 카드에서 답변 받기"}</button>
+          {anchor?.type === 'qa' && anchor.id === qaId && (
+            <span className="text-[10px] px-1.5 py-[2px] rounded-full border bg-emerald-50 border-emerald-200 text-emerald-700">앵커</span>
+          )}
         </div>
+        {error && <div className="mt-1 text-xs text-red-600">{error}</div>}
         <div className="mt-3">
           <div className="text-xs text-gray-700 mb-1">후속 질문</div>
           {fuItems.length > 0 && (
@@ -761,6 +811,9 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                 <div key={`fu-${i}`} className={`py-2 ${((fuItems[i+1]?.baseFuIndex === i) || (fuItems[i]?.baseFuIndex === i-1)) ? 'pl-2 border-l border-gray-200' : ''}`}>
                   <div className="text-[11px] text-gray-600 mb-1">
                     관계: {(it.relDir || relDir) === 'current_to_new' ? '기준 → 후속' : '후속 → 기준'} · {labelKoForType(it.relType || relType)}
+                    {anchor?.type === 'fu' && anchor.index === i && (
+                      <span className="ml-2 text-[10px] px-1.5 py-[2px] rounded-full border bg-emerald-50 border-emerald-200 text-emerald-700">앵커</span>
+                    )}
                   </div>
                   <div className="text-sm font-semibold">Q: {it.q}</div>
                   <div className="text-sm whitespace-pre-wrap break-words mt-1">A: {it.a}</div>
@@ -782,8 +835,8 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                     <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50" disabled={pairBusy} onClick={() => void savePairAndRelAt(i)}>{pairBusy ? "저장 중…" : "두 Q&A 저장 및 관계 생성"}</button>
                   </div>
                   <div className="mt-2 flex items-center gap-2">
-                    <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 카드에서 이어서 물어보기" value={fuPer[i]?.input ?? ''} onChange={(e) => setFuPer((m) => ({ ...m, [i]: { ...(m[i] || { input: '', loading: false }), input: e.target.value } }))} />
-                    <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!!(fuPer[i]?.loading) || !((fuPer[i]?.input ?? '').trim())} onClick={() => void askFollowUpAt(i)}>{fuPer[i]?.loading ? "요청 중…" : "이 카드에서 답변 받기"}</button>
+                    <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 카드에서 이어서 물어보기" value={fuPer[i]?.input ?? ''} onFocus={() => setAnchor({ type: 'fu', index: i })} onChange={(e) => setFuPer((m) => ({ ...m, [i]: { ...(m[i] || { input: '', loading: false }), input: e.target.value } }))} />
+                    <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!!(fuPer[i]?.loading) || !((fuPer[i]?.input ?? '').trim())} onClick={() => { setAnchor({ type: 'fu', index: i }); void askFollowUpAt(i); }}>{fuPer[i]?.loading ? "요청 중…" : "이 카드에서 답변 받기"}</button>
                   </div>
                 </div>
               ))}
@@ -861,8 +914,11 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                           ) : null;
                         })()}
                         <div className="mt-2 flex items-center gap-2">
-                          <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 답변을 기반으로 이어서 물어보기" value={fuMap[src.id]?.input ?? ''} onChange={(ev) => setFuMap((m) => ({ ...m, [src.id]: { ...(m[src.id] || { input: '', loading: false, items: [] }), input: ev.target.value } }))} />
-                          <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!!(fuMap[src.id]?.loading) || !((fuMap[src.id]?.input ?? '').trim())} onClick={() => void askFollowUpFor(src.id)}>{fuMap[src.id]?.loading ? "요청 중…" : "답변 받기"}</button>
+                          <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 답변을 기반으로 이어서 물어보기" value={fuMap[src.id]?.input ?? ''} onFocus={() => setAnchor({ type: 'node', id: src.id })} onChange={(ev) => setFuMap((m) => ({ ...m, [src.id]: { ...(m[src.id] || { input: '', loading: false, items: [] }), input: ev.target.value } }))} />
+                          <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!!(fuMap[src.id]?.loading) || !((fuMap[src.id]?.input ?? '').trim())} onClick={() => { setAnchor({ type: 'node', id: src.id }); void askFollowUpFor(src.id); }}>{fuMap[src.id]?.loading ? "요청 중…" : "답변 받기"}</button>
+                          {anchor?.type === 'node' && anchor.id === src.id && (
+                            <span className="text-[10px] px-1.5 py-[2px] rounded-full border bg-emerald-50 border-emerald-200 text-emerald-700">앵커</span>
+                          )}
                         </div>
                       </div>
                     </li>
@@ -902,8 +958,11 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                           ) : null;
                         })()}
                         <div className="mt-2 flex items-center gap-2">
-                          <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 답변을 기반으로 이어서 물어보기" value={fuMap[trg.id]?.input ?? ''} onChange={(ev) => setFuMap((m) => ({ ...m, [trg.id]: { ...(m[trg.id] || { input: '', loading: false, items: [] }), input: ev.target.value } }))} />
-                          <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!!(fuMap[trg.id]?.loading) || !((fuMap[trg.id]?.input ?? '').trim())} onClick={() => void askFollowUpFor(trg.id)}>{fuMap[trg.id]?.loading ? "요청 중…" : "답변 받기"}</button>
+                          <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 답변을 기반으로 이어서 물어보기" value={fuMap[trg.id]?.input ?? ''} onFocus={() => setAnchor({ type: 'node', id: trg.id })} onChange={(ev) => setFuMap((m) => ({ ...m, [trg.id]: { ...(m[trg.id] || { input: '', loading: false, items: [] }), input: ev.target.value } }))} />
+                          <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!!(fuMap[trg.id]?.loading) || !((fuMap[trg.id]?.input ?? '').trim())} onClick={() => { setAnchor({ type: 'node', id: trg.id }); void askFollowUpFor(trg.id); }}>{fuMap[trg.id]?.loading ? "요청 중…" : "답변 받기"}</button>
+                          {anchor?.type === 'node' && anchor.id === trg.id && (
+                            <span className="text-[10px] px-1.5 py-[2px] rounded-full border bg-emerald-50 border-emerald-200 text-emerald-700">앵커</span>
+                          )}
                         </div>
                       </div>
                     </li>
@@ -968,9 +1027,13 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={saving} onClick={() => void shareAnd("card")}>{saving ? "Sharing..." : "Set Card"}</button>
         </div>
         <div className="mt-2 flex items-center gap-2">
-          <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 카드에서 이어서 물어보기" value={fuInput} onChange={(e) => setFuInput(e.target.value)} />
-          <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={fuLoading || !fuInput.trim()} onClick={() => void askFollowUp()}>{fuLoading ? "요청 중…" : "이 카드에서 답변 받기"}</button>
+          <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 카드에서 이어서 물어보기" value={fuInput} onFocus={() => setAnchor({ type: 'ai' })} onChange={(e) => setFuInput(e.target.value)} />
+          <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={fuLoading || !fuInput.trim()} onClick={() => { setAnchor({ type: 'ai' }); void askFollowUp(); }}>{fuLoading ? "요청 중…" : "이 카드에서 답변 받기"}</button>
+          {anchor?.type === 'ai' && (
+            <span className="text-[10px] px-1.5 py-[2px] rounded-full border bg-emerald-50 border-emerald-200 text-emerald-700">앵커</span>
+          )}
         </div>
+        {error && <div className="mt-1 text-xs text-red-600">{error}</div>}
         <div className="mt-3">
           <div className="text-xs text-gray-700 mb-1">후속 질문</div>
           {fuItems.length > 0 && (
