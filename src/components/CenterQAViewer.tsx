@@ -117,6 +117,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   const [pairBusy, setPairBusy] = useState(false);
   const [fuMap, setFuMap] = useState<Record<string, { input: string; loading: boolean; items: Array<{ q: string; a: string; respId: string | null; savedId?: string }> }>>({});
   const [connectedKw, setConnectedKw] = useState<Record<string, { keywords: string[]; phrases: string[] }>>({});
+  const [fuPer, setFuPer] = useState<Record<number, { input: string; loading: boolean }>>({});
 
   function startSelect(mode: "any" | "all") {
     setSelectMode(mode);
@@ -210,6 +211,28 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
       setFuMap((m) => ({ ...m, [baseQaId]: { ...(m[baseQaId] || { input: "", items: [] } as any), loading: false } }));
+    }
+  }
+
+  async function askFollowUpAt(idx: number) {
+    const entry = fuPer[idx] || { input: "", loading: false };
+    const q = (entry.input || "").trim();
+    if (!q) return;
+    try {
+      setFuPer((m) => ({ ...m, [idx]: { ...(m[idx] || { input: "", loading: false }), loading: true } }));
+      const ctxIds: string[] = qaId ? [qaId] : [];
+      const baseRid = fuItems[idx]?.respId || (qaId ? (data?.lastResponseId as string | undefined) : aiResponseId);
+      const prevRid = lockContext ? (baseRid || undefined) : undefined;
+      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider, detail, previousResponseId: prevRid, contextIds: ctxIds }) });
+      if (!res.ok) throw new Error("AI call failed");
+      const j = await res.json();
+      const a = String(j?.answer || "");
+      const rid = j?.responseId ? String(j.responseId) : null;
+      setFuItems((prev) => [...prev, { q, a, respId: rid, baseFuIndex: idx, relType, relDir }]);
+      setFuPer((m) => ({ ...m, [idx]: { input: "", loading: false } }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+      setFuPer((m) => ({ ...m, [idx]: { ...(m[idx] || { input: "" }), loading: false } }));
     }
   }
 
@@ -408,6 +431,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
     setFuItems([]);
     setFuInput("");
     setFuMap({});
+    setFuPer({});
   }, [qaId, question, aiAnswer]);
 
   useEffect(() => {
@@ -715,6 +739,10 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                     </select>
                     <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50" disabled={pairBusy} onClick={() => void savePairAndRelAt(i)}>{pairBusy ? "저장 중…" : "두 Q&A 저장 및 관계 생성"}</button>
                   </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 카드에서 이어서 물어보기" value={fuPer[i]?.input ?? ''} onChange={(e) => setFuPer((m) => ({ ...m, [i]: { ...(m[i] || { input: '', loading: false }), input: e.target.value } }))} />
+                    <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!!(fuPer[i]?.loading) || !((fuPer[i]?.input ?? '').trim())} onClick={() => void askFollowUpAt(i)}>{fuPer[i]?.loading ? "요청 중…" : "이 카드에서 답변 받기"}</button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -935,6 +963,10 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                       <option value="new_to_current">후속 → 현재</option>
                     </select>
                     <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50" disabled={pairBusy} onClick={() => void savePairAndRelAt(i)}>{pairBusy ? "저장 중…" : "두 Q&A 저장 및 관계 생성"}</button>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 카드에서 이어서 물어보기" value={fuPer[i]?.input ?? ''} onChange={(e) => setFuPer((m) => ({ ...m, [i]: { ...(m[i] || { input: '', loading: false }), input: e.target.value } }))} />
+                    <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!!(fuPer[i]?.loading) || !((fuPer[i]?.input ?? '').trim())} onClick={() => void askFollowUpAt(i)}>{fuPer[i]?.loading ? "요청 중…" : "이 카드에서 답변 받기"}</button>
                   </div>
                 </div>
               ))}
