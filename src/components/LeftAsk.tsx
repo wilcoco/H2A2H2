@@ -27,6 +27,8 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const reqIdRef = useRef(0);
+  const [chains, setChains] = useState<string[][]>([]);
+  const [nodesByIdThread, setNodesByIdThread] = useState<Map<string, QAEntry>>(new Map());
 
   async function search(next?: string) {
     if (threadRootId) return; // thread mode skips text search
@@ -123,11 +125,47 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
         setLoading(true);
         setError(null);
         const r = await fetch(`/api/qa/map?rootId=${encodeURIComponent(threadRootId)}`, { cache: "no-store" });
-        const j = await r.json().catch(() => ({ nodes: [] }));
+        const j = await r.json().catch(() => ({ nodes: [], edges: [] }));
         const its: QAEntry[] = Array.isArray(j?.nodes)
           ? (j.nodes as Array<{ id: string; question: string; summary?: string; answer?: string }>).map((n) => ({ id: n.id, question: n.question, summary: n.summary, answer: n.answer }))
           : [];
-        if (active) setItems(its);
+        const map = new Map<string, QAEntry>();
+        for (const it of its) map.set(it.id, it);
+        const edges: Array<{ sourceId: string; targetId: string; type: string }> = Array.isArray(j?.edges) ? j.edges : [];
+        const pres = edges.filter((e) => (e.type || "").toLowerCase() === "precedes");
+        const nextOf = new Map<string, string[]>();
+        const inDeg = new Map<string, number>();
+        for (const id of Array.from(map.keys())) { inDeg.set(id, 0); }
+        for (const e of pres) {
+          if (!nextOf.has(e.sourceId)) nextOf.set(e.sourceId, []);
+          nextOf.get(e.sourceId)!.push(e.targetId);
+          inDeg.set(e.targetId, (inDeg.get(e.targetId) || 0) + 1);
+        }
+        // Determine start nodes: prefer explicit threadRootId if present, else all visible heads (in-degree 0)
+        const starts: string[] = (() => {
+          if (map.has(threadRootId!)) return [threadRootId!];
+          const hs = Array.from(map.keys()).filter((id) => (inDeg.get(id) || 0) === 0);
+          return hs.length ? hs : Array.from(map.keys());
+        })();
+        // Enumerate all root-to-leaf paths
+        const groups: string[][] = [];
+        const MAX_PATHS = 500; // guardrail
+        function dfs(cur: string, path: string[], seen: Set<string>) {
+          if (groups.length >= MAX_PATHS) return;
+          if (seen.has(cur)) { groups.push([...path]); return; }
+          seen.add(cur);
+          const children = (nextOf.get(cur) || []).filter((nid) => map.has(nid));
+          if (children.length === 0) { groups.push([...path]); return; }
+          for (const ch of children) {
+            dfs(ch, [...path, ch], new Set(seen));
+            if (groups.length >= MAX_PATHS) break;
+          }
+        }
+        for (const s of starts) {
+          dfs(s, [s], new Set());
+          if (groups.length >= MAX_PATHS) break;
+        }
+        if (active) { setItems(its); setNodesByIdThread(map); setChains(groups); }
       } catch (e: unknown) {
         if (active) setError(e instanceof Error ? e.message : "Unknown error");
       } finally {
@@ -201,11 +239,38 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
           >지금 AI에게 묻기</button>
         </div>
       )}
-      <ul className="space-y-2">
-        {items.map((it, idx) => (
-          <SuggestItem key={it.id} it={it} index={idx} onSelectQA={onSelectQA} inContext={contextIds.includes(it.id)} onToggleContext={onToggleContext} />
-        ))}
-      </ul>
+      {threadRootId ? (
+        <ul className="space-y-2">
+          {chains.map((chain, cidx) => (
+            <li key={`ch-${cidx}`} className="rounded border border-gray-200/60 p-2 bg-white/60 dark:bg-gray-900/40">
+              <div className="text-[11px] text-gray-600 mb-1">Chain {cidx + 1}</div>
+              <ul className="space-y-1">
+                {chain.map((id) => {
+                  const it = nodesByIdThread.get(id);
+                  if (!it) return null;
+                  const inCtx = contextIds.includes(id);
+                  return (
+                    <li key={id} className="flex items-center justify-between gap-2">
+                      <button className="min-w-0 text-left text-sm truncate hover:opacity-90" onClick={() => onSelectQA(id)}>
+                        <span className="line-clamp-1">Q: {it.question}</span>
+                      </button>
+                      <label className="text-[10px] inline-flex items-center gap-1 flex-shrink-0">
+                        <input type="checkbox" checked={!!inCtx} onChange={(e) => onToggleContext?.(id, e.target.checked)} /> 컨텍스트
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <ul className="space-y-2">
+          {items.map((it, idx) => (
+            <SuggestItem key={it.id} it={it} index={idx} onSelectQA={onSelectQA} inContext={contextIds.includes(it.id)} onToggleContext={onToggleContext} />
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
