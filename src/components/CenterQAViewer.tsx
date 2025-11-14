@@ -423,8 +423,6 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             arr[baseIdx] = { ...arr[baseIdx], savedId: baseId! } as any;
             return arr;
           });
-        } else if (!qaId) {
-          onShared?.(baseId);
         }
       }
       // Save current follow-up item if not yet saved (parentId=baseId so new stays in same root)
@@ -627,6 +625,15 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       setChainUnder(out);
     } catch { setChainUnder([]); }
   }, [qaId, JSON.stringify(mapEdges), JSON.stringify(mapNodes.map((n) => [n.id, n.answer, n.summary]))]);
+
+  // Prefill visible follow-ups from downstream chain when opening a saved QA
+  useEffect(() => {
+    if (!qaId) return;
+    if (fuItems.length > 0) return;
+    if (chainUnder.length === 0) return;
+    const mapped = chainUnder.map((n) => ({ q: n.question, a: String(n.answer || n.summary || ""), respId: null as string | null, savedId: n.id }));
+    setFuItems(mapped as any);
+  }, [qaId, chainUnder.length]);
 
   async function saveNote() {
     const content = note.trim();
@@ -1019,21 +1026,6 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
               </ul>
             );
           })()}
-        </div>
-        <div className="mt-3">
-          <div className="text-xs text-gray-600 mb-1">연쇄(현재 →)</div>
-          {chainUnder.length > 0 ? (
-            <div className="space-y-2">
-              {chainUnder.map((n, i) => (
-                <div key={`chain-${n.id}-${i}`} className="py-2 pl-2 border-l border-gray-200">
-                  <div className="text-sm font-semibold">Q: {n.question}</div>
-                  {n.answer && <div className="text-sm whitespace-pre-wrap break-words mt-1">A: {n.answer}</div>}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-[11px] text-gray-600">없음</div>
-          )}
         </div>
       </div>
     );
