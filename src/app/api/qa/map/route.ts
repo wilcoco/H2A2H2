@@ -104,6 +104,44 @@ export async function GET(req: NextRequest) {
       return r.rows as Array<{ source_id: string; target_id: string; type: string; weight: number; synthetic: boolean }>;
     });
 
+    // Expand by one-hop neighbors for any edges adjacent to nodes we already included
+    // This allows center-created edges on connected nodes (not directly touching qaId) to show up on the left map
+    {
+      const neighborMissing = new Set<string>();
+      for (const e of rels) {
+        if (!idSet.has(e.source_id)) neighborMissing.add(e.source_id);
+        if (!idSet.has(e.target_id)) neighborMissing.add(e.target_id);
+      }
+      if (qaIdParam) neighborMissing.delete(qaIdParam);
+      if (neighborMissing.size > 0) {
+        const extra2 = await withConn(async (c) => {
+          const r = await c.query(
+            `select id, question, answer, summary
+               from qa_entries
+              where id = any($1) and (published = true or created_by = $2)`,
+            [Array.from(neighborMissing), userId]
+          );
+          return r.rows as Array<{ id: string; question: string; answer: string | null; summary: string | null }>;
+        });
+        for (const n of extra2) {
+          if (!idSet.has(n.id)) {
+            idSet.add(n.id);
+            nodes.push({
+              id: n.id,
+              parent_id: null,
+              question: n.question,
+              answer: n.answer,
+              summary: n.summary,
+              created_by: null,
+              helpful: '0',
+              unhelpful: '0',
+              my_vote: 0,
+            } as any);
+          }
+        }
+      }
+    }
+
     const synthetics = await withConn(async (c) => {
       const r = await c.query(
         `select parent_id as source_id, id as target_id, 'precedes' as type, 1 as weight, true as synthetic

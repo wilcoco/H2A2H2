@@ -904,11 +904,12 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         )}
         <div className="mt-3">
           <div className="text-xs text-gray-600 mb-1">연결(소스 → 현재)</div>
-          {mapEdges.filter((e: any) => e.targetId === qaId).length > 0 ? (
-            <ul className="space-y-2">
-              {mapEdges
-                .filter((e: any) => e.targetId === qaId)
-                .map((e: any, idx: number) => {
+          {(() => {
+            const incoming = mapEdges.filter((e: any) => e.targetId === qaId);
+            if (incoming.length === 0) return <div className="text-[11px] text-gray-600">없음</div>;
+            return (
+              <ul className="space-y-2">
+                {incoming.map((e: any, idx: number) => {
                   const src = mapNodes.find((n) => n.id === e.sourceId);
                   if (!src) return null;
                   return (
@@ -967,6 +968,17 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                             ))}
                           </div>
                         )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            );
+          })()}
+        </div>
+      </div>
+    );
+  }
 
   if (question && aiAnswer) {
     return (
