@@ -115,7 +115,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   const [relType, setRelType] = useState<string>("precedes");
   const [relDir, setRelDir] = useState<"current_to_new" | "new_to_current">("current_to_new");
   const [pairBusy, setPairBusy] = useState(false);
-  const [fuMap, setFuMap] = useState<Record<string, { input: string; loading: boolean; items: Array<{ q: string; a: string; respId: string | null; savedId?: string }> }>>({});
+  const [fuMap, setFuMap] = useState<Record<string, { input: string; loading: boolean; items: Array<{ q: string; a: string; respId: string | null; savedId?: string; relType?: string; relDir?: "current_to_new" | "new_to_current" }> }>>({});
   const [connectedKw, setConnectedKw] = useState<Record<string, { keywords: string[]; phrases: string[] }>>({});
   const [fuPer, setFuPer] = useState<Record<number, { input: string; loading: boolean }>>({});
   const [anchor, setAnchor] = useState<{ type: "qa" | "ai" | "fu" | "node"; id?: string; index?: number } | null>(null);
@@ -181,16 +181,18 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           return { ...m, [baseQaId]: { ...prev, items: arr } };
         });
       }
-      const sourceId = relDir === "current_to_new" ? baseId! : newId!;
-      const targetId = relDir === "current_to_new" ? newId! : baseId!;
-      const r3 = await fetch("/api/qa/relation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceId, targetId, type: relType, weight: 1 }) });
+      const rType = entry.items[i].relType || relType;
+      const rDir = entry.items[i].relDir || relDir;
+      const sourceId = rDir === "current_to_new" ? baseId! : newId!;
+      const targetId = rDir === "current_to_new" ? newId! : baseId!;
+      const r3 = await fetch("/api/qa/relation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceId, targetId, type: rType, weight: 1 }) });
       if (!r3.ok) {
         let msg = "Relation failed";
         try { const ej = await r3.json(); if (ej?.error) msg = String(ej.error); } catch {}
         throw new Error(msg);
       }
       onGraphChanged?.();
-      if (relDir === "current_to_new") { onSetSource?.(baseId!); onSetTarget?.(newId!); }
+      if (rDir === "current_to_new") { onSetSource?.(baseId!); onSetTarget?.(newId!); }
       else { onSetSource?.(newId!); onSetTarget?.(baseId!); }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unknown error");
@@ -224,14 +226,12 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       const j = await res.json();
       const a = String(j?.answer || "");
       const rid = j?.responseId ? String(j.responseId) : null;
-      setFuMap((m) => ({ ...m, [baseQaId]: { input: "", loading: false, items: [] } }));
-      setFuItems((prev) => {
-        const arr = [...prev];
-        if (qaId && baseQaId === qaId) {
-          // Option B for main QA: insert immediately under main (index 0)
+      if (qaId && baseQaId === qaId) {
+        // Main QA: keep using flat fuItems at top
+        setFuItems((prev) => {
+          const arr = [...prev];
           const insertAt = 0;
           arr.splice(insertAt, 0, { q, a, respId: rid, baseQaId, relType, relDir });
-          // reindex baseFuIndex for items shifted to the right
           for (let k = 0; k < arr.length; k++) {
             if (k === insertAt) continue;
             const bf = (arr[k] as any).baseFuIndex;
@@ -240,11 +240,15 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             }
           }
           return arr;
-        }
-        // fallback: append for non-main anchors
-        arr.push({ q, a, respId: rid, baseQaId, relType, relDir });
-        return arr;
-      });
+        });
+      } else {
+        // Connected node: append under that node's item list
+        setFuMap((m) => {
+          const prev = m[baseQaId] || { input: "", loading: false, items: [] };
+          const items = [...prev.items, { q, a, respId: rid, relType, relDir }];
+          return { ...m, [baseQaId]: { input: "", loading: false, items } };
+        });
+      }
       if (qaId && baseQaId === qaId) {
         setFuPer((m) => {
           const out: Record<number, { input: string; loading: boolean }> = {};
@@ -933,62 +937,36 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                             <span className="text-[10px] px-1.5 py-[2px] rounded-full border bg-emerald-50 border-emerald-200 text-emerald-700">앵커</span>
                           )}
                         </div>
-                      </div>
-                    </li>
-                  );
-                })}
-            </ul>
-          ) : (
-            <div className="text-[11px] text-gray-600">연결된 소스가 없습니다.</div>
-          )}
-        </div>
-        <div className="mt-3">
-          <div className="text-xs text-gray-600 mb-1">연결(현재 → 타겟)</div>
-          {mapEdges.filter((e: any) => e.sourceId === qaId).length > 0 ? (
-            <ul className="space-y-2">
-              {mapEdges
-                .filter((e: any) => e.sourceId === qaId)
-                .map((e: any, idx: number) => {
-                  const trg = mapNodes.find((n) => n.id === e.targetId);
-                  if (!trg) return null;
-                  return (
-                    <li key={`out-${idx}`} className="text-[12px] py-2">
-                      <div className="min-w-0">
-                        <div className="text-sm font-semibold">Q: {trg.question}</div>
-                        {trg.answer && <div className="mt-1 text-sm whitespace-pre-wrap break-words">A: {trg.answer}</div>}
-                        {(() => {
-                          const kw = connectedKw[trg.id] || { keywords: [], phrases: [] };
-                          const has = (kw.keywords?.length || 0) + (kw.phrases?.length || 0) > 0;
-                          return has ? (
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              {kw.phrases.map((p, i) => (
-                                <button key={`out-ph-${trg.id}-${i}`} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => toggleSelPhrase(p)}>{p}</button>
-                              ))}
-                              {kw.keywords.map((k, i) => (
-                                <button key={`out-kw-${trg.id}-${i}`} className="text-[11px] px-2 py-0.5 rounded-full border hover:bg-blue-50" onClick={() => toggleSelWord(k)}>{k}</button>
-                              ))}
-                            </div>
-                          ) : null;
-                        })()}
-                        <div className="mt-2 flex items-center gap-2">
-                          <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 답변을 기반으로 이어서 물어보기" value={fuMap[trg.id]?.input ?? ''} onFocus={() => setAnchor({ type: 'node', id: trg.id })} onChange={(ev) => setFuMap((m) => ({ ...m, [trg.id]: { ...(m[trg.id] || { input: '', loading: false, items: [] }), input: ev.target.value } }))} />
-                          <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!!(fuMap[trg.id]?.loading) || !((fuMap[trg.id]?.input ?? '').trim())} onClick={() => { setAnchor({ type: 'node', id: trg.id }); void askFollowUpFor(trg.id); }}>{fuMap[trg.id]?.loading ? "요청 중…" : "답변 받기"}</button>
-                          {anchor?.type === 'node' && anchor.id === trg.id && (
-                            <span className="text-[10px] px-1.5 py-[2px] rounded-full border bg-emerald-50 border-emerald-200 text-emerald-700">앵커</span>
-                          )}
-                        </div>
-                      </div>
-                    </li>
-                  );
-                })}
-            </ul>
-          ) : (
-            <div className="text-[11px] text-gray-600">연결된 타겟이 없습니다.</div>
-          )}
-        </div>
-      </div>
-    );
-  }
+                        {(fuMap[src.id]?.items?.length ?? 0) > 0 && (
+                          <div className="mt-2 space-y-2">
+                            {fuMap[src.id]!.items.map((fit, fj) => (
+                              <div key={`node-in-fu-${src.id}-${fj}`} className="py-2 pl-2 border-l border-gray-200">
+                                <div className="text-[11px] text-gray-600 mb-1">
+                                  관계: {(fit.relDir || relDir) === 'current_to_new' ? '기준 → 후속' : '후속 → 기준'} · {labelKoForType(fit.relType || relType)}
+                                </div>
+                                <div className="text-sm font-semibold">Q: {fit.q}</div>
+                                <div className="text-sm whitespace-pre-wrap break-words mt-1">A: {fit.a}</div>
+                                <div className="mt-1 text-[10px] text-gray-500">{fit.respId ? `RID: ${fit.respId}` : ''}</div>
+                                <div className="mt-2 flex items-center gap-2 flex-wrap">
+                                  <select className="text-xs border rounded px-2 py-1" value={fit.relType || relType} onChange={(e) => setFuMap((m) => { const prev = m[src.id] || { input: '', loading: false, items: [] }; const arr = [...prev.items]; const val = e.target.value; const dir = defaultDirForType(val); arr[fj] = { ...arr[fj], relType: val, relDir: dir }; return { ...m, [src.id]: { ...prev, items: arr } }; })}>
+                                    {Object.entries(REL_HEADS).map(([hk, hv]) => (
+                                      <optgroup key={hk} label={hv.label}>
+                                        {hv.types.map((opt) => (
+                                          <option key={opt.type} value={opt.type}>{opt.label}</option>
+                                        ))}
+                                      </optgroup>
+                                    ))}
+                                  </select>
+                                  <select className="text-xs border rounded px-2 py-1" value={fit.relDir || relDir} onChange={(e) => setFuMap((m) => { const prev = m[src.id] || { input: '', loading: false, items: [] }; const arr = [...prev.items]; arr[fj] = { ...arr[fj], relDir: e.target.value as any }; return { ...m, [src.id]: { ...prev, items: arr } }; })}>
+                                    <option value="current_to_new">현재 → 후속</option>
+                                    <option value="new_to_current">후속 → 현재</option>
+                                  </select>
+                                  <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50" disabled={pairBusy} onClick={() => void savePairAndRelAtFor(src.id, fj)}>{pairBusy ? '저장 중…' : '두 Q&A 저장 및 관계 생성'}</button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
 
   if (question && aiAnswer) {
     return (
