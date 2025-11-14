@@ -17,9 +17,10 @@ type Props = {
   onClearKeyword?: () => void;
   contextIds?: string[];
   onToggleContext?: (id: string, next: boolean) => void;
+  threadRootId?: string | null;
 };
 
-export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId, onPickTarget, refreshKey, keyword, keywordMode = "any", keywords = null, phrases = null, onClearKeyword, contextIds = [], onToggleContext }: Props) {
+export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId, onPickTarget, refreshKey, keyword, keywordMode = "any", keywords = null, phrases = null, onClearKeyword, contextIds = [], onToggleContext, threadRootId = null }: Props) {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<QAEntry[]>([]);
@@ -28,6 +29,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
   const reqIdRef = useRef(0);
 
   async function search(next?: string) {
+    if (threadRootId) return; // thread mode skips text search
     if ((keyword || "").trim() || (keywords && keywords.length) || (phrases && phrases.length)) return; // 키워드/복합어 모드일 땐 텍스트 검색 비활성화
     const query = (next ?? q).trim();
     if (!query) { setItems([]); setLoading(false); abortRef.current?.abort(); reqIdRef.current++; return; }
@@ -62,6 +64,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
   }
 
   async function searchByKeyword() {
+    if (threadRootId) return; // thread mode skips keyword search
     const key = (keyword || "").trim();
     const kwArr = Array.isArray(keywords) ? keywords.filter((s) => (s || "").trim().length > 0) : [];
     const phArr = Array.isArray(phrases) ? phrases.filter((s) => (s || "").trim().length > 0) : [];
@@ -96,6 +99,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
   }
 
   useEffect(() => {
+    if (threadRootId) return; // thread mode: do not debounce text search
     if ((keyword || "").trim() || (keywords && keywords.length) || (phrases && phrases.length)) return; // 키워드/복합어 모드일 때는 텍스트 디바운스 검색 생략
     const t = setTimeout(() => { void search(q); }, 250);
     return () => clearTimeout(t);
@@ -103,11 +107,35 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
   }, [q, refreshKey, keyword, JSON.stringify(keywords || []), JSON.stringify(phrases || [])]);
 
   useEffect(() => {
+    if (threadRootId) return; // thread mode: keyword fetch handled separately
     if ((keyword || "").trim() || (keywords && keywords.length) || (phrases && phrases.length)) {
       void searchByKeyword();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keyword, JSON.stringify(keywords || []), JSON.stringify(phrases || []), keywordMode, refreshKey]);
+
+  // Thread mode: load nodes for the given root and show as a question-only list
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (!threadRootId) return;
+      try {
+        setLoading(true);
+        setError(null);
+        const r = await fetch(`/api/qa/map?rootId=${encodeURIComponent(threadRootId)}`, { cache: "no-store" });
+        const j = await r.json().catch(() => ({ nodes: [] }));
+        const its: QAEntry[] = Array.isArray(j?.nodes)
+          ? (j.nodes as Array<{ id: string; question: string; summary?: string; answer?: string }>).map((n) => ({ id: n.id, question: n.question, summary: n.summary, answer: n.answer }))
+          : [];
+        if (active) setItems(its);
+      } catch (e: unknown) {
+        if (active) setError(e instanceof Error ? e.message : "Unknown error");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [threadRootId, refreshKey]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -164,7 +192,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
       </div>
       {error && <div className="text-xs text-red-600">{error}</div>}
       {loading && <div className="text-xs text-gray-500">검색 중...</div>}
-      {!loading && items.length === 0 && q.trim().length > 0 && (
+      {!loading && !threadRootId && items.length === 0 && q.trim().length > 0 && (
         <div className="text-xs text-gray-700 space-y-2">
           <div>유사한 Q&A가 없습니다.</div>
           <button

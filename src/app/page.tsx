@@ -50,6 +50,7 @@ export default function Home() {
   const [relTargetId, setRelTargetId] = useState<string | null>(null);
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [graphRefreshKey, setGraphRefreshKey] = useState(0);
+  const [leftThreadRootId, setLeftThreadRootId] = useState<string | null>(null);
   // removed: defaultSourceId. Source is set explicitly from Center actions only.
   const [lastViewedQaId, setLastViewedQaId] = useState<string | null>(null);
   const [leftKeyword, setLeftKeyword] = useState<string | null>(null);
@@ -103,6 +104,22 @@ export default function Home() {
   useEffect(() => {
     try { localStorage.setItem("ai_detail", detail); } catch {}
   }, [detail]);
+
+  // Load thread root for the currently selected QA so left can show thread list
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      if (!selectedQaId) { if (active) setLeftThreadRootId(null); return; }
+      try {
+        const r = await fetch(`/api/qa/map?qaId=${encodeURIComponent(selectedQaId)}`, { cache: "no-store" });
+        const j = await r.json().catch(() => ({}));
+        if (active) setLeftThreadRootId(j?.rootId ? String(j.rootId) : null);
+      } catch {
+        if (active) setLeftThreadRootId(null);
+      }
+    })();
+    return () => { active = false; };
+  }, [selectedQaId, graphRefreshKey]);
 
   // Hydrate pins when user changes
   useEffect(() => {
@@ -335,6 +352,7 @@ export default function Home() {
             onClearKeyword={() => { setLeftKeyword(null); setLeftKeywords(null); setLeftPhrases(null); setLeftKeywordMode("any"); }}
             contextIds={selectedContextIds}
             onToggleContext={(id, next) => setSelectedContextIds((prev) => next ? (prev.includes(id) ? prev : [...prev, id]) : prev.filter((x) => x !== id))}
+            threadRootId={leftThreadRootId}
           />
         </aside>
 
