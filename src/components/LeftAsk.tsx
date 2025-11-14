@@ -174,106 +174,26 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
         </div>
       )}
       <ul className="space-y-2">
-        {items.map((it) => (
-          <SuggestItem key={it.id} it={it} onSelectQA={onSelectQA} connectMode={!!connectMode} targetId={targetId || null} onPickTarget={onPickTarget} refreshKey={refreshKey || 0} inContext={contextIds.includes(it.id)} onToggleContext={onToggleContext} />
+        {items.map((it, idx) => (
+          <SuggestItem key={it.id} it={it} index={idx} onSelectQA={onSelectQA} inContext={contextIds.includes(it.id)} onToggleContext={onToggleContext} />
         ))}
       </ul>
     </div>
   );
 }
 
-function SuggestItem({ it, onSelectQA, connectMode, targetId, onPickTarget, refreshKey, inContext, onToggleContext }: { it: QAEntry; onSelectQA: (id: string) => void; connectMode: boolean; targetId: string | null; onPickTarget?: (id: string) => void; refreshKey: number; inContext?: boolean; onToggleContext?: (id: string, next: boolean) => void }) {
-  const [loading, setLoading] = useState(true);
-  const [count, setCount] = useState<number | null>(null);
-  const [preview, setPreview] = useState<Array<{ id: string; question: string; summary?: string }>>([]);
-  const [edges, setEdges] = useState<Array<{ sourceId: string; targetId: string; type: string }>>([]);
-  const [nodesById, setNodesById] = useState<Map<string, { id: string; question: string; summary?: string }>>(new Map());
-  const [expanded, setExpanded] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
-
-  useEffect(() => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    (async () => {
-      try {
-        setLoading(true);
-        const r = await fetch(`/api/qa/map?qaId=${encodeURIComponent(it.id)}`, { cache: "no-store", signal: controller.signal });
-        const j = await r.json().catch(() => ({ nodes: [], edges: [] }));
-        const nodes: Array<{ id: string; question: string; summary?: string }> = Array.isArray(j?.nodes) ? j.nodes : [];
-        setCount(nodes.length || 0);
-        const map = new Map<string, { id: string; question: string; summary?: string }>();
-        nodes.forEach((n) => map.set(n.id, { id: n.id, question: n.question, summary: n.summary }));
-        setNodesById(map);
-        const pv = nodes.slice(Math.max(0, nodes.length - 3));
-        setPreview(pv);
-        const es: Array<{ sourceId: string; targetId: string; type: string }> = Array.isArray(j?.edges) ? j.edges : [];
-        setEdges(es);
-      } catch (e: any) {
-        if (e?.name === "AbortError") return;
-      } finally {
-        setLoading(false);
-      }
-    })();
-    return () => { controller.abort(); };
-  }, [it.id, refreshKey]);
-
+function SuggestItem({ it, index, onSelectQA, inContext, onToggleContext }: { it: QAEntry; index: number; onSelectQA: (id: string) => void; inContext?: boolean; onToggleContext?: (id: string, next: boolean) => void }) {
   return (
     <li className="rounded border border-gray-200/60 p-2 bg-white/60 dark:bg-gray-900/40">
-      <div className="min-w-0 cursor-pointer hover:opacity-90" onClick={() => onSelectQA(it.id)}>
-        <div className="text-sm font-medium line-clamp-3">Q: {it.question}</div>
-        {it.summary && <div className="text-[11px] text-gray-600 mt-0.5 line-clamp-3">{it.summary}</div>}
-        {it.createdBy && <div className="text-[10px] text-gray-500 mt-0.5">by {it.createdBy}</div>}
-      </div>
-      <div className="mt-1 flex items-center gap-2 justify-end">
-        <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 border">Chain {loading ? "…" : (count ?? 0)}</span>
-        <label className="text-[10px] inline-flex items-center gap-1">
+      <div className="flex items-center justify-between gap-2">
+        <button className="min-w-0 text-left text-sm font-medium truncate hover:opacity-90" onClick={() => onSelectQA(it.id)}>
+          <span className="text-gray-500 mr-1">Q{index + 1}.</span>
+          <span className="line-clamp-1">{it.question}</span>
+        </button>
+        <label className="text-[10px] inline-flex items-center gap-1 flex-shrink-0">
           <input type="checkbox" checked={!!inContext} onChange={(e) => onToggleContext?.(it.id, e.target.checked)} /> 컨텍스트
         </label>
-        <button className="text-[10px] px-2 py-0.5 rounded border" onClick={() => setExpanded((v) => !v)}>{expanded ? "접기" : "자세히"}</button>
       </div>
-      {expanded && (
-        <div className="mt-2 space-y-2">
-          <div>
-            <div className="text-[11px] text-gray-600 mb-1">연결(현재 → 타겟)</div>
-            {edges.filter((e) => e.sourceId === it.id).length > 0 ? (
-              <ul className="space-y-1">
-                {edges.filter((e) => e.sourceId === it.id).slice(0, 5).map((e, idx) => {
-                  const trg = nodesById.get(e.targetId);
-                  if (!trg) return null;
-                  return (
-                    <li key={`out-${idx}`} className="text-[12px] text-gray-700 truncate">
-                      {e.type} · Q: {trg.question}
-                      {trg.summary && <span className="text-[11px] text-gray-500"> — {trg.summary}</span>}
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <div className="text-[11px] text-gray-500">없음</div>
-            )}
-          </div>
-          <div>
-            <div className="text-[11px] text-gray-600 mb-1">연결(소스 → 현재)</div>
-            {edges.filter((e) => e.targetId === it.id).length > 0 ? (
-              <ul className="space-y-1">
-                {edges.filter((e) => e.targetId === it.id).slice(0, 5).map((e, idx) => {
-                  const src = nodesById.get(e.sourceId);
-                  if (!src) return null;
-                  return (
-                    <li key={`in-${idx}`} className="text-[12px] text-gray-700 truncate">
-                      Q: {src.question} · {e.type}
-                      {src.summary && <span className="text-[11px] text-gray-500"> — {src.summary}</span>}
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : (
-              <div className="text-[11px] text-gray-500">없음</div>
-            )}
-          </div>
-        </div>
-      )}
     </li>
   );
 }
