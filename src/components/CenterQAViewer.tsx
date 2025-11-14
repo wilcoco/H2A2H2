@@ -152,9 +152,9 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         baseRid = prev.respId || undefined;
         baseId = entry.items[i - 1].savedId;
       }
-      // Ensure previous follow-up is saved if needed
+      // Ensure previous follow-up is saved if needed (attach to base QA so it shares root)
       if (!baseId) {
-        const r1 = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: baseQ, answer: baseA, summary: undefined, responseId: baseRid || undefined, published: false }) });
+        const r1 = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: baseQ, answer: baseA, summary: undefined, responseId: baseRid || undefined, parentId: baseQaId, published: false }) });
         if (!r1.ok) throw new Error("Base save failed");
         const j1 = await r1.json();
         baseId = String(j1?.id || "");
@@ -166,10 +166,10 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           return { ...m, [baseQaId]: { ...prev, items: arr } };
         });
       }
-      // Save current follow-up item if not yet saved
+      // Save current follow-up item if not yet saved (parentId=baseId to keep root consistent)
       let newId: string | undefined = entry.items[i].savedId;
       if (!newId) {
-        const r2 = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: nextQ, answer: nextA, summary: undefined, responseId: entry.items[i].respId || undefined, parentId: undefined, published: false }) });
+        const r2 = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: nextQ, answer: nextA, summary: undefined, responseId: entry.items[i].respId || undefined, parentId: baseId, published: false }) });
         if (!r2.ok) throw new Error("Follow-up save failed");
         const j2 = await r2.json();
         newId = String(j2?.id || "");
@@ -395,11 +395,11 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           baseRid = aiResponseId || undefined;
         }
       }
-      // Ensure base saved if needed
+      // Ensure base saved if needed (for flat chain: attach first FU to qaId to keep chain under same root)
       if (!baseId) {
         const ok = typeof window !== "undefined" ? window.confirm("기준 Q&A를 초안으로 저장하고 관계를 생성할까요?") : true;
         if (!ok) { setPairBusy(false); return; }
-        const r1 = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: baseQ, answer: baseA, summary: undefined, responseId: baseRid || undefined, published: false }) });
+        const r1 = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: baseQ, answer: baseA, summary: undefined, responseId: baseRid || undefined, parentId: qaId ? (qaId as string) : undefined, published: false }) });
         if (!r1.ok) throw new Error("Base save failed");
         const j1 = await r1.json();
         baseId = String(j1?.id || "");
@@ -416,10 +416,10 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           onShared?.(baseId);
         }
       }
-      // Save current follow-up item if not yet saved
+      // Save current follow-up item if not yet saved (parentId=baseId so new stays in same root)
       let newId: string | undefined = fuItems[i].savedId;
       if (!newId) {
-        const r2 = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: nextQ, answer: nextA, summary: undefined, responseId: fuItems[i].respId || undefined, parentId: undefined, published: false }) });
+        const r2 = await fetch("/api/qa/share", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: nextQ, answer: nextA, summary: undefined, responseId: fuItems[i].respId || undefined, parentId: baseId, published: false }) });
         if (!r2.ok) throw new Error("Follow-up save failed");
         const j2 = await r2.json();
         newId = String(j2?.id || "");
