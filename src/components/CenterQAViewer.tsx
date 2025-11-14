@@ -119,6 +119,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   const [connectedKw, setConnectedKw] = useState<Record<string, { keywords: string[]; phrases: string[] }>>({});
   const [fuPer, setFuPer] = useState<Record<number, { input: string; loading: boolean }>>({});
   const [anchor, setAnchor] = useState<{ type: "qa" | "ai" | "fu" | "node"; id?: string; index?: number } | null>(null);
+  const [chainUnder, setChainUnder] = useState<Array<{ id: string; question: string; answer?: string; summary?: string }>>([]);
 
   function startSelect(mode: "any" | "all") {
     setSelectMode(mode);
@@ -262,6 +263,11 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           out[0] = { input: "", loading: false };
           return out;
         });
+        // Also reset the main QA input so multiple branches can be asked easily
+        setFuMap((m) => ({
+          ...m,
+          [baseQaId]: { ...(m[baseQaId] || { input: "", items: [] } as any), input: "", loading: false }
+        }));
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
@@ -307,6 +313,9 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           const nk = n >= threshold ? n + 1 : n;
           out[nk] = m[n];
         }
+        // Ensure the original anchor input remains available for additional branching
+        out[idx] = { input: "", loading: false };
+        // Provide a fresh input under the newly inserted item as well
         out[idx + 1] = { input: "", loading: false };
         return out;
       });
@@ -580,6 +589,36 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
     })();
     return () => { active = false; };
   }, [qaId, refreshKey]);
+
+  useEffect(() => {
+    try {
+      if (!qaId) { setChainUnder([]); return; }
+      const idToNode = new Map(mapNodes.map((n) => [n.id, n] as const));
+      const nexts = new Map<string, string[]>();
+      for (const e of mapEdges as any[]) {
+        if ((e?.type || "").toLowerCase() !== "precedes") continue;
+        const s = e.sourceId; const t = e.targetId;
+        if (!nexts.has(s)) nexts.set(s, []);
+        nexts.get(s)!.push(t);
+      }
+      const out: Array<{ id: string; question: string; answer?: string; summary?: string }> = [];
+      const seen = new Set<string>();
+      let cur: string | null = qaId;
+      while (cur) {
+        const arr: string[] = nexts.get(cur) ?? ([] as string[]);
+        if (arr.length === 0) break;
+        let nxt: string | null = null;
+        for (const t of arr) { if (!seen.has(t)) { nxt = t; break; } }
+        if (!nxt) break;
+        if (seen.has(nxt)) break;
+        seen.add(nxt);
+        const node = idToNode.get(nxt);
+        if (node) out.push({ id: node.id, question: node.question, answer: node.answer, summary: node.summary });
+        cur = nxt;
+      }
+      setChainUnder(out);
+    } catch { setChainUnder([]); }
+  }, [qaId, JSON.stringify(mapEdges), JSON.stringify(mapNodes.map((n) => [n.id, n.answer, n.summary]))]);
 
   async function saveNote() {
     const content = note.trim();
@@ -975,6 +1014,21 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
               </ul>
             );
           })()}
+        </div>
+        <div className="mt-3">
+          <div className="text-xs text-gray-600 mb-1">연쇄(현재 →)</div>
+          {chainUnder.length > 0 ? (
+            <div className="space-y-2">
+              {chainUnder.map((n, i) => (
+                <div key={`chain-${n.id}-${i}`} className="py-2 pl-2 border-l border-gray-200">
+                  <div className="text-sm font-semibold">Q: {n.question}</div>
+                  {n.answer && <div className="text-sm whitespace-pre-wrap break-words mt-1">A: {n.answer}</div>}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-[11px] text-gray-600">없음</div>
+          )}
         </div>
       </div>
     );
