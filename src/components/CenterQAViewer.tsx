@@ -208,19 +208,17 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       setFuMap((m) => ({ ...m, [baseQaId]: { ...entry, loading: true } }));
       const ctxIds: string[] = [baseQaId];
       let prevRid: string | undefined = undefined;
-      if (lockContext) {
-        if (qaId && baseQaId === qaId) {
-          prevRid = (String(data?.lastResponseId || "").trim() || undefined) as string | undefined;
-        } else {
-          try {
-            const r0 = await fetch(`/api/qa/${encodeURIComponent(baseQaId)}`, { cache: "no-store" });
-            if (r0.ok) {
-              const j0 = await r0.json();
-              const rid0 = String(j0?.lastResponseId || "").trim();
-              if (rid0) prevRid = rid0;
-            }
-          } catch {}
-        }
+      if (qaId && baseQaId === qaId) {
+        prevRid = (String(data?.lastResponseId || "").trim() || undefined) as string | undefined;
+      } else {
+        try {
+          const r0 = await fetch(`/api/qa/${encodeURIComponent(baseQaId)}`, { cache: "no-store" });
+          if (r0.ok) {
+            const j0 = await r0.json();
+            const rid0 = String(j0?.lastResponseId || "").trim();
+            if (rid0) prevRid = rid0;
+          }
+        } catch {}
       }
       const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider, detail: "long", previousResponseId: prevRid, contextIds: ctxIds }) });
       if (!res.ok) throw new Error("AI call failed");
@@ -283,7 +281,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       setFuPer((m) => ({ ...m, [idx]: { ...(m[idx] || { input: "", loading: false }), loading: true } }));
       const ctxIds: string[] = qaId ? [qaId] : [];
       const baseRid = fuItems[idx]?.respId || (qaId ? (data?.lastResponseId as string | undefined) : aiResponseId);
-      const prevRid = lockContext ? (baseRid || undefined) : undefined;
+      const prevRid = baseRid || undefined;
       const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider, detail: "long", previousResponseId: prevRid, contextIds: ctxIds }) });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
@@ -332,7 +330,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       setFuLoading(true);
       const ctxIds: string[] = [];
       const baseRid = aiResponseId;
-      const prevRid = lockContext ? (baseRid || undefined) : undefined;
+      const prevRid = baseRid || undefined;
       const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider, detail: "long", previousResponseId: prevRid, contextIds: ctxIds }) });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
@@ -537,12 +535,22 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
     return () => { active = false; };
   }, [qaId, data?.summary, data?.answer, data?.question, aiAnswer]);
 
+  // Reset when switching QA context
   useEffect(() => {
     setFuItems([]);
     setFuInput("");
     setFuMap({});
     setFuPer({});
-  }, [qaId, question, aiAnswer]);
+  }, [qaId]);
+
+  // Reset when switching AI main context (only when not in QA mode)
+  useEffect(() => {
+    if (qaId) return;
+    setFuItems([]);
+    setFuInput("");
+    setFuMap({});
+    setFuPer({});
+  }, [question, aiAnswer]);
 
   useEffect(() => {
     // Preload keyword chips for connected QAs (source->current and current->target)
@@ -658,10 +666,10 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   }, [qaId]);
 
   useEffect(() => {
-    if (!lockContext) { onSetPrevRespId?.(null); return; }
     if (qaId && data?.lastResponseId) { onSetPrevRespId?.(String(data.lastResponseId)); return; }
     if (!qaId && aiResponseId) { onSetPrevRespId?.(String(aiResponseId)); return; }
-  }, [lockContext, qaId, data?.lastResponseId, aiResponseId]);
+    onSetPrevRespId?.(null);
+  }, [qaId, data?.lastResponseId, aiResponseId]);
 
   async function vote(v: 1 | -1) {
     if (!qaId) return;
@@ -824,9 +832,6 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           <span className={`px-2 py-0.5 rounded-full border ${data.published !== false ? 'bg-green-50 border-green-200 text-green-700' : 'bg-yellow-50 border-yellow-200 text-yellow-700'}`}>{data.published !== false ? 'Published' : 'Draft'}</span>
           {data.createdBy && <span>by {data.createdBy}</span>}
           {data.lastResponseId && <span className="truncate max-w-[50%]" title={data.lastResponseId}>RID: {data.lastResponseId}</span>}
-          <label className="ml-auto inline-flex items-center gap-1">
-            <input type="checkbox" checked={!!lockContext} onChange={(e) => { onToggleLock?.(e.target.checked); const rid = String(data?.lastResponseId || ""); if (e.target.checked) onSetPrevRespId?.(rid || null); else onSetPrevRespId?.(null); }} /> 이 RID로 맥락 고정
-          </label>
         </div>
         <div className="mt-2 flex items-center gap-2">
           <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white" onClick={() => { if (qaId) onSetCard?.(qaId); }}>가이드에 추가</button>
@@ -1045,9 +1050,6 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             {aiModel ? ` · ${aiModel}` : ""}
             {aiFallbackUsed ? " · fallback" : ""}
             {aiResponseId ? ` · RID: ${aiResponseId}` : ""}
-            <label className="ml-2 inline-flex items-center gap-1">
-              <input type="checkbox" checked={!!lockContext} onChange={(e) => { onToggleLock?.(e.target.checked); const rid = String(aiResponseId || ""); if (e.target.checked) onSetPrevRespId?.(rid || null); else onSetPrevRespId?.(null); }} /> 이 RID로 맥락 고정
-            </label>
           </div>
         )}
         <div className="mt-2 flex items-center gap-2">
