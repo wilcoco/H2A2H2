@@ -289,7 +289,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
           >AI에게 묻기</button>
           <button
             className="text-xs px-2 py-2 rounded border text-gray-700 disabled:opacity-50"
-            disabled={nodesByIdThread.size === 0 || edgesAll.length === 0}
+            disabled={nodesByIdThread.size === 0 || chains.length === 0}
             onClick={() => setShowGraph(true)}
           >그래프 보기</button>
         </div>
@@ -383,50 +383,132 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
       ))}
       {showGraph && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
-          <div className="bg-white dark:bg-gray-900 rounded shadow-lg p-3 w-[720px] max-w-[95vw] max-h-[85vh] overflow-auto">
+          <div className="bg-white dark:bg-gray-900 rounded shadow-lg p-3 w-[920px] max-w-[95vw] max-h-[85vh] overflow-auto">
             <div className="flex items-center justify-between mb-2">
-              <div className="text-sm font-semibold">질문 그래프 (상위 5개)</div>
+              <div className="text-sm font-semibold">질문 체인 그래프 (Chain 1~5)</div>
               <button className="text-xs px-2 py-1 rounded border" onClick={() => setShowGraph(false)}>닫기</button>
             </div>
             {(() => {
-              const deg = new Map<string, number>();
-              for (const e of edgesAll) {
-                deg.set(e.sourceId, (deg.get(e.sourceId) || 0) + 1);
-                deg.set(e.targetId, (deg.get(e.targetId) || 0) + 1);
+              const selectedChains = chains.slice(0, 5);
+              if (selectedChains.length === 0) return <div className="text-[12px] text-gray-600">체인이 없습니다.</div>;
+              // depth -> unique node ids
+              const colsMap = new Map<number, string[]>();
+              selectedChains.forEach((ch) => {
+                ch.forEach((id, d) => {
+                  const arr = colsMap.get(d) || [];
+                  if (!arr.includes(id)) arr.push(id);
+                  colsMap.set(d, arr);
+                });
+              });
+              const depths = Array.from(colsMap.keys()).sort((a, b) => a - b);
+              // build ordering per depth based on parent -> children sequence to visualize branching
+              const orderByDepth: string[][] = [];
+              // depth 0: order by first occurrence across chains
+              const seen0 = new Set<string>();
+              const d0arr: string[] = [];
+              selectedChains.forEach((ch) => { const id = ch[0]; if (id && !seen0.has(id)) { seen0.add(id); d0arr.push(id); } });
+              orderByDepth[0] = d0arr;
+              // child mapping between consecutive depths
+              const childOf = new Map<string, Set<string>>();
+              selectedChains.forEach((ch) => {
+                for (let i = 0; i < ch.length - 1; i++) {
+                  const a = ch[i], b = ch[i + 1];
+                  if (!childOf.has(a)) childOf.set(a, new Set());
+                  childOf.get(a)!.add(b);
+                }
+              });
+              for (let di = 1; di < depths.length; di++) {
+                const prev = orderByDepth[di - 1] || [];
+                const nextIds = colsMap.get(depths[di]) || [];
+                const seen = new Set<string>();
+                const ord: string[] = [];
+                prev.forEach((pid) => {
+                  const chs = Array.from(childOf.get(pid) || []);
+                  chs.forEach((cid) => { if (nextIds.includes(cid) && !seen.has(cid)) { seen.add(cid); ord.push(cid); } });
+                });
+                // append any remaining nodes at this depth
+                nextIds.forEach((nid) => { if (!seen.has(nid)) { seen.add(nid); ord.push(nid); } });
+                orderByDepth[di] = ord;
               }
-              const arr = Array.from(nodesByIdThread.keys()).map((id) => ({ id, q: nodesByIdThread.get(id)?.question || "", d: deg.get(id) || 0 }));
-              arr.sort((a, b) => b.d - a.d);
-              const sel = arr.slice(0, 5).filter((n) => n.d > 0);
-              const idset = new Set(sel.map((n) => n.id));
-              const subE = edgesAll.filter((e) => idset.has(e.sourceId) && idset.has(e.targetId));
-              const W = 640, H = 360; const cx = W / 2, cy = H / 2; const n = sel.length || 1; const R = Math.min(W, H) / 2 - 60;
-              const pos = new Map<string, { x: number; y: number }>();
-              sel.forEach((n2, i) => { const ang = (i / n) * Math.PI * 2; pos.set(n2.id, { x: cx + R * Math.cos(ang), y: cy + R * Math.sin(ang) }); });
+              // edges between consecutive nodes in each chain (dedup)
+              const edges: Array<[string, string]> = [];
+              const edgeSet = new Set<string>();
+              selectedChains.forEach((ch) => {
+                for (let i = 0; i < ch.length - 1; i++) {
+                  const k = `${ch[i]}->${ch[i + 1]}`;
+                  if (!edgeSet.has(k)) { edgeSet.add(k); edges.push([ch[i], ch[i + 1]]); }
+                }
+              });
+              const x0 = 40, y0 = 40;
+              const colGap = 360; // width per column
+              const nodeW = 320;
+              const rowGap = 130;
+              const wrap = (text: string, max = 30, maxLines = 5) => {
+                const s = String(text || "");
+                // word-based wrap first; if no spaces (CJK), fall back to char chunking
+                const bySpace = s.includes(" ") ? s.split(/\s+/) : s.split("");
+                const lines: string[] = [];
+                let cur = "";
+                for (const w of bySpace) {
+                  const candidate = (cur ? cur + (s.includes(" ") ? " " : "") : "") + w;
+                  if (candidate.length > max) {
+                    if (cur) lines.push(cur);
+                    cur = w;
+                  } else {
+                    cur = candidate;
+                  }
+                  if (lines.length >= maxLines) break;
+                }
+                if (lines.length < maxLines && cur) lines.push(cur);
+                if (lines.length > maxLines) lines.length = maxLines;
+                return lines;
+              };
+              const pos = new Map<string, { x: number; y: number; w: number; h: number; lines: string[] }>();
+              depths.forEach((d, di) => {
+                const arr = orderByDepth[di] || colsMap.get(d) || [];
+                arr.forEach((id, rIndex) => {
+                  const q = nodesByIdThread.get(id)?.question || id;
+                  const lines = wrap(q);
+                  const h = 16 + lines.length * 16 + 12;
+                  const x = x0 + di * colGap;
+                  const y = y0 + rIndex * rowGap;
+                  pos.set(`${d}:${id}`, { x, y, w: nodeW, h, lines });
+                });
+              });
+              const getKeyFor = (id: string): string | null => {
+                for (let i = 0; i < depths.length; i++) { const key = `${depths[i]}:${id}`; if (pos.has(key)) return key; }
+                return null;
+              };
+              const maxRows = orderByDepth.reduce((m, arr) => Math.max(m, (arr || []).length), 0);
+              const W = Math.max(720, x0 + depths.length * colGap + 80);
+              const H = Math.max(420, y0 + maxRows * rowGap + 40);
               return (
                 <>
-                  <svg width={W} height={H} className="border rounded w-full">
-                    {subE.map((e, i) => {
-                      const a = pos.get(e.sourceId) || { x: cx, y: cy };
-                      const b = pos.get(e.targetId) || { x: cx, y: cy };
-                      return <line key={`e-${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#94a3b8" strokeWidth={1} />;
-                    })}
-                    {sel.map((n2, i) => {
-                      const p = pos.get(n2.id) || { x: cx, y: cy };
-                      const label = (n2.q || "").slice(0, 16);
+                  <svg width={W} height={H} className="border rounded w-full bg-white">
+                    {edges.map((e, i) => {
+                      const aKey = getKeyFor(e[0]);
+                      const bKey = getKeyFor(e[1]);
+                      if (!aKey || !bKey) return null;
+                      const a = pos.get(aKey)!; const b = pos.get(bKey)!;
+                      const ax = a.x + a.w; const ay = a.y + a.h / 2;
+                      const bx = b.x; const by = b.y + b.h / 2;
+                      const midx = (ax + bx) / 2;
                       return (
-                        <g key={`n-${i}`}>
-                          <circle cx={p.x} cy={p.y} r={18} fill="#1f2937" />
-                          <text x={p.x} y={p.y - 26} textAnchor="middle" fontSize={11} fill="#475569">{n2.d}</text>
-                          <text x={p.x} y={p.y + 4} textAnchor="middle" fontSize={11} fill="#fff">{label}</text>
+                        <g key={`e-${i}`}>
+                          <path d={`M ${ax} ${ay} C ${midx} ${ay}, ${midx} ${by}, ${bx} ${by}`} stroke="#94a3b8" strokeWidth="1.5" fill="none" />
                         </g>
                       );
                     })}
-                  </svg>
-                  <ul className="mt-2 text-[12px] text-gray-700 space-y-1">
-                    {sel.map((n2, i) => (
-                      <li key={`li-${i}`}>• {n2.q} <span className="text-[11px] text-gray-500">({n2.d})</span></li>
+                    {Array.from(pos.entries()).map(([k, p], i) => (
+                      <g key={`n-${i}`}>
+                        <rect x={p.x} y={p.y} width={p.w} height={p.h} rx="6" ry="6" fill="#ffffff" stroke="#1f2937" strokeWidth="1.2" />
+                        {p.lines.map((ln, idx) => (
+                          <text key={`t-${i}-${idx}`} x={p.x + 10} y={p.y + 20 + idx * 16} fontSize="12" fill="#111827">{ln}</text>
+                        ))}
+                      </g>
                     ))}
-                  </ul>
+                  </svg>
+                  <div className="mt-2 text-[12px] text-gray-700">총 체인: {selectedChains.length} · 깊이: {depths.length}</div>
                 </>
               );
             })()}
