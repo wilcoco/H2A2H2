@@ -117,6 +117,69 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keyword, JSON.stringify(keywords || []), JSON.stringify(phrases || []), keywordMode, refreshKey]);
 
+  // Build grouped chains from search results (when not in thread mode)
+  useEffect(() => {
+    if (threadRootId) return;
+    let active = true;
+    (async () => {
+      try {
+        if (items.length === 0) { if (active) { setChains([]); setNodesByIdThread(new Map()); } return; }
+        // 1) Resolve roots for all items
+        const rootIds = new Set<string>();
+        await Promise.all(items.map(async (it) => {
+          try {
+            const r = await fetch(`/api/qa/map?qaId=${encodeURIComponent(it.id)}`, { cache: "no-store" });
+            const j = await r.json().catch(() => ({}));
+            const rid = j?.rootId ? String(j.rootId) : it.id;
+            rootIds.add(rid);
+          } catch {}
+        }));
+        // 2) Fetch maps for each root and enumerate root-to-leaf paths
+        const allNodes = new Map<string, QAEntry>();
+        const groups: string[][] = [];
+        const MAX_PATHS = 500;
+        for (const rid of Array.from(rootIds)) {
+          try {
+            const r = await fetch(`/api/qa/map?rootId=${encodeURIComponent(rid)}`, { cache: "no-store" });
+            const j = await r.json().catch(() => ({ nodes: [], edges: [] }));
+            const nodes: Array<{ id: string; question: string; summary?: string; answer?: string }> = Array.isArray(j?.nodes) ? j.nodes : [];
+            const edges: Array<{ sourceId: string; targetId: string; type: string }> = Array.isArray(j?.edges) ? j.edges : [];
+            nodes.forEach((n) => allNodes.set(n.id, { id: n.id, question: n.question, summary: n.summary, answer: n.answer } as QAEntry));
+            const pres = edges.filter((e) => (e.type || "").toLowerCase() === "precedes");
+            const nextOf = new Map<string, string[]>();
+            const inDeg = new Map<string, number>();
+            for (const n of nodes) { inDeg.set(n.id, 0); }
+            for (const e of pres) {
+              if (!nextOf.has(e.sourceId)) nextOf.set(e.sourceId, []);
+              nextOf.get(e.sourceId)!.push(e.targetId);
+              inDeg.set(e.targetId, (inDeg.get(e.targetId) || 0) + 1);
+            }
+            const starts: string[] = [rid];
+            function dfs(cur: string, path: string[], seen: Set<string>) {
+              if (groups.length >= MAX_PATHS) return;
+              if (seen.has(cur)) { groups.push([...path]); return; }
+              seen.add(cur);
+              const children = (nextOf.get(cur) || []).filter((nid) => allNodes.has(nid));
+              if (children.length === 0) { groups.push([...path]); return; }
+              for (const ch of children) {
+                dfs(ch, [...path, ch], new Set(seen));
+                if (groups.length >= MAX_PATHS) break;
+              }
+            }
+            for (const s of starts) {
+              dfs(s, [s], new Set());
+              if (groups.length >= MAX_PATHS) break;
+            }
+          } catch {}
+        }
+        if (active) { setChains(groups); setNodesByIdThread(allNodes); }
+      } catch {
+        if (active) { setChains([]); setNodesByIdThread(new Map()); }
+      }
+    })();
+    return () => { active = false; };
+  }, [threadRootId, items, keyword, keywordMode, JSON.stringify(keywords || []), JSON.stringify(phrases || [])]);
+
   // Thread mode: load nodes for the given root and show as a question-only list
   useEffect(() => {
     let active = true;
@@ -240,7 +303,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
           >지금 AI에게 묻기</button>
         </div>
       )}
-      {threadRootId ? (
+      {(threadRootId || chains.length > 0) ? (
         <ul className="space-y-2">
           {chains.map((chain, cidx) => (
             <li key={`ch-${cidx}`} className="rounded border border-gray-200/60 p-2 bg-white/60 dark:bg-gray-900/40">
@@ -249,15 +312,11 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
                 {chain.map((id) => {
                   const it = nodesByIdThread.get(id);
                   if (!it) return null;
-                  const inCtx = contextIds.includes(id);
                   return (
                     <li key={id} className="flex items-center justify-between gap-2">
                       <button className="min-w-0 text-left text-sm truncate hover:opacity-90" onClick={() => { onSelectChainPath?.(chain); onSelectQA(id); }}>
                         <span className="line-clamp-1">Q: {it.question}</span>
                       </button>
-                      <label className="text-[10px] inline-flex items-center gap-1 flex-shrink-0">
-                        <input type="checkbox" checked={!!inCtx} onChange={(e) => onToggleContext?.(id, e.target.checked)} /> 컨텍스트
-                      </label>
                     </li>
                   );
                 })}
@@ -268,7 +327,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
       ) : (
         <ul className="space-y-2">
           {items.map((it, idx) => (
-            <SuggestItem key={it.id} it={it} index={idx} onSelectQA={onSelectQA} inContext={contextIds.includes(it.id)} onToggleContext={onToggleContext} />
+            <SuggestItem key={it.id} it={it} index={idx} onSelectQA={onSelectQA} />
           ))}
         </ul>
       )}
@@ -276,7 +335,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
   );
 }
 
-function SuggestItem({ it, index, onSelectQA, inContext, onToggleContext }: { it: QAEntry; index: number; onSelectQA: (id: string) => void; inContext?: boolean; onToggleContext?: (id: string, next: boolean) => void }) {
+function SuggestItem({ it, index, onSelectQA }: { it: QAEntry; index: number; onSelectQA: (id: string) => void }) {
   return (
     <li className="rounded border border-gray-200/60 p-2 bg-white/60 dark:bg-gray-900/40">
       <div className="flex items-center justify-between gap-2">
@@ -284,9 +343,6 @@ function SuggestItem({ it, index, onSelectQA, inContext, onToggleContext }: { it
           <span className="text-gray-500 mr-1">Q{index + 1}.</span>
           <span className="line-clamp-1">{it.question}</span>
         </button>
-        <label className="text-[10px] inline-flex items-center gap-1 flex-shrink-0">
-          <input type="checkbox" checked={!!inContext} onChange={(e) => onToggleContext?.(it.id, e.target.checked)} /> 컨텍스트
-        </label>
       </div>
     </li>
   );
