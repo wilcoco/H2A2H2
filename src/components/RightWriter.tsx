@@ -247,6 +247,37 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
     try { setContentHtml(editorRef.current?.innerHTML || ""); } catch {}
   }
 
+  function applyBlock(tag: 'H1'|'H2'|'BLOCKQUOTE'|'PRE'|'P') {
+    const ed = editorRef.current; if (!ed) return;
+    focusEditor();
+    try {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      let node: Node | null = sel.anchorNode;
+      while (node && node !== ed && (node as HTMLElement).nodeType === 1 && !(node as HTMLElement).isContentEditable) node = node.parentNode;
+      while (node && node !== ed) {
+        if (node instanceof HTMLElement) {
+          const tn = node.tagName.toUpperCase();
+          if (['P','DIV','H1','H2','H3','H4','H5','H6','BLOCKQUOTE','PRE','LI'].includes(tn)) {
+            const current = node as HTMLElement;
+            const desired = tag === 'P' ? 'P' : tag;
+            const already = tn === desired;
+            const newTag = already ? 'P' : desired;
+            const repl = document.createElement(newTag);
+            repl.innerHTML = current.innerHTML;
+            current.replaceWith(repl);
+            const r = document.createRange(); r.selectNodeContents(repl); r.collapse(false);
+            sel.removeAllRanges(); sel.addRange(r);
+            lastRangeRef.current = r.cloneRange();
+            break;
+          }
+        }
+        node = node?.parentNode || null;
+      }
+    } catch {}
+    try { setContentHtml(ed.innerHTML); } catch {}
+  }
+
   function escapeHtml(s: string): string {
     return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] as string));
   }
@@ -282,6 +313,8 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
     <div className="flex flex-col gap-3">
       <div className="text-sm font-semibold">문서 작성</div>
       {error && <div className="text-xs text-red-600">{error}</div>}
+      {/* blocks hidden */}
+      {/* labels hidden */}
       <div className="text-[11px] text-gray-600">{qaId ? `Editing: ${qaId}` : "오른쪽 상단에서 대상 설정 또는 좌측 선택 후 '대상=센터'를 누르세요."}</div>
       {(createdBy || currentUserEmail) && (
         <div className="text-[11px] text-gray-600">{createdBy ? `by ${createdBy}` : (currentUserEmail ? `by ${currentUserEmail}` : null)}</div>
@@ -300,216 +333,54 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
           placeholder="제목을 입력하세요"
         />
       </div>
-      <div>
-        <div className="flex items-center gap-2 mb-1">
-          <div className="text-xs text-gray-600">블록</div>
-          <div className="ml-auto flex items-center gap-1">
-            <button className="text-[11px] px-2 py-0.5 rounded border" onClick={() => addChecklist()}>체크리스트 추가</button>
-            <button className="text-[11px] px-2 py-0.5 rounded border" onClick={() => addDecision()}>결정 추가</button>
-            <button className="text-[11px] px-2 py-0.5 rounded border" onClick={() => addCompare()}>비교표 추가</button>
-          </div>
-        </div>
-        {blocks.length === 0 ? (
-          <div className="text-[11px] text-gray-500">블록이 없습니다.</div>
-        ) : (
-          <ul className="space-y-2">
-            {blocks.map((b, i) => (
-              <li key={b.id} className="rounded border p-2 text-[12px] bg-white/60 dark:bg-gray-900/40">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="text-[11px] text-gray-600">{b.type}</div>
-                  <div className="ml-auto flex items-center gap-1">
-                    <button className="text-[10px] px-2 py-0.5 rounded border" onClick={() => moveBlock(i, -1)}>위</button>
-                    <button className="text-[10px] px-2 py-0.5 rounded border" onClick={() => moveBlock(i, +1)}>아래</button>
-                    <button className="text-[10px] px-2 py-0.5 rounded border" onClick={() => removeBlock(i)}>삭제</button>
-                  </div>
-                </div>
-                {b.type === 'ref' && (
-                  <div className="flex items-center gap-2">
-                    <div className="text-[11px]">참조 QA ID</div>
-                    <input className="text-xs border rounded px-2 py-1 flex-1" value={(b as RefBlock).qaId} onChange={(e) => {
-                      const v = e.target.value; setBlocks((arr) => arr.map((x, idx) => idx === i ? ({ ...(x as RefBlock), qaId: v }) as Block : x));
-                    }} />
-                  </div>
-                )}
-                {b.type === 'checklist' && (
-                  <div className="space-y-1">
-                    {(b as ChecklistBlock).items.map((it, j) => (
-                      <div key={it.id} className="flex items-center gap-2">
-                        <input type="checkbox" checked={it.done} onChange={(e) => {
-                          setBlocks((arr) => arr.map((x, idx) => idx === i ? ({ ...(x as ChecklistBlock), items: (x as ChecklistBlock).items.map((y, jj) => jj === j ? { ...y, done: e.target.checked } : y) }) as Block : x));
-                        }} />
-                        <input className="text-xs border rounded px-2 py-1 flex-1" value={it.text} onChange={(e) => {
-                          const v = e.target.value; setBlocks((arr) => arr.map((x, idx) => idx === i ? ({ ...(x as ChecklistBlock), items: (x as ChecklistBlock).items.map((y, jj) => jj === j ? { ...y, text: v } : y) }) as Block : x));
-                        }} />
-                        <button className="text-[10px] px-2 py-0.5 rounded border" onClick={() => {
-                          setBlocks((arr) => arr.map((x, idx) => idx === i ? ({ ...(x as ChecklistBlock), items: (x as ChecklistBlock).items.filter((_, jj) => jj !== j) }) as Block : x));
-                        }}>삭제</button>
-                      </div>
-                    ))}
-                    <button className="text-[10px] px-2 py-0.5 rounded border" onClick={() => {
-                      setBlocks((arr) => arr.map((x, idx) => idx === i ? ({ ...(x as ChecklistBlock), items: [...(x as ChecklistBlock).items, { id: uid('it_'), text: '', done: false }] }) as Block : x));
-                    }}>항목 추가</button>
-                  </div>
-                )}
-                {b.type === 'decision' && (
-                  <div className="space-y-1">
-                    <input className="text-xs border rounded px-2 py-1 w-full" placeholder="무엇(결정)" value={(b as DecisionBlock).what} onChange={(e) => setBlocks((arr) => arr.map((x, idx) => idx === i ? ({ ...(x as DecisionBlock), what: e.target.value }) as Block : x))} />
-                    <textarea className="text-xs border rounded px-2 py-1 w-full" placeholder="왜(배경/근거)" value={(b as DecisionBlock).why} onChange={(e) => setBlocks((arr) => arr.map((x, idx) => idx === i ? ({ ...(x as DecisionBlock), why: e.target.value }) as Block : x))} />
-                    <div className="flex items-center gap-2">
-                      <input className="text-xs border rounded px-2 py-1 flex-1" placeholder="담당자" value={(b as DecisionBlock).owner || ''} onChange={(e) => setBlocks((arr) => arr.map((x, idx) => idx === i ? ({ ...(x as DecisionBlock), owner: e.target.value }) as Block : x))} />
-                      <input className="text-xs border rounded px-2 py-1" type="date" value={(b as DecisionBlock).due || ''} onChange={(e) => setBlocks((arr) => arr.map((x, idx) => idx === i ? ({ ...(x as DecisionBlock), due: e.target.value }) as Block : x))} />
-                    </div>
-                    <div className="space-y-1">
-                      {(b as DecisionBlock).options.map((op, j) => (
-                        <div key={j} className="flex items-center gap-2">
-                          <input className="text-xs border rounded px-2 py-1 flex-1" value={op} onChange={(e) => setBlocks((arr) => arr.map((x, idx) => idx === i ? ({ ...(x as DecisionBlock), options: (x as DecisionBlock).options.map((oo, jj) => jj === j ? e.target.value : oo) }) as Block : x))} />
-                          <button className="text-[10px] px-2 py-0.5 rounded border" onClick={() => setBlocks((arr) => arr.map((x, idx) => idx === i ? ({ ...(x as DecisionBlock), options: (x as DecisionBlock).options.filter((_, jj) => jj !== j) }) as Block : x))}>삭제</button>
-                        </div>
-                      ))}
-                      <button className="text-[10px] px-2 py-0.5 rounded border" onClick={() => setBlocks((arr) => arr.map((x, idx) => idx === i ? ({ ...(x as DecisionBlock), options: [...(x as DecisionBlock).options, ''] }) as Block : x))}>옵션 추가</button>
-                    </div>
-                  </div>
-                )}
-                {b.type === 'compare' && (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <div className="text-[11px]">옵션</div>
-                      <input className="text-xs border rounded px-2 py-1" value={(b as CompareBlock).options.join(', ')} onChange={(e) => {
-                        const arr = e.target.value.split(',').map((s) => s.trim()).filter(Boolean);
-                        setBlocks((prev) => prev.map((x, idx) => {
-                          if (idx !== i) return x; const cb = x as CompareBlock;
-                          const cols = arr.length; const rows = cb.criteria.length;
-                          const cells = Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (__, c) => (cb.cells[r]?.[c] ?? '')));
-                          return { ...cb, options: arr, cells } as Block;
-                        }));
-                      }} />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="text-[11px]">기준</div>
-                      <input className="text-xs border rounded px-2 py-1" value={(b as CompareBlock).criteria.join(', ')} onChange={(e) => {
-                        const arr = e.target.value.split(',').map((s) => s.trim()).filter(Boolean);
-                        setBlocks((prev) => prev.map((x, idx) => {
-                          if (idx !== i) return x; const cb = x as CompareBlock;
-                          const rows = arr.length; const cols = cb.options.length;
-                          const cells = Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (__, c) => (cb.cells[r]?.[c] ?? '')));
-                          return { ...cb, criteria: arr, cells } as Block;
-                        }));
-                      }} />
-                    </div>
-                    <div className="overflow-auto">
-                      <table className="min-w-full text-[11px] border">
-                        <thead>
-                          <tr>
-                            <th className="border px-2 py-1 text-left">기준/옵션</th>
-                            {(b as CompareBlock).options.map((op, c) => (
-                              <th key={c} className="border px-2 py-1 text-left">{op}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(b as CompareBlock).criteria.map((cr, r) => (
-                            <tr key={r}>
-                              <td className="border px-2 py-1 font-medium">{cr}</td>
-                              {(b as CompareBlock).options.map((_, c) => (
-                                <td key={c} className="border p-0">
-                                  <textarea className="w-full h-16 text-[11px] p-1 outline-none" value={(b as CompareBlock).cells[r]?.[c] ?? ''} onChange={(e) => {
-                                    const v = e.target.value; setBlocks((prev) => prev.map((x, idx) => {
-                                      if (idx !== i) return x; const cb = x as CompareBlock; const cells = cb.cells.map((row) => row.slice()); cells[r][c] = v; return { ...cb, cells } as Block;
-                                    }));
-                                  }} />
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-      <div>
-        <div className="text-xs text-gray-600 mb-1">라벨</div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <label className="text-[11px] flex items-center gap-1">신뢰도
-            <select className="text-xs border rounded px-2 py-1" value={meta.reliability || ''} onChange={(e) => setMeta((m) => ({ ...m, reliability: e.target.value || undefined }))}>
-              <option value=""></option>
-              <option value="low">low</option>
-              <option value="medium">medium</option>
-              <option value="high">high</option>
-            </select>
-          </label>
-          <label className="text-[11px] flex items-center gap-1">출처
-            <select className="text-xs border rounded px-2 py-1" value={meta.source || ''} onChange={(e) => setMeta((m) => ({ ...m, source: e.target.value || undefined }))}>
-              <option value=""></option>
-              <option value="original">original</option>
-              <option value="derived">derived</option>
-              <option value="ai">ai</option>
-            </select>
-          </label>
-          <label className="text-[11px] flex items-center gap-1">최신성
-            <select className="text-xs border rounded px-2 py-1" value={meta.freshness || ''} onChange={(e) => setMeta((m) => ({ ...m, freshness: e.target.value || undefined }))}>
-              <option value=""></option>
-              <option value="new">new</option>
-              <option value="updated">updated</option>
-              <option value="stale">stale</option>
-            </select>
-          </label>
+      <div className="flex items-start gap-2 mb-1 flex-wrap">
+        <div className="text-xs text-gray-600 mt-1">내용</div>
+        <div className="flex-1 flex flex-wrap items-center gap-1">
+          <button className="text-[11px] px-2 py-0.5 rounded border" title="굵게" onMouseDown={(e)=>e.preventDefault()} onClick={() => exec("bold")}>B</button>
+          <button className="text-[11px] px-2 py-0.5 rounded border" title="기울임" onMouseDown={(e)=>e.preventDefault()} onClick={() => exec("italic")}>I</button>
+          <button className="text-[11px] px-2 py-0.5 rounded border" title="밑줄" onMouseDown={(e)=>e.preventDefault()} onClick={() => exec("underline")}>U</button>
+          <button className="text-[11px] px-2 py-0.5 rounded border" title="취소선" onMouseDown={(e)=>e.preventDefault()} onClick={() => exec("strikeThrough")}>S</button>
+          <span className="mx-1 text-gray-300">|</span>
+          <button className="text-[11px] px-2 py-0.5 rounded border" title="H1" onMouseDown={(e)=>e.preventDefault()} onClick={() => applyBlock('H1')}>H1</button>
+          <button className="text-[11px] px-2 py-0.5 rounded border" title="H2" onMouseDown={(e)=>e.preventDefault()} onClick={() => applyBlock('H2')}>H2</button>
+          <button className="text-[11px] px-2 py-0.5 rounded border" title="인용" onMouseDown={(e)=>e.preventDefault()} onClick={() => applyBlock('BLOCKQUOTE')}>❝</button>
+          <button className="text-[11px] px-2 py-0.5 rounded border" title="코드" onMouseDown={(e)=>e.preventDefault()} onClick={() => applyBlock('PRE')}>{"< >"}</button>
+          <span className="mx-1 text-gray-300">|</span>
+          <button className="text-[11px] px-2 py-0.5 rounded border" title="불릿" onMouseDown={(e)=>e.preventDefault()} onClick={() => exec("insertUnorderedList")}>• List</button>
+          <button className="text-[11px] px-2 py-0.5 rounded border" title="번호" onMouseDown={(e)=>e.preventDefault()} onClick={() => exec("insertOrderedList")}>1. List</button>
+          <span className="mx-1 text-gray-300">|</span>
+          <button className="text-[11px] px-2 py-0.5 rounded border" title="링크" onMouseDown={(e)=>e.preventDefault()} onClick={() => { const u = prompt("URL"); if (u) exec("createLink", u); }}>🔗</button>
+          <button className="text-[11px] px-2 py-0.5 rounded border" title="실행 취소" onMouseDown={(e)=>e.preventDefault()} onClick={() => exec("undo")}>↶</button>
+          <button className="text-[11px] px-2 py-0.5 rounded border" title="다시 실행" onMouseDown={(e)=>e.preventDefault()} onClick={() => exec("redo")}>↷</button>
+          <span className="mx-1 text-gray-300">|</span>
+          <button className="text-[11px] px-2 py-0.5 rounded border" title="서식 제거" onMouseDown={(e)=>e.preventDefault()} onClick={() => exec("removeFormat")}>Tx</button>
+          <button className="text-[11px] px-2 py-0.5 rounded border" title="모두 지우기" onMouseDown={(e)=>e.preventDefault()} onClick={() => { if (editorRef.current) { editorRef.current.innerHTML = ""; setContentHtml(""); } }}>Clear</button>
         </div>
       </div>
-      <div>
-        <div className="flex items-start gap-2 mb-1 flex-wrap">
-          <div className="text-xs text-gray-600 mt-1">내용</div>
-          <div className="flex-1 flex flex-wrap items-center gap-1">
-            <button className="text-[11px] px-2 py-0.5 rounded border" title="굵게" onClick={() => exec("bold")}>B</button>
-            <button className="text-[11px] px-2 py-0.5 rounded border" title="기울임" onClick={() => exec("italic")}>I</button>
-            <button className="text-[11px] px-2 py-0.5 rounded border" title="밑줄" onClick={() => exec("underline")}>U</button>
-            <button className="text-[11px] px-2 py-0.5 rounded border" title="취소선" onClick={() => exec("strikeThrough")}>S</button>
-            <span className="mx-1 text-gray-300">|</span>
-            <button className="text-[11px] px-2 py-0.5 rounded border" title="H1" onClick={() => exec("formatBlock", "<H1>")}>H1</button>
-            <button className="text-[11px] px-2 py-0.5 rounded border" title="H2" onClick={() => exec("formatBlock", "<H2>")}>H2</button>
-            <button className="text-[11px] px-2 py-0.5 rounded border" title="인용" onClick={() => exec("formatBlock", "<BLOCKQUOTE>")}>❝</button>
-            <button className="text-[11px] px-2 py-0.5 rounded border" title="코드" onClick={() => exec("formatBlock", "<PRE>")}>{"< >"}</button>
-            <span className="mx-1 text-gray-300">|</span>
-            <button className="text-[11px] px-2 py-0.5 rounded border" title="불릿" onClick={() => exec("insertUnorderedList")}>• List</button>
-            <button className="text-[11px] px-2 py-0.5 rounded border" title="번호" onClick={() => exec("insertOrderedList")}>1. List</button>
-            <span className="mx-1 text-gray-300">|</span>
-            <button className="text-[11px] px-2 py-0.5 rounded border" title="링크" onClick={() => { const u = prompt("URL"); if (u) exec("createLink", u); }}>🔗</button>
-            <button className="text-[11px] px-2 py-0.5 rounded border" title="실행 취소" onClick={() => exec("undo")}>↶</button>
-            <button className="text-[11px] px-2 py-0.5 rounded border" title="다시 실행" onClick={() => exec("redo")}>↷</button>
-            <span className="mx-1 text-gray-300">|</span>
-            <button className="text-[11px] px-2 py-0.5 rounded border" title="서식 제거" onClick={() => exec("removeFormat")}>Tx</button>
-            <button className="text-[11px] px-2 py-0.5 rounded border" title="모두 지우기" onClick={() => { if (editorRef.current) { editorRef.current.innerHTML = ""; setContentHtml(""); } }}>Clear</button>
-          </div>
-        </div>
-        <div
-          ref={editorRef}
-          className="min-h-[160px] rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60 whitespace-pre-wrap break-words"
-          contentEditable
-          suppressContentEditableWarning
-          tabIndex={0}
-          onInput={() => {
-            // Avoid setting state on each keystroke to prevent caret jump
-          }}
-          onMouseUp={() => {
-            try {
-              const sel = window.getSelection();
-              if (sel && sel.rangeCount > 0) lastRangeRef.current = sel.getRangeAt(0);
-            } catch {}
-          }}
-          onKeyUp={() => {
-            try {
-              const sel = window.getSelection();
-              if (sel && sel.rangeCount > 0) lastRangeRef.current = sel.getRangeAt(0);
-            } catch {}
-          }}
-          
-          dangerouslySetInnerHTML={{ __html: contentHtml }}
-        />
-      </div>
+      <div
+        ref={editorRef}
+        className="min-h-[160px] rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60 whitespace-pre-wrap break-words"
+        contentEditable
+        suppressContentEditableWarning
+        tabIndex={0}
+        onInput={() => {
+          // Avoid setting state on each keystroke to prevent caret jump
+        }}
+        onMouseUp={() => {
+          try {
+            const sel = window.getSelection();
+            if (sel && sel.rangeCount > 0) lastRangeRef.current = sel.getRangeAt(0);
+          } catch {}
+        }}
+        onKeyUp={() => {
+          try {
+            const sel = window.getSelection();
+            if (sel && sel.rangeCount > 0) lastRangeRef.current = sel.getRangeAt(0);
+          } catch {}
+        }}
+        
+        dangerouslySetInnerHTML={{ __html: contentHtml }}
+      />
       <div className="flex items-center gap-2">
         <button className="text-xs px-3 py-2 rounded bg-blue-600 text-white disabled:opacity-50" disabled={saving || !qaId} onClick={() => void save()}>{saving ? "Saving..." : "저장 (제목/내용/키워드)"}</button>
       </div>

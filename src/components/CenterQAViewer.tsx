@@ -866,14 +866,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
     let patchVal: unknown = rawPatch;
     try { if (typeof rawPatch === "string") patchVal = JSON.parse(rawPatch); } catch {}
     const hasLlmPatch = Array.isArray((patchVal as Record<string, unknown>)?.["ops"] as unknown[]);
-    const neighborIds: string[] = (() => {
-      const s = new Set<string>();
-      for (const e of mapEdges) {
-        if (e.targetId === qaId) s.add(e.sourceId);
-        if (e.sourceId === qaId) s.add(e.targetId);
-      }
-      return Array.from(s);
-    })();
+    // connected-nodes hidden per UX: show only the main QA chain and its follow-ups
     return (
       <div className="flex flex-col gap-2">
         <div className="text-sm font-semibold">Q: {data.question}</div>
@@ -955,63 +948,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           )}
           
         </div>
-        {neighborIds.length > 0 && (
-          <div className="mt-4">
-            <div className="text-xs text-gray-700 mb-1">연결된 노드</div>
-            <ul className="space-y-3">
-              {neighborIds.map((nid) => {
-                const node = mapNodes.find((n) => n.id === nid);
-                if (!node) return null;
-                const entry = fuMap[nid] || { input: "", loading: false, items: [] };
-                return (
-                  <li key={nid} className="rounded border border-gray-200/60 p-2 bg-white/60 dark:bg-gray-900/40">
-                    <div className="text-sm font-medium truncate">Q: {node.question}</div>
-                    <div className="mt-2 flex items-center gap-2">
-                      <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 카드에서 이어서 물어보기" value={fuMap[nid]?.input ?? ''} onFocus={() => setAnchor({ type: 'qa', id: nid })} onChange={(e) => setFuMap((m) => ({ ...m, [nid]: { ...(m[nid] || { input: '', loading: false, items: [] }), input: e.target.value } }))} />
-                      <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!!(fuMap[nid]?.loading) || !((fuMap[nid]?.input ?? '').trim())} onClick={() => { setAnchor({ type: 'qa', id: nid }); void askFollowUpFor(nid); }}>{fuMap[nid]?.loading ? "요청 중…" : "이 카드에서 답변 받기"}</button>
-                      {anchor?.type === 'qa' && anchor.id === nid && (
-                        <span className="text-[10px] px-1.5 py-[2px] rounded-full border bg-emerald-50 border-emerald-200 text-emerald-700">앵커</span>
-                      )}
-                    </div>
-                    {entry.items.length > 0 && (
-                      <div className="mt-2 space-y-2">
-                        {entry.items.map((cit, ci) => (
-                          <div key={`c-${nid}-${ci}`} className="py-2">
-                            <div className="text-[11px] text-gray-600 mb-1">
-                              관계: {(cit.relDir || relDir) === 'current_to_new' ? '기준 → 후속' : '후속 → 기준'} · {labelKoForType(cit.relType || relType)}
-                              {anchor?.type === 'fu' && anchor.index === ci && anchor.id === nid && (
-                                <span className="ml-2 text-[10px] px-1.5 py-[2px] rounded-full border bg-emerald-50 border-emerald-200 text-emerald-700">앵커</span>
-                              )}
-                            </div>
-                            <div className="text-sm font-semibold">Q: {cit.q}</div>
-                            <div className="text-sm whitespace-pre-wrap break-words mt-1">A: {cit.a}</div>
-                            <div className="mt-1 text-[10px] text-gray-500">{cit.respId ? `RID: ${cit.respId}` : ''}</div>
-                            <div className="mt-2 flex items-center gap-2 flex-wrap">
-                              <select className="text-xs border rounded px-2 py-1" value={cit.relType || relType} onChange={(e) => setFuMap((m) => { const val = e.target.value; const prev = m[nid] || { input: '', loading: false, items: [] }; const arr = [...prev.items]; const dir = defaultDirForType(val); arr[ci] = { ...arr[ci], relType: val, relDir: dir }; return { ...m, [nid]: { ...prev, items: arr } }; })}>
-                                {Object.entries(REL_HEADS).map(([hk, hv]) => (
-                                  <optgroup key={hk} label={hv.label}>
-                                    {hv.types.map((opt) => (
-                                      <option key={opt.type} value={opt.type}>{opt.label}</option>
-                                    ))}
-                                  </optgroup>
-                                ))}
-                              </select>
-                              <select className="text-xs border rounded px-2 py-1" value={cit.relDir || relDir} onChange={(e) => setFuMap((m) => { const prev = m[nid] || { input: '', loading: false, items: [] }; const arr = [...prev.items]; arr[ci] = { ...arr[ci], relDir: e.target.value as RelDir }; return { ...m, [nid]: { ...prev, items: arr } }; })}>
-                                <option value="current_to_new">현재 → 후속</option>
-                                <option value="new_to_current">후속 → 현재</option>
-                              </select>
-                              <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50" disabled={pairBusy} onClick={() => void savePairAndRelAtFor(nid, ci)}>{pairBusy ? "저장 중…" : "두 Q&A 저장 및 관계 생성"}</button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
+        {/* 연결된 노드 섹션 숨김 */}
         {editing && (
           <>
             <textarea className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" rows={4} value={editSummary} onChange={(e) => setEditSummary(e.target.value)} />
