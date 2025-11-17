@@ -34,6 +34,8 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
   const [submittedQuery, setSubmittedQuery] = useState<string>("");
   const searchKey = (keyword || "").trim();
   const searchActive = !!(searchKey || (Array.isArray(keywords) && keywords.length) || (Array.isArray(phrases) && phrases.length) || submittedQuery);
+  const [edgesAll, setEdgesAll] = useState<Array<{ sourceId: string; targetId: string; type: string }>>([]);
+  const [showGraph, setShowGraph] = useState(false);
 
   async function search(next?: string) {
     if ((keyword || "").trim() || (keywords && keywords.length) || (phrases && phrases.length)) return; // 키워드/복합어 모드일 땐 텍스트 검색 비활성화
@@ -132,7 +134,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
     let active = true;
     (async () => {
       try {
-        if (items.length === 0) { if (active) { setChains([]); setNodesByIdThread(new Map()); setChainsLoading(false); } return; }
+        if (items.length === 0) { if (active) { setChains([]); setNodesByIdThread(new Map()); setChainsLoading(false); setEdgesAll([]); } return; }
         setChainsLoading(true);
         // 1) Resolve roots for all items
         const rootIds = new Set<string>();
@@ -146,6 +148,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
         }));
         // 2) Fetch maps for each root and enumerate root-to-leaf paths
         const allNodes = new Map<string, QAEntry>();
+        const allEdges: Array<{ sourceId: string; targetId: string; type: string }> = [];
         const groups: string[][] = [];
         const MAX_PATHS = 500;
         for (const rid of Array.from(rootIds)) {
@@ -155,6 +158,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
             const nodes: Array<{ id: string; question: string; summary?: string; answer?: string }> = Array.isArray(j?.nodes) ? j.nodes : [];
             const edges: Array<{ sourceId: string; targetId: string; type: string }> = Array.isArray(j?.edges) ? j.edges : [];
             nodes.forEach((n) => allNodes.set(n.id, { id: n.id, question: n.question, summary: n.summary, answer: n.answer } as QAEntry));
+            allEdges.push(...edges.map((e) => ({ sourceId: e.sourceId, targetId: e.targetId, type: String(e.type || "") })));
             const pres = edges.filter((e) => (e.type || "").toLowerCase() === "precedes");
             const nextOf = new Map<string, string[]>();
             const inDeg = new Map<string, number>();
@@ -182,7 +186,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
             }
           } catch {}
         }
-        if (active) { setChains(groups); setNodesByIdThread(allNodes); }
+        if (active) { setChains(groups); setNodesByIdThread(allNodes); setEdgesAll(allEdges); }
       } catch {
         if (active) { setChains([]); setNodesByIdThread(new Map()); }
       } finally {
@@ -241,7 +245,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
           dfs(s, [s], new Set());
           if (groups.length >= MAX_PATHS) break;
         }
-        if (active) { setItems(its); setNodesByIdThread(map); setChains(groups); }
+        if (active) { setItems(its); setNodesByIdThread(map); setChains(groups); setEdgesAll(edges); }
       } catch (e: unknown) {
         if (active) setError(e instanceof Error ? e.message : "Unknown error");
       } finally {
@@ -283,6 +287,11 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
             disabled={q.trim().length === 0}
             onClick={() => { const query = q.trim(); if (query) { onClearKeyword?.(); setSubmittedQuery(query); void search(query); onAskAINow(query); } }}
           >AI에게 묻기</button>
+          <button
+            className="text-xs px-2 py-2 rounded border text-gray-700 disabled:opacity-50"
+            disabled={nodesByIdThread.size === 0 || edgesAll.length === 0}
+            onClick={() => setShowGraph(true)}
+          >그래프 보기</button>
         </div>
         {(((keyword || "").trim()) || (keywords && keywords.length) || (phrases && phrases.length)) && (
           <div className="mt-2 flex items-center gap-2 flex-wrap">
@@ -372,6 +381,58 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
           ))}
         </ul>
       ))}
+      {showGraph && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+          <div className="bg-white dark:bg-gray-900 rounded shadow-lg p-3 w-[720px] max-w-[95vw] max-h-[85vh] overflow-auto">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm font-semibold">질문 그래프 (상위 5개)</div>
+              <button className="text-xs px-2 py-1 rounded border" onClick={() => setShowGraph(false)}>닫기</button>
+            </div>
+            {(() => {
+              const deg = new Map<string, number>();
+              for (const e of edgesAll) {
+                deg.set(e.sourceId, (deg.get(e.sourceId) || 0) + 1);
+                deg.set(e.targetId, (deg.get(e.targetId) || 0) + 1);
+              }
+              const arr = Array.from(nodesByIdThread.keys()).map((id) => ({ id, q: nodesByIdThread.get(id)?.question || "", d: deg.get(id) || 0 }));
+              arr.sort((a, b) => b.d - a.d);
+              const sel = arr.slice(0, 5).filter((n) => n.d > 0);
+              const idset = new Set(sel.map((n) => n.id));
+              const subE = edgesAll.filter((e) => idset.has(e.sourceId) && idset.has(e.targetId));
+              const W = 640, H = 360; const cx = W / 2, cy = H / 2; const n = sel.length || 1; const R = Math.min(W, H) / 2 - 60;
+              const pos = new Map<string, { x: number; y: number }>();
+              sel.forEach((n2, i) => { const ang = (i / n) * Math.PI * 2; pos.set(n2.id, { x: cx + R * Math.cos(ang), y: cy + R * Math.sin(ang) }); });
+              return (
+                <>
+                  <svg width={W} height={H} className="border rounded w-full">
+                    {subE.map((e, i) => {
+                      const a = pos.get(e.sourceId) || { x: cx, y: cy };
+                      const b = pos.get(e.targetId) || { x: cx, y: cy };
+                      return <line key={`e-${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#94a3b8" strokeWidth={1} />;
+                    })}
+                    {sel.map((n2, i) => {
+                      const p = pos.get(n2.id) || { x: cx, y: cy };
+                      const label = (n2.q || "").slice(0, 16);
+                      return (
+                        <g key={`n-${i}`}>
+                          <circle cx={p.x} cy={p.y} r={18} fill="#1f2937" />
+                          <text x={p.x} y={p.y - 26} textAnchor="middle" fontSize={11} fill="#475569">{n2.d}</text>
+                          <text x={p.x} y={p.y + 4} textAnchor="middle" fontSize={11} fill="#fff">{label}</text>
+                        </g>
+                      );
+                    })}
+                  </svg>
+                  <ul className="mt-2 text-[12px] text-gray-700 space-y-1">
+                    {sel.map((n2, i) => (
+                      <li key={`li-${i}`}>• {n2.q} <span className="text-[11px] text-gray-500">({n2.d})</span></li>
+                    ))}
+                  </ul>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

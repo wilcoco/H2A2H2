@@ -82,16 +82,12 @@ type Props = {
   currentUserEmail?: string;
   onKeywordClick?: (kw: string) => void;
   onKeywordSearch?: (opts: { keywords?: string[]; phrases?: string[]; mode?: "any" | "all" }) => void;
-  onSetSource?: (id: string) => void;
-  onSetTarget?: (id: string) => void;
-  onSetCard?: (id: string) => void;
-  onGraphChanged?: () => void;
   selectedChainPath?: string[];
 };
 
 type QaData = { id?: string; question: string; answer?: string; summary?: string; patch?: unknown; published?: boolean; createdBy?: string; lastResponseId?: string };
 
-export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, aiModel, aiFallbackUsed, aiResponseId, provider, detail, lockContext, onToggleLock, onSetPrevRespId, onOpenThread, onShared, onPinned, refreshKey, onSelectQA, currentUserEmail, onKeywordClick, onKeywordSearch, onSetSource, onSetTarget, onSetCard, onGraphChanged, selectedChainPath }: Props) {
+export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, aiModel, aiFallbackUsed, aiResponseId, provider, detail, lockContext, onToggleLock, onSetPrevRespId, onOpenThread, onShared, onPinned, refreshKey, onSelectQA, currentUserEmail, onKeywordClick, onKeywordSearch, selectedChainPath }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<QaData | null>(null);
@@ -100,9 +96,6 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   const [saving, setSaving] = useState(false);
   const [voteBusy, setVoteBusy] = useState(false);
   const [newSummary, setNewSummary] = useState("");
-  const [note, setNote] = useState("");
-  const [savingNote, setSavingNote] = useState(false);
-  const [notes, setNotes] = useState<Array<{ id: string; userId?: string; content: string; createdAt: string }>>([]);
   const [mapNodes, setMapNodes] = useState<Array<{ id: string; question: string; summary?: string; answer?: string }>>([]);
   const [mapEdges, setMapEdges] = useState<Array<{ sourceId: string; targetId: string; type: string }>>([]);
   const [publishing, setPublishing] = useState(false);
@@ -654,42 +647,9 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
     setFuItems(mapped);
   }, [qaId, chainUnder.length]);
 
-  async function saveNote() {
-    const content = note.trim();
-    if (!qaId || !content) return;
-    try {
-      setSavingNote(true);
-      const res = await fetch("/api/qa/note", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId, content }) });
-      if (!res.ok) throw new Error("Note failed");
-      setNote("");
-      // refresh notes
-      const r = await fetch(`/api/qa/note?qaId=${encodeURIComponent(qaId)}`, { cache: "no-store" });
-      if (r.ok) {
-        const j = await r.json();
-        setNotes(Array.isArray(j?.notes) ? j.notes : []);
-      }
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Unknown error");
-    } finally {
-      setSavingNote(false);
-    }
-  }
+  // notes feature removed
 
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      if (!qaId) { if (active) setNotes([]); return; }
-      try {
-        const r = await fetch(`/api/qa/note?qaId=${encodeURIComponent(qaId)}`, { cache: "no-store" });
-        if (!r.ok) throw new Error("Notes failed");
-        const j = await r.json();
-        if (active) setNotes(Array.isArray(j?.notes) ? j.notes : []);
-      } catch {
-        if (active) setNotes([]);
-      }
-    })();
-    return () => { active = false; };
-  }, [qaId]);
+  // notes fetch effect removed
 
   useEffect(() => {
     if (qaId && data?.lastResponseId) { onSetPrevRespId?.(String(data.lastResponseId)); return; }
@@ -877,7 +837,6 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           {data.lastResponseId && <span className="truncate max-w-[50%]" title={data.lastResponseId}>RID: {data.lastResponseId}</span>}
         </div>
         <div className="mt-2 flex items-center gap-2">
-          <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white" onClick={() => { if (qaId) onSetCard?.(qaId); }}>가이드에 추가</button>
           <button className="text-xs px-2 py-1 rounded border" onClick={() => setEditing((v) => !v)}>{editing ? "편집 취소" : "개선하기"}</button>
           <button className="text-xs px-2 py-1 rounded border" onClick={() => { if (!qaId) return; try { const url = location.origin + "/?qa=" + encodeURIComponent(qaId); navigator.clipboard?.writeText(url); } catch {} }}>공유하기</button>
         </div>
@@ -958,33 +917,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             </div>
           </>
         )}
-        <div className="flex items-center gap-2 mt-2">
-          <button className="text-xs px-2 py-1 rounded border" disabled={!qaId} onClick={() => qaId && onSetSource?.(qaId)}>Set Source</button>
-          <button className="text-xs px-2 py-1 rounded border" disabled={!qaId} onClick={() => qaId && onSetTarget?.(qaId)}>Set Target</button>
-          <button className="text-xs px-2 py-1 rounded border" disabled={!qaId} onClick={() => qaId && onSetCard?.(qaId)}>Set Card</button>
-        </div>
-        <div className="mt-2">
-          <div className="text-xs text-gray-600 mb-1">노트</div>
-          <textarea
-            className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60"
-            rows={3}
-            placeholder="참고/근거/메모"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            id="center-note"
-            name="center-note"
-          />
-          <div className="mt-1">
-            <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!qaId || savingNote || !note.trim()} onClick={() => void saveNote()}>{savingNote ? "Saving..." : "저장"}</button>
-          </div>
-          {notes.length > 0 && (
-            <ul className="mt-2 space-y-1">
-              {notes.map((n) => (
-                <li key={n.id} className="text-[11px] text-gray-700 whitespace-pre-wrap border rounded p-2">{n.content}</li>
-              ))}
-            </ul>
-          )}
-        </div>
+        {/* Set Source/Target/Card and notes removed */}
         {hasLlmPatch && (
           <div className="mt-2">
             <PatchPreviewGraph patch={patchVal as LlmPatch} />
