@@ -176,15 +176,12 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
     return () => document.removeEventListener("selectionchange", onSelChange as EventListener);
   }, []);
 
-  // Auto-populate editor with the currently visible center chain (root→leaf)
+  // Sync editor content with the currently visible center chain whenever it changes
   useEffect(() => {
     let active = true;
     (async () => {
       try {
         if (!centerChainIds || centerChainIds.length === 0) return;
-        const el = editorRef.current;
-        const isEmpty = !el || ((el.innerText || "").trim().length === 0 && (contentHtml || "").trim().length === 0);
-        if (!isEmpty) return; // don't override existing edits
         const arr = await Promise.all(centerChainIds.map((id) => fetchQa(id)));
         const parts: string[] = [];
         arr.forEach((data, idx) => {

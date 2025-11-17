@@ -43,6 +43,54 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
 
+  // Ensure wheel/pointer events behave consistently across browsers (non-passive wheel)
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      setGZoom((z) => {
+        const next = e.deltaY < 0 ? z * 1.1 : z * 0.9;
+        return Math.max(0.3, Math.min(5, next));
+      });
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      setGDragging(true);
+      dragRef.current = { x: e.clientX, y: e.clientY };
+      try { (e.target as Element)?.setPointerCapture?.(e.pointerId); } catch {}
+    };
+    const onPointerUp = (e: PointerEvent) => {
+      setGDragging(false);
+      dragRef.current = null;
+      try { (e.target as Element)?.releasePointerCapture?.(e.pointerId); } catch {}
+    };
+    const onPointerMove = (e: PointerEvent) => {
+      if (!gDragging || !svgRef.current) return;
+      const rect = svgRef.current.getBoundingClientRect();
+      const dxPx = e.clientX - (dragRef.current?.x || e.clientX);
+      const dyPx = e.clientY - (dragRef.current?.y || e.clientY);
+      const W = Number((svgRef.current.viewBox.baseVal?.width || 0) || 0) || rect.width;
+      const H = Number((svgRef.current.viewBox.baseVal?.height || 0) || 0) || rect.height;
+      const unitX = (W / rect.width) / gZoom;
+      const unitY = (H / rect.height) / gZoom;
+      setGPanX((p) => p + dxPx * unitX);
+      setGPanY((p) => p + dyPx * unitY);
+      dragRef.current = { x: e.clientX, y: e.clientY };
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    el.addEventListener('pointerdown', onPointerDown);
+    el.addEventListener('pointerup', onPointerUp);
+    el.addEventListener('pointerleave', onPointerUp);
+    el.addEventListener('pointermove', onPointerMove);
+    return () => {
+      el.removeEventListener('wheel', onWheel as EventListener);
+      el.removeEventListener('pointerdown', onPointerDown as EventListener);
+      el.removeEventListener('pointerup', onPointerUp as EventListener);
+      el.removeEventListener('pointerleave', onPointerUp as EventListener);
+      el.removeEventListener('pointermove', onPointerMove as EventListener);
+    };
+  }, [gDragging, gZoom]);
+
   async function search(next?: string) {
     if ((keyword || "").trim() || (keywords && keywords.length) || (phrases && phrases.length)) return; // 키워드/복합어 모드일 땐 텍스트 검색 비활성화
     const query = (next ?? q).trim();
@@ -294,9 +342,8 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
             onClick={() => { const query = q.trim(); if (query) { onClearKeyword?.(); setSubmittedQuery(query); void search(query); onAskAINow(query); } }}
           >AI에게 묻기</button>
           <button
-            className="text-xs px-2 py-2 rounded border text-gray-700 disabled:opacity-50"
-            disabled={nodesByIdThread.size === 0 || chains.length === 0}
-            onClick={() => setShowGraph(true)}
+            className="text-xs px-2 py-2 rounded border text-gray-700"
+            onClick={() => { setShowGraph(true); setGZoom(1); setGPanX(0); setGPanY(0); }}
           >그래프 보기</button>
         </div>
         {(((keyword || "").trim()) || (keywords && keywords.length) || (phrases && phrases.length)) && (
@@ -401,6 +448,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
             </div>
             {(() => {
               const selectedChains = chains.slice(0, 5);
+              if (chainsLoading && selectedChains.length === 0) return <div className="text-[12px] text-gray-600">체인 구성 중…</div>;
               if (selectedChains.length === 0) return <div className="text-[12px] text-gray-600">체인이 없습니다.</div>;
               // depth -> unique node ids
               const colsMap = new Map<number, string[]>();
@@ -495,30 +543,54 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
               const H = Math.max(420, y0 + maxRows * rowGap + 40);
               return (
                 <>
-                  <svg width={W} height={H} className="border rounded w-full bg-white">
-                    {edges.map((e, i) => {
-                      const aKey = getKeyFor(e[0]);
-                      const bKey = getKeyFor(e[1]);
-                      if (!aKey || !bKey) return null;
-                      const a = pos.get(aKey)!; const b = pos.get(bKey)!;
-                      const ax = a.x + a.w; const ay = a.y + a.h / 2;
-                      const bx = b.x; const by = b.y + b.h / 2;
-                      const midx = (ax + bx) / 2;
-                      return (
-                        <g key={`e-${i}`}>
-                          <path d={`M ${ax} ${ay} C ${midx} ${ay}, ${midx} ${by}, ${bx} ${by}`} stroke="#94a3b8" strokeWidth="1.5" fill="none" />
-                        </g>
-                      );
-                    })}
-                    {Array.from(pos.entries()).map(([k, p], i) => (
-                      <g key={`n-${i}`}>
-                        <rect x={p.x} y={p.y} width={p.w} height={p.h} rx="6" ry="6" fill="#ffffff" stroke="#1f2937" strokeWidth="1.2" />
-                        {p.lines.map((ln, idx) => (
-                          <text key={`t-${i}-${idx}`} x={p.x + 10} y={p.y + 20 + idx * 16} fontSize="12" fill="#111827">{ln}</text>
+                  <div className="border rounded w-full bg-white" style={{ height: "70vh" }}>
+                    <svg
+                      ref={svgRef}
+                      className="w-full h-full"
+                      viewBox={`0 0 ${W} ${H}`}
+                      style={{ touchAction: 'none', cursor: gDragging ? 'grabbing' as const : 'grab' as const }}
+                      onWheel={(e) => { e.preventDefault(); setGZoom((z) => { const next = e.deltaY < 0 ? z * 1.1 : z * 0.9; return Math.max(0.3, Math.min(5, next)); }); }}
+                      onMouseDown={(e) => { setGDragging(true); dragRef.current = { x: e.clientX, y: e.clientY }; }}
+                      onMouseUp={() => { setGDragging(false); dragRef.current = null; }}
+                      onMouseLeave={() => { setGDragging(false); dragRef.current = null; }}
+                      onMouseMove={(e) => {
+                        if (!gDragging || !svgRef.current) return;
+                        const rect = svgRef.current.getBoundingClientRect();
+                        const dxPx = e.clientX - (dragRef.current?.x || e.clientX);
+                        const dyPx = e.clientY - (dragRef.current?.y || e.clientY);
+                        const unitX = (W / rect.width) / gZoom;
+                        const unitY = (H / rect.height) / gZoom;
+                        setGPanX((p) => p + dxPx * unitX);
+                        setGPanY((p) => p + dyPx * unitY);
+                        dragRef.current = { x: e.clientX, y: e.clientY };
+                      }}
+                    >
+                      <g transform={`translate(${gPanX} ${gPanY}) scale(${gZoom})`}>
+                        {edges.map((e, i) => {
+                          const aKey = getKeyFor(e[0]);
+                          const bKey = getKeyFor(e[1]);
+                          if (!aKey || !bKey) return null;
+                          const a = pos.get(aKey)!; const b = pos.get(bKey)!;
+                          const ax = a.x + a.w; const ay = a.y + a.h / 2;
+                          const bx = b.x; const by = b.y + b.h / 2;
+                          const midx = (ax + bx) / 2;
+                          return (
+                            <g key={`e-${i}`}>
+                              <path d={`M ${ax} ${ay} C ${midx} ${ay}, ${midx} ${by}, ${bx} ${by}`} stroke="#94a3b8" strokeWidth="1.5" fill="none" />
+                            </g>
+                          );
+                        })}
+                        {Array.from(pos.entries()).map(([k, p], i) => (
+                          <g key={`n-${i}`}>
+                            <rect x={p.x} y={p.y} width={p.w} height={p.h} rx="6" ry="6" fill="#ffffff" stroke="#1f2937" strokeWidth="1.2" />
+                            {p.lines.map((ln, idx) => (
+                              <text key={`t-${i}-${idx}`} x={p.x + 10} y={p.y + 20 + idx * 16} fontSize="12" fill="#111827">{ln}</text>
+                            ))}
+                          </g>
                         ))}
                       </g>
-                    ))}
-                  </svg>
+                    </svg>
+                  </div>
                   <div className="mt-2 text-[12px] text-gray-700">총 체인: {selectedChains.length} · 깊이: {depths.length}</div>
                 </>
               );
