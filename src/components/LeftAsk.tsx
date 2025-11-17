@@ -108,6 +108,16 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, refreshKey, keyword, JSON.stringify(keywords || []), JSON.stringify(phrases || []), threadRootId, searchActive]);
 
+  // When input is cleared and no keyword filters, exit search mode
+  useEffect(() => {
+    const kwLen = Array.isArray(keywords) ? keywords.length : 0;
+    const phLen = Array.isArray(phrases) ? phrases.length : 0;
+    if (q.trim().length === 0 && !searchKey && kwLen === 0 && phLen === 0) {
+      setSubmittedQuery("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, searchKey, JSON.stringify(keywords || []), JSON.stringify(phrases || [])]);
+
   useEffect(() => {
     if (threadRootId && !searchActive) return; // thread mode: keyword fetch handled separately unless search active
     if ((keyword || "").trim() || (keywords && keywords.length) || (phrases && phrases.length)) {
@@ -253,12 +263,9 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
                 const query = q.trim();
-                if (query) { onClearKeyword?.(); onAskAINow(query); }
+                if (query) { onClearKeyword?.(); setSubmittedQuery(query); void search(query); onAskAINow(query); }
               } else if (e.key === "Enter") {
-                e.preventDefault();
-                onClearKeyword?.();
-                const query = q.trim();
-                if (query) { setSubmittedQuery(query); void search(query); }
+                // no-op: only buttons or Ctrl/Cmd+Enter should trigger actions
               }
             }}
             placeholder="질문을 입력하세요"
@@ -267,9 +274,14 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
             name="left-ask"
           />
           <button
+            className="text-xs px-2 py-2 rounded border text-gray-700 disabled:opacity-50"
+            disabled={q.trim().length === 0}
+            onClick={() => { const query = q.trim(); if (query) { onClearKeyword?.(); setSubmittedQuery(query); void search(query); } }}
+          >기존 QA 검색</button>
+          <button
             className="text-xs px-2 py-2 rounded bg-emerald-600 text-white disabled:opacity-50"
             disabled={q.trim().length === 0}
-            onClick={() => { const query = q.trim(); if (query) { onClearKeyword?.(); onAskAINow(query); } }}
+            onClick={() => { const query = q.trim(); if (query) { onClearKeyword?.(); setSubmittedQuery(query); void search(query); onAskAINow(query); } }}
           >AI에게 묻기</button>
         </div>
         {(((keyword || "").trim()) || (keywords && keywords.length) || (phrases && phrases.length)) && (

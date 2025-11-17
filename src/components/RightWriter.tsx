@@ -5,12 +5,13 @@ import { useEffect, useRef, useState } from "react";
 type Props = {
   qaId?: string;
   centerQaId?: string;
+  centerChainIds?: string[];
   currentUserEmail?: string | null;
   onSetQaId?: (id: string) => void;
   onSaved?: () => void;
 };
 
-export default function RightWriter({ qaId, centerQaId, currentUserEmail, onSetQaId, onSaved }: Props) {
+export default function RightWriter({ qaId, centerQaId, centerChainIds, currentUserEmail, onSetQaId, onSaved }: Props) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +30,7 @@ export default function RightWriter({ qaId, centerQaId, currentUserEmail, onSetQ
   const [meta, setMeta] = useState<{ reliability?: string; source?: string; freshness?: string }>({});
   function uid(p = 'blk_') { return p + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4); }
 
-  async function fetchQa(id: string): Promise<{ question: string; summary?: string; answer?: string; createdBy?: string; patch?: any } | null> {
+  async function fetchQa(id: string): Promise<{ question: string; summary?: string; answer?: string; createdBy?: string; patch?: unknown } | null> {
     try {
       const r = await fetch(`/api/qa/${encodeURIComponent(id)}`, { cache: "no-store" });
       const j = await r.json().catch(() => null);
@@ -89,16 +90,24 @@ export default function RightWriter({ qaId, centerQaId, currentUserEmail, onSetQ
         const html = body ? body.split("\n").map((line: string) => `<p>${escapeHtml(line)}</p>`).join("") : "";
         setContentHtml(html);
         setCreatedBy(data.createdBy);
-        if (data.patch?.blocks && Array.isArray(data.patch.blocks)) {
-          setBlocks(data.patch.blocks as Block[]);
+        // Safely read patch.blocks and patch.meta
+        const patchObj = (data.patch && typeof data.patch === 'object') ? (data.patch as Record<string, unknown>) : null;
+        if (patchObj && Array.isArray(patchObj['blocks'])) {
+          setBlocks(patchObj['blocks'] as Block[]);
         } else {
           setBlocks([]);
         }
-        if (data.patch?.meta && typeof data.patch.meta === 'object') setMeta(data.patch.meta as any);
-        else setMeta({});
-      } catch (e: any) {
+        if (patchObj && typeof patchObj['meta'] === 'object' && patchObj['meta'] !== null) {
+          const m = patchObj['meta'] as { reliability?: unknown; source?: unknown; freshness?: unknown };
+          setMeta({
+            reliability: typeof m.reliability === 'string' ? m.reliability : undefined,
+            source: typeof m.source === 'string' ? m.source : undefined,
+            freshness: typeof m.freshness === 'string' ? m.freshness : undefined,
+          });
+        } else setMeta({});
+      } catch (e: unknown) {
         if (!active) return;
-        setError(e?.message || "Failed to load");
+        setError(e instanceof Error ? e.message : "Failed to load");
       } finally { if (active) setLoading(false); }
     })();
     return () => { active = false; };
@@ -118,8 +127,65 @@ export default function RightWriter({ qaId, centerQaId, currentUserEmail, onSetQ
         }
       } catch {}
     }
-    document.addEventListener("selectionchange", onSelChange);
-    return () => document.removeEventListener("selectionchange", onSelChange);
+    document.addEventListener("selectionchange", onSelChange as EventListener);
+    return () => document.removeEventListener("selectionchange", onSelChange as EventListener);
+  }, []);
+
+  // Auto-populate editor with the currently visible center chain (root→leaf)
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        if (!centerChainIds || centerChainIds.length === 0) return;
+        const el = editorRef.current;
+        const isEmpty = !el || ((el.innerText || "").trim().length === 0 && (contentHtml || "").trim().length === 0);
+        if (!isEmpty) return; // don't override existing edits
+        const arr = await Promise.all(centerChainIds.map((id) => fetchQa(id)));
+        const parts: string[] = [];
+        arr.forEach((data, idx) => {
+          if (!data) return;
+          parts.push(`<p><strong>Q${idx + 1}:</strong> ${escapeHtml(data.question)}</p>`);
+          const body = String(data.summary || data.answer || "");
+          if (body) parts.push(`<div>${escapeHtml(body).replace(/\n/g, "<br/>")}</div>`);
+          if (idx < arr.length - 1) parts.push("<hr/>");
+        });
+        const html = parts.join("");
+        if (!active) return;
+        if (editorRef.current) editorRef.current.innerHTML = html;
+        setContentHtml(html);
+      } catch {}
+    })();
+    return () => { active = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(centerChainIds)]);
+
+  // Make newly typed/pasted edits appear in red
+  useEffect(() => {
+    const el = editorRef.current;
+    if (!el) return;
+    function insertRed(text: string) {
+      const safe = escapeHtml(text);
+      try { document.execCommand("insertHTML", false, `<span style="color:#dc2626">${safe}</span>`); } catch {}
+      try { setContentHtml(editorRef.current?.innerHTML || ""); } catch {}
+    }
+    function onBeforeInput(e: InputEvent) {
+      try { if ((e as InputEvent).isComposing) return; } catch {}
+      if (e.inputType === "insertText" && typeof e.data === "string" && e.data.length > 0) {
+        e.preventDefault();
+        insertRed(e.data);
+      }
+    }
+    function onPaste(e: ClipboardEvent) {
+      e.preventDefault();
+      const text = e.clipboardData?.getData("text/plain") || "";
+      if (text) insertRed(text);
+    }
+    el.addEventListener("beforeinput", onBeforeInput as EventListener, true);
+    el.addEventListener("paste", onPaste as EventListener);
+    return () => {
+      el.removeEventListener("beforeinput", onBeforeInput as EventListener, true);
+      el.removeEventListener("paste", onPaste as EventListener);
+    };
   }, []);
 
   function focusEditor() {
@@ -157,16 +223,16 @@ export default function RightWriter({ qaId, centerQaId, currentUserEmail, onSetQ
         body: JSON.stringify({ qaId, question: (title || "").trim() || undefined, summary: textContent || undefined, patch })
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error || "Save failed");
+        const err = await res.json().catch(() => ({} as { error?: string }));
+        throw new Error(err && typeof err.error === 'string' ? err.error : "Save failed");
       }
       // Regenerate keywords (words + phrases)
       try {
         await fetch("/api/qa/keywords", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId, force: true, max: 8 }) });
       } catch {}
       onSaved?.();
-    } catch (e: any) {
-      setError(e?.message || "Save failed");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Save failed");
     } finally {
       setSaving(false);
     }

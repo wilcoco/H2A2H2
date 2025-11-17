@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import LeftAsk from "@/components/LeftAsk";
 import CenterQAViewer from "@/components/CenterQAViewer";
 import ThreadDrawer from "@/components/ThreadDrawer";
-import RightRelations from "@/components/RightRelations";
 import RightWriter from "@/components/RightWriter";
 import type { GraphNode, GraphEdge, Work, LlmPatch, NodeType, EdgeType } from "@/types/graph";
 import AuthModal from "@/components/AuthModal";
@@ -46,9 +45,7 @@ export default function Home() {
   const [centerQuestion, setCenterQuestion] = useState<string>("");
   const [centerAiAnswer, setCenterAiAnswer] = useState<string>("");
   const [threadOpen, setThreadOpen] = useState(false);
-  const [connectMode, setConnectMode] = useState(false);
-  const [relTargetId, setRelTargetId] = useState<string | null>(null);
-  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
+  // relations UI removed
   const [graphRefreshKey, setGraphRefreshKey] = useState(0);
   const [leftThreadRootId, setLeftThreadRootId] = useState<string | null>(null);
   const [leftSelectedPath, setLeftSelectedPath] = useState<string[] | null>(null);
@@ -58,17 +55,14 @@ export default function Home() {
   const [leftKeywordMode, setLeftKeywordMode] = useState<"any" | "all">("any");
   const [leftKeywords, setLeftKeywords] = useState<string[] | null>(null);
   const [leftPhrases, setLeftPhrases] = useState<string[] | null>(null);
-  const [relNavDirection, setRelNavDirection] = useState<"prev_to_current" | "current_to_prev">("prev_to_current");
-  const [forceSourceId, setForceSourceId] = useState<string | null>(null);
+  // relations UI removed
   const [provider, setProvider] = useState<"openai" | "anthropic">("openai");
   const [centerAiMeta, setCenterAiMeta] = useState<{ providerUsed?: "openai" | "anthropic"; modelUsed?: string; fallbackUsed?: boolean } | null>(null);
   const [centerPrevRespId, setCenterPrevRespId] = useState<string | null>(null);
   const [centerLockContext, setCenterLockContext] = useState<boolean>(true);
   const [selectedContextIds, setSelectedContextIds] = useState<string[]>([]);
   const [detail, setDetail] = useState<"short" | "normal" | "long">("normal");
-  const [rightTab, setRightTab] = useState<"relations" | "writer">("relations");
   const [writerQaId, setWriterQaId] = useState<string | null>(null);
-  const [rightSplit, setRightSplit] = useState<boolean>(false);
 
   useEffect(() => {
     let mounted = true;
@@ -79,8 +73,6 @@ export default function Home() {
       } catch {}
     })();
     try {
-      const saved = localStorage.getItem("rel_nav_direction");
-      if (saved === "current_to_prev" || saved === "prev_to_current") setRelNavDirection(saved);
       const prov = localStorage.getItem("ai_provider");
       if (prov === "openai" || prov === "anthropic") setProvider(prov);
       const det = localStorage.getItem("ai_detail");
@@ -89,9 +81,7 @@ export default function Home() {
     return () => { mounted = false; };
   }, []);
 
-  useEffect(() => {
-    try { localStorage.setItem("rel_nav_direction", relNavDirection); } catch {}
-  }, [relNavDirection]);
+  // removed relations nav persistence
 
   useEffect(() => {
     try { localStorage.setItem("ai_provider", provider); } catch {}
@@ -122,21 +112,7 @@ export default function Home() {
     return () => { active = false; };
   }, [selectedQaId, graphRefreshKey]);
 
-  // Hydrate pins when user changes
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        if (!user?.email) { if (active) setPinnedIds([]); return; }
-        const r = await fetch("/api/qa/pin", { cache: "no-store" });
-        if (!r.ok) { if (active) setPinnedIds([]); return; }
-        const j = await r.json();
-        const ids: string[] = Array.isArray(j?.ids) ? j.ids : [];
-        if (active) setPinnedIds(ids);
-      } catch { if (active) setPinnedIds([]); }
-    })();
-    return () => { active = false; };
-  }, [user?.email]);
+  // Removed: pins hydration (relations UI removed)
 
   // Removed: clearing target on source change to allow auto-defaulting (prev → current)
 
@@ -345,9 +321,6 @@ export default function Home() {
               setCenterAiAnswer("");
             }}
             onAskAINow={(q) => void askAiNow(q)}
-            connectMode={connectMode}
-            targetId={relTargetId}
-            onPickTarget={(id) => setRelTargetId(id)}
             refreshKey={graphRefreshKey}
             keyword={leftKeyword}
             keywordMode={leftKeywordMode}
@@ -389,24 +362,10 @@ export default function Home() {
                 setLeftKeyword(keywords.join(" "));
               }
             }}
-            onSetSource={(id) => {
-              setForceSourceId(id);
-            }}
-            onSetTarget={(id) => {
-              setRelTargetId(id);
-            }}
-            onSetCard={async (id) => {
-              setPinnedIds((prev) => (prev.includes(id) ? prev : [id, ...prev]));
-              try { await fetch("/api/qa/pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId: id }) }); } catch {}
-            }}
             onShared={(newId: string) => {
               setSelectedQaId(newId);
               setCenterAiAnswer("");
               setLastViewedQaId(newId);
-            }}
-            onPinned={async (id: string) => {
-              setPinnedIds((prev) => (prev.includes(id) ? prev : [id, ...prev]));
-              try { await fetch("/api/qa/pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId: id }) }); } catch {}
             }}
             refreshKey={graphRefreshKey}
             onGraphChanged={() => setGraphRefreshKey((k) => k + 1)}
@@ -422,89 +381,19 @@ export default function Home() {
 
         <aside className="rounded border border-gray-200/60 p-0 overflow-hidden flex flex-col">
           <div className="flex items-center border-b border-gray-200/60">
-            {!rightSplit && (
-              <>
-                <button
-                  className={`text-xs px-3 py-2 ${rightTab === 'relations' ? 'border-b-2 border-blue-600 text-blue-700' : 'text-gray-600'}`}
-                  onClick={() => setRightTab('relations')}
-                >관계 편집</button>
-                <button
-                  className={`text-xs px-3 py-2 ${rightTab === 'writer' ? 'border-b-2 border-blue-600 text-blue-700' : 'text-gray-600'}`}
-                  onClick={() => setRightTab('writer')}
-                >문서 작성</button>
-              </>
-            )}
-            <div className="ml-auto flex items-center gap-2 p-1">
-              <label className="text-[11px] flex items-center gap-1">
-                <input type="checkbox" checked={rightSplit} onChange={(e) => setRightSplit(e.target.checked)} /> 동시 보기
-              </label>
-            </div>
+            <div className="text-xs px-3 py-2 border-b-2 border-blue-600 text-blue-700">문서 작성</div>
           </div>
           <div className="p-2 md:p-3 overflow-auto flex-1">
-            {rightSplit ? (
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-2 h-full">
-                <div className="overflow-auto">
-                  <RightRelations
-                    qaId={selectedQaId || undefined}
-                    targetId={relTargetId}
-                    onTargetChange={(id) => setRelTargetId(id)}
-                    connectMode={connectMode}
-                    onConnectModeChange={(v) => setConnectMode(v)}
-                    pinnedIds={pinnedIds}
-                    onUnpin={(id) => setPinnedIds((arr) => arr.filter((x) => x !== id))}
-                    refreshKey={graphRefreshKey}
-                    onGraphChanged={() => setGraphRefreshKey((k) => k + 1)}
-                    navDirection={relNavDirection}
-                    onNavDirectionChange={(d) => setRelNavDirection(d)}
-                    forceSourceId={forceSourceId}
-                    writerQaId={writerQaId}
-                    onEdit={(id) => { setWriterQaId(id); setRightTab('writer'); }}
-                  />
-                </div>
-                <div className="overflow-auto">
-                  <RightWriter
-                    qaId={writerQaId || undefined}
-                    centerQaId={selectedQaId || undefined}
-                    currentUserEmail={user?.email || null}
-                    onSetQaId={(id: string) => setWriterQaId(id)}
-                    onSaved={() => {
-                      setGraphRefreshKey((k) => k + 1);
-                    }}
-                  />
-                </div>
-              </div>
-            ) : (
-              <>
-                {rightTab === 'relations' ? (
-                  <RightRelations
-                    qaId={selectedQaId || undefined}
-                    targetId={relTargetId}
-                    onTargetChange={(id) => setRelTargetId(id)}
-                    connectMode={connectMode}
-                    onConnectModeChange={(v) => setConnectMode(v)}
-                    pinnedIds={pinnedIds}
-                    onUnpin={(id) => setPinnedIds((arr) => arr.filter((x) => x !== id))}
-                    refreshKey={graphRefreshKey}
-                    onGraphChanged={() => setGraphRefreshKey((k) => k + 1)}
-                    navDirection={relNavDirection}
-                    onNavDirectionChange={(d) => setRelNavDirection(d)}
-                    forceSourceId={forceSourceId}
-                    writerQaId={writerQaId}
-                    onEdit={(id) => { setWriterQaId(id); setRightTab('writer'); }}
-                  />
-                ) : (
-                  <RightWriter
-                    qaId={writerQaId || undefined}
-                    centerQaId={selectedQaId || undefined}
-                    currentUserEmail={user?.email || null}
-                    onSetQaId={(id: string) => setWriterQaId(id)}
-                    onSaved={() => {
-                      setGraphRefreshKey((k) => k + 1);
-                    }}
-                  />
-                )}
-              </>
-            )}
+            <RightWriter
+              qaId={writerQaId || undefined}
+              centerQaId={selectedQaId || undefined}
+              centerChainIds={(leftSelectedPath && selectedQaId) ? ((leftSelectedPath.indexOf(selectedQaId) >= 0) ? leftSelectedPath.slice(leftSelectedPath.indexOf(selectedQaId)) : leftSelectedPath) : (selectedQaId ? [selectedQaId] : undefined)}
+              currentUserEmail={user?.email || null}
+              onSetQaId={(id: string) => setWriterQaId(id)}
+              onSaved={() => {
+                setGraphRefreshKey((k) => k + 1);
+              }}
+            />
           </div>
         </aside>
       </div>
