@@ -18,9 +18,10 @@ type Props = {
   contextIds?: string[];
   onToggleContext?: (id: string, next: boolean) => void;
   threadRootId?: string | null;
+  onSelectChainPath?: (path: string[]) => void;
 };
 
-export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId, onPickTarget, refreshKey, keyword, keywordMode = "any", keywords = null, phrases = null, onClearKeyword, contextIds = [], onToggleContext, threadRootId = null }: Props) {
+export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId, onPickTarget, refreshKey, keyword, keywordMode = "any", keywords = null, phrases = null, onClearKeyword, contextIds = [], onToggleContext, threadRootId = null, onSelectChainPath }: Props) {
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<QAEntry[]>([]);
@@ -54,7 +55,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
       const its: QAEntry[] = Array.isArray(j?.items) ? (j.items as QAEntry[]) : [];
       if (myId === reqIdRef.current) setItems(its);
     } catch (e: unknown) {
-      if ((e as any)?.name === "AbortError") return;
+      if (e instanceof DOMException && e.name === "AbortError") return;
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       // Only the latest request can turn off loading
@@ -90,7 +91,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
       const its: QAEntry[] = Array.isArray(j?.items) ? (j.items as QAEntry[]) : [];
       if (myId === reqIdRef.current) setItems(its);
     } catch (e: unknown) {
-      if ((e as any)?.name === "AbortError") return;
+      if (e instanceof DOMException && e.name === "AbortError") return;
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       if (myId === reqIdRef.current) {
@@ -183,7 +184,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => {
-              if ((e as any).isComposing) return; // allow IME composition
+              if (e.nativeEvent.isComposing) return; // allow IME composition
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
                 const query = q.trim();
@@ -251,7 +252,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
                   const inCtx = contextIds.includes(id);
                   return (
                     <li key={id} className="flex items-center justify-between gap-2">
-                      <button className="min-w-0 text-left text-sm truncate hover:opacity-90" onClick={() => onSelectQA(id)}>
+                      <button className="min-w-0 text-left text-sm truncate hover:opacity-90" onClick={() => { onSelectChainPath?.(chain); onSelectQA(id); }}>
                         <span className="line-clamp-1">Q: {it.question}</span>
                       </button>
                       <label className="text-[10px] inline-flex items-center gap-1 flex-shrink-0">

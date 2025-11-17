@@ -1,4 +1,5 @@
 /** @type {import('next').NextConfig} */
+const path = require('path');
 const nextConfig = {
   eslint: {
     // Avoid failing the build due to ESLint errors in CI/deploys.
@@ -9,6 +10,8 @@ const nextConfig = {
     // Avoid failing the build due to TypeScript type errors; address incrementally.
     ignoreBuildErrors: true,
   },
+  // Ensure Next traces/loads dependencies from this app directory (monorepo safety)
+  outputFileTracingRoot: path.join(__dirname),
 };
 
 module.exports = nextConfig;

@@ -86,12 +86,15 @@ type Props = {
   onSetTarget?: (id: string) => void;
   onSetCard?: (id: string) => void;
   onGraphChanged?: () => void;
+  selectedChainPath?: string[];
 };
 
-export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, aiModel, aiFallbackUsed, aiResponseId, provider, detail, lockContext, onToggleLock, onSetPrevRespId, onOpenThread, onShared, onPinned, refreshKey, onSelectQA, currentUserEmail, onKeywordClick, onKeywordSearch, onSetSource, onSetTarget, onSetCard, onGraphChanged }: Props) {
+type QaData = { id?: string; question: string; answer?: string; summary?: string; patch?: unknown; published?: boolean; createdBy?: string; lastResponseId?: string };
+
+export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, aiModel, aiFallbackUsed, aiResponseId, provider, detail, lockContext, onToggleLock, onSetPrevRespId, onOpenThread, onShared, onPinned, refreshKey, onSelectQA, currentUserEmail, onKeywordClick, onKeywordSearch, onSetSource, onSetTarget, onSetCard, onGraphChanged, selectedChainPath }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<any | null>(null);
+  const [data, setData] = useState<QaData | null>(null);
   const [editing, setEditing] = useState(false);
   const [editSummary, setEditSummary] = useState("");
   const [saving, setSaving] = useState(false);
@@ -233,9 +236,9 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           arr.splice(insertAt, 0, { q, a, respId: rid, baseQaId, relType, relDir });
           for (let k = 0; k < arr.length; k++) {
             if (k === insertAt) continue;
-            const bf = (arr[k] as any).baseFuIndex;
+            const bf = arr[k]?.baseFuIndex;
             if (typeof bf === "number" && bf >= insertAt) {
-              (arr[k] as any) = { ...(arr[k] as any), baseFuIndex: bf + 1 };
+              arr[k] = { ...arr[k], baseFuIndex: bf + 1 };
             }
           }
           return arr;
@@ -262,14 +265,17 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           return out;
         });
         // Also reset the main QA input so multiple branches can be asked easily
-        setFuMap((m) => ({
-          ...m,
-          [baseQaId]: { ...(m[baseQaId] || { input: "", items: [] } as any), input: "", loading: false }
-        }));
+        setFuMap((m) => {
+          const prev2 = m[baseQaId] || { input: "", loading: false, items: [] };
+          return { ...m, [baseQaId]: { ...prev2, input: "", loading: false } };
+        });
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
-      setFuMap((m) => ({ ...m, [baseQaId]: { ...(m[baseQaId] || { input: "", items: [] } as any), loading: false } }));
+      setFuMap((m) => {
+        const prev2 = m[baseQaId] || { input: "", loading: false, items: [] };
+        return { ...m, [baseQaId]: { ...prev2, loading: false } };
+      });
     }
   }
 
@@ -295,9 +301,9 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         // rebase indices for items shifted to the right
         for (let k = 0; k < arr.length; k++) {
           if (k === insertAt) continue; // skip the newly inserted item
-          const bf = (arr[k] as any).baseFuIndex;
+          const bf = arr[k]?.baseFuIndex;
           if (typeof bf === "number" && bf >= insertAt) {
-            (arr[k] as any) = { ...(arr[k] as any), baseFuIndex: bf + 1 };
+            arr[k] = { ...arr[k], baseFuIndex: bf + 1 };
           }
         }
         return arr;
@@ -344,9 +350,9 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         // reindex baseFuIndex for items shifted to the right
         for (let k = 0; k < arr.length; k++) {
           if (k === insertAt) continue;
-          const bf = (arr[k] as any).baseFuIndex;
+          const bf = arr[k]?.baseFuIndex;
           if (typeof bf === "number" && bf >= insertAt) {
-            (arr[k] as any) = { ...(arr[k] as any), baseFuIndex: bf + 1 };
+            arr[k] = { ...arr[k], baseFuIndex: bf + 1 };
           }
         }
         return arr;
@@ -420,7 +426,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           setFuItems((prevArr) => {
             const arr = [...prevArr];
             const baseIdx = item.baseFuIndex as number;
-            arr[baseIdx] = { ...arr[baseIdx], savedId: baseId! } as any;
+            arr[baseIdx] = { ...arr[baseIdx], savedId: baseId! };
             return arr;
           });
         }
@@ -450,8 +456,8 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         throw new Error(msg);
       }
       onGraphChanged?.();
-      if (rDir === "current_to_new") { onSetSource?.(baseId!); onSetTarget?.(newId); }
-      else { onSetSource?.(newId); onSetTarget?.(baseId!); }
+      if (rDir === "current_to_new") { onSetSource?.(baseId!); onSetTarget?.(newId!); }
+      else { onSetSource?.(newId!); onSetTarget?.(baseId!); }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally { setPairBusy(false); }
@@ -600,8 +606,21 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
     try {
       if (!qaId) { setChainUnder([]); return; }
       const idToNode = new Map(mapNodes.map((n) => [n.id, n] as const));
+      // If a specific chain path is provided and includes the current qaId, follow that path
+      if (Array.isArray(selectedChainPath) && selectedChainPath.includes(qaId)) {
+        const idx = selectedChainPath.indexOf(qaId);
+        const tail = selectedChainPath.slice(idx + 1);
+        const out: Array<{ id: string; question: string; answer?: string; summary?: string }> = [];
+        for (const id of tail) {
+          const node = idToNode.get(id);
+          if (node) out.push({ id: node.id, question: node.question, answer: node.answer, summary: node.summary });
+        }
+        setChainUnder(out);
+        return;
+      }
+      // Fallback heuristic: first-unseen forward walk
       const nexts = new Map<string, string[]>();
-      for (const e of mapEdges as any[]) {
+      for (const e of mapEdges) {
         if ((e?.type || "").toLowerCase() !== "precedes") continue;
         const s = e.sourceId; const t = e.targetId;
         if (!nexts.has(s)) nexts.set(s, []);
@@ -624,7 +643,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       }
       setChainUnder(out);
     } catch { setChainUnder([]); }
-  }, [qaId, JSON.stringify(mapEdges), JSON.stringify(mapNodes.map((n) => [n.id, n.answer, n.summary]))]);
+  }, [qaId, JSON.stringify(mapEdges), JSON.stringify(mapNodes.map((n) => [n.id, n.answer, n.summary])), JSON.stringify(selectedChainPath || [])]);
 
   // Prefill visible follow-ups from downstream chain when opening a saved QA
   useEffect(() => {
@@ -632,7 +651,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
     if (fuItems.length > 0) return;
     if (chainUnder.length === 0) return;
     const mapped = chainUnder.map((n) => ({ q: n.question, a: String(n.answer || n.summary || ""), respId: null as string | null, savedId: n.id }));
-    setFuItems(mapped as any);
+    setFuItems(mapped);
   }, [qaId, chainUnder.length]);
 
   async function saveNote() {
@@ -772,17 +791,33 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   }
 
   function PatchPreviewGraph({ patch }: { patch: LlmPatch }) {
-    const addedNodes = patch.ops.filter(op => op.op === "add_node").map(op => (op as any).node);
-    const addedEdges = patch.ops.filter(op => op.op === "add_edge").map(op => (op as any).edge);
+    type PatchNode = { id: string; type: NodeType; title: string };
+    type PatchEdge = { id: string; sourceId: string; targetId: string; type: EdgeType };
+    type AddNodeOp = { op: "add_node"; node: PatchNode };
+    type AddEdgeOp = { op: "add_edge"; edge: PatchEdge };
+
+    const isAddNodeOp = (op: unknown): op is AddNodeOp => {
+      if (typeof op !== "object" || !op) return false;
+      const o = op as Record<string, unknown>;
+      return o["op"] === "add_node" && typeof o["node"] === "object" && !!o["node"];
+    };
+    const isAddEdgeOp = (op: unknown): op is AddEdgeOp => {
+      if (typeof op !== "object" || !op) return false;
+      const o = op as Record<string, unknown>;
+      return o["op"] === "add_edge" && typeof o["edge"] === "object" && !!o["edge"];
+    };
+
+    const addedNodes: PatchNode[] = patch.ops.filter(isAddNodeOp).map((op) => op.node);
+    const addedEdges: PatchEdge[] = patch.ops.filter(isAddEdgeOp).map((op) => op.edge);
 
     const allTypes: NodeType[] = ["premise","inference","conclusion","claim","concept","evidence","source","qa"];
-    const present = new Set<NodeType>(addedNodes.map((n: any) => n.type as NodeType));
+    const present = new Set<NodeType>(addedNodes.map((n) => n.type));
     const cols: NodeType[] = allTypes.filter((t) => present.has(t));
     const colX = (col: number, W: number) => {
       const padding = 24; const span = W - padding * 2; return padding + (span * col) / Math.max(1, (cols.length - 1));
     };
-    const byType = new Map<NodeType, any[]>();
-    cols.forEach((t) => byType.set(t, addedNodes.filter((n: any) => n.type === t)));
+    const byType = new Map<NodeType, PatchNode[]>();
+    cols.forEach((t) => byType.set(t, addedNodes.filter((n) => n.type === t)));
     const maxRows = Math.max(1, ...cols.map((t) => (byType.get(t)?.length ?? 0)));
     const W = 360; const rowH = 44; const H = 24 + maxRows * rowH + 24;
     const pos = new Map<string, { x: number; y: number; t: NodeType; title: string }>();
@@ -795,15 +830,15 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
     return (
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-32 md:h-40">
         <defs>
-          {(["supports","refutes","relates_to","cites","infers"] as EdgeType[]).map((t) => (
+          {( ["supports","refutes","relates_to","cites","infers"] as EdgeType[] ).map((t) => (
             <marker key={t} id={`arrow-mini-${t}`} viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
               <path d="M 0 0 L 10 5 L 0 10 z" fill={colorFor(t)} />
             </marker>
           ))}
         </defs>
         {addedEdges
-          .filter((e: any) => pos.has(e.sourceId) && pos.has(e.targetId))
-          .map((e: any) => {
+          .filter((e) => pos.has(e.sourceId) && pos.has(e.targetId))
+          .map((e) => {
             const s = pos.get(e.sourceId)!; const t = pos.get(e.targetId)!; const stroke = colorFor(e.type);
             const midx = (s.x + t.x) / 2; const midy = (s.y + t.y) / 2;
             return (
@@ -827,10 +862,18 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   if (error) return <div className="text-xs text-red-600">{error}</div>;
 
   if (qaId && data) {
-    const rawPatch = (data as any)?.patch;
-    let patchAny: any = rawPatch;
-    try { if (typeof rawPatch === "string") patchAny = JSON.parse(rawPatch as string); } catch {}
-    const hasLlmPatch = !!(patchAny && Array.isArray(patchAny?.ops));
+    const rawPatch = (data as Record<string, unknown>)?.patch as unknown;
+    let patchVal: unknown = rawPatch;
+    try { if (typeof rawPatch === "string") patchVal = JSON.parse(rawPatch); } catch {}
+    const hasLlmPatch = Array.isArray((patchVal as Record<string, unknown>)?.["ops"] as unknown[]);
+    const neighborIds: string[] = (() => {
+      const s = new Set<string>();
+      for (const e of mapEdges) {
+        if (e.targetId === qaId) s.add(e.sourceId);
+        if (e.sourceId === qaId) s.add(e.targetId);
+      }
+      return Array.from(s);
+    })();
     return (
       <div className="flex flex-col gap-2">
         <div className="text-sm font-semibold">Q: {data.question}</div>
@@ -896,7 +939,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                         </optgroup>
                       ))}
                     </select>
-                    <select className="text-xs border rounded px-2 py-1" value={it.relDir || relDir} onChange={(e) => setFuItems((prev) => { const arr = [...prev]; arr[i] = { ...arr[i], relDir: e.target.value as any }; return arr; })}>
+                    <select className="text-xs border rounded px-2 py-1" value={it.relDir || relDir} onChange={(e) => setFuItems((prev) => { const arr = [...prev]; arr[i] = { ...arr[i], relDir: e.target.value as RelDir }; return arr; })}>
                       <option value="current_to_new">현재 → 후속</option>
                       <option value="new_to_current">후속 → 현재</option>
                     </select>
@@ -912,6 +955,63 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           )}
           
         </div>
+        {neighborIds.length > 0 && (
+          <div className="mt-4">
+            <div className="text-xs text-gray-700 mb-1">연결된 노드</div>
+            <ul className="space-y-3">
+              {neighborIds.map((nid) => {
+                const node = mapNodes.find((n) => n.id === nid);
+                if (!node) return null;
+                const entry = fuMap[nid] || { input: "", loading: false, items: [] };
+                return (
+                  <li key={nid} className="rounded border border-gray-200/60 p-2 bg-white/60 dark:bg-gray-900/40">
+                    <div className="text-sm font-medium truncate">Q: {node.question}</div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 카드에서 이어서 물어보기" value={fuMap[nid]?.input ?? ''} onFocus={() => setAnchor({ type: 'qa', id: nid })} onChange={(e) => setFuMap((m) => ({ ...m, [nid]: { ...(m[nid] || { input: '', loading: false, items: [] }), input: e.target.value } }))} />
+                      <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!!(fuMap[nid]?.loading) || !((fuMap[nid]?.input ?? '').trim())} onClick={() => { setAnchor({ type: 'qa', id: nid }); void askFollowUpFor(nid); }}>{fuMap[nid]?.loading ? "요청 중…" : "이 카드에서 답변 받기"}</button>
+                      {anchor?.type === 'qa' && anchor.id === nid && (
+                        <span className="text-[10px] px-1.5 py-[2px] rounded-full border bg-emerald-50 border-emerald-200 text-emerald-700">앵커</span>
+                      )}
+                    </div>
+                    {entry.items.length > 0 && (
+                      <div className="mt-2 space-y-2">
+                        {entry.items.map((cit, ci) => (
+                          <div key={`c-${nid}-${ci}`} className="py-2">
+                            <div className="text-[11px] text-gray-600 mb-1">
+                              관계: {(cit.relDir || relDir) === 'current_to_new' ? '기준 → 후속' : '후속 → 기준'} · {labelKoForType(cit.relType || relType)}
+                              {anchor?.type === 'fu' && anchor.index === ci && anchor.id === nid && (
+                                <span className="ml-2 text-[10px] px-1.5 py-[2px] rounded-full border bg-emerald-50 border-emerald-200 text-emerald-700">앵커</span>
+                              )}
+                            </div>
+                            <div className="text-sm font-semibold">Q: {cit.q}</div>
+                            <div className="text-sm whitespace-pre-wrap break-words mt-1">A: {cit.a}</div>
+                            <div className="mt-1 text-[10px] text-gray-500">{cit.respId ? `RID: ${cit.respId}` : ''}</div>
+                            <div className="mt-2 flex items-center gap-2 flex-wrap">
+                              <select className="text-xs border rounded px-2 py-1" value={cit.relType || relType} onChange={(e) => setFuMap((m) => { const val = e.target.value; const prev = m[nid] || { input: '', loading: false, items: [] }; const arr = [...prev.items]; const dir = defaultDirForType(val); arr[ci] = { ...arr[ci], relType: val, relDir: dir }; return { ...m, [nid]: { ...prev, items: arr } }; })}>
+                                {Object.entries(REL_HEADS).map(([hk, hv]) => (
+                                  <optgroup key={hk} label={hv.label}>
+                                    {hv.types.map((opt) => (
+                                      <option key={opt.type} value={opt.type}>{opt.label}</option>
+                                    ))}
+                                  </optgroup>
+                                ))}
+                              </select>
+                              <select className="text-xs border rounded px-2 py-1" value={cit.relDir || relDir} onChange={(e) => setFuMap((m) => { const prev = m[nid] || { input: '', loading: false, items: [] }; const arr = [...prev.items]; arr[ci] = { ...arr[ci], relDir: e.target.value as RelDir }; return { ...m, [nid]: { ...prev, items: arr } }; })}>
+                                <option value="current_to_new">현재 → 후속</option>
+                                <option value="new_to_current">후속 → 현재</option>
+                              </select>
+                              <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50" disabled={pairBusy} onClick={() => void savePairAndRelAtFor(nid, ci)}>{pairBusy ? "저장 중…" : "두 Q&A 저장 및 관계 생성"}</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
         {editing && (
           <>
             <textarea className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" rows={4} value={editSummary} onChange={(e) => setEditSummary(e.target.value)} />
@@ -950,7 +1050,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         </div>
         {hasLlmPatch && (
           <div className="mt-2">
-            <PatchPreviewGraph patch={patchAny as LlmPatch} />
+            <PatchPreviewGraph patch={patchVal as LlmPatch} />
           </div>
         )}
         
@@ -1034,7 +1134,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                         </optgroup>
                       ))}
                     </select>
-                    <select className="text-xs border rounded px-2 py-1" value={it.relDir || relDir} onChange={(e) => setFuItems((prev) => { const arr = [...prev]; arr[i] = { ...arr[i], relDir: e.target.value as any }; return arr; })}>
+                    <select className="text-xs border rounded px-2 py-1" value={it.relDir || relDir} onChange={(e) => setFuItems((prev) => { const arr = [...prev]; arr[i] = { ...arr[i], relDir: e.target.value as RelDir }; return arr; })}>
                       <option value="current_to_new">현재 → 후속</option>
                       <option value="new_to_current">후속 → 현재</option>
                     </select>
@@ -1054,7 +1154,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   }
 
   if (question && !aiAnswer) {
-    return <div className="text-xs text-gray-600">유사한 Q&A를 선택하거나 좌측에서 "지금 AI에게 묻기"를 눌러 답변을 받아보세요.</div>;
+    return <div className="text-xs text-gray-600">유사한 Q&amp;A를 선택하거나 좌측에서 &quot;지금 AI에게 묻기&quot;를 눌러 답변을 받아보세요.</div>;
   }
 
   return <div className="text-xs text-gray-500">좌측에서 질문을 입력하세요.</div>;

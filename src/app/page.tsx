@@ -51,6 +51,7 @@ export default function Home() {
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [graphRefreshKey, setGraphRefreshKey] = useState(0);
   const [leftThreadRootId, setLeftThreadRootId] = useState<string | null>(null);
+  const [leftSelectedPath, setLeftSelectedPath] = useState<string[] | null>(null);
   // removed: defaultSourceId. Source is set explicitly from Center actions only.
   const [lastViewedQaId, setLastViewedQaId] = useState<string | null>(null);
   const [leftKeyword, setLeftKeyword] = useState<string | null>(null);
@@ -188,7 +189,10 @@ export default function Home() {
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
       setCenterAiAnswer(String(j?.answer || ""));
-      setCenterAiMeta({ providerUsed: j?.providerUsed as any, modelUsed: j?.modelUsed as any, fallbackUsed: Boolean(j?.fallbackUsed) });
+      const providerUsed = j?.providerUsed === "openai" || j?.providerUsed === "anthropic" ? (j.providerUsed as "openai" | "anthropic") : undefined;
+      const modelUsed = typeof j?.modelUsed === "string" ? j.modelUsed : undefined;
+      const fallbackUsed = Boolean(j?.fallbackUsed);
+      setCenterAiMeta({ providerUsed, modelUsed, fallbackUsed });
       if (j?.responseId) try { setCenterPrevRespId(String(j.responseId)); } catch {}
     } catch {}
   }
@@ -200,7 +204,7 @@ export default function Home() {
       const tag = tgt?.tagName?.toLowerCase();
       const ae = (document.activeElement as HTMLElement | null);
       const aTag = ae?.tagName?.toLowerCase();
-      const isTyping = tag === "input" || tag === "textarea" || tag === "select" || (!!tgt && (tgt as any).isContentEditable) || aTag === "input" || aTag === "textarea" || aTag === "select" || (!!ae && (ae as any).isContentEditable);
+      const isTyping = tag === "input" || tag === "textarea" || tag === "select" || (!!tgt && tgt.isContentEditable) || aTag === "input" || aTag === "textarea" || aTag === "select" || (!!ae && ae.isContentEditable);
       if (isTyping) return;
       // Toggle thread drawer with 'f'
       if (e.key.toLowerCase() === "f" && !e.metaKey && !e.ctrlKey && !e.altKey) {
@@ -353,6 +357,7 @@ export default function Home() {
             contextIds={selectedContextIds}
             onToggleContext={(id, next) => setSelectedContextIds((prev) => next ? (prev.includes(id) ? prev : [...prev, id]) : prev.filter((x) => x !== id))}
             threadRootId={leftThreadRootId}
+            onSelectChainPath={(path) => setLeftSelectedPath(path)}
           />
         </aside>
 
@@ -411,6 +416,7 @@ export default function Home() {
               setCenterAiAnswer("");
             }}
             currentUserEmail={user?.email}
+            selectedChainPath={leftSelectedPath || undefined}
           />
         </main>
 
