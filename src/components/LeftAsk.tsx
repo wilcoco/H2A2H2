@@ -31,11 +31,11 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
   const [chains, setChains] = useState<string[][]>([]);
   const [nodesByIdThread, setNodesByIdThread] = useState<Map<string, QAEntry>>(new Map());
   const [chainsLoading, setChainsLoading] = useState(false);
+  const [submittedQuery, setSubmittedQuery] = useState<string>("");
   const searchKey = (keyword || "").trim();
-  const searchActive = !!(searchKey || (Array.isArray(keywords) && keywords.length) || (Array.isArray(phrases) && phrases.length) || q.trim());
+  const searchActive = !!(searchKey || (Array.isArray(keywords) && keywords.length) || (Array.isArray(phrases) && phrases.length) || submittedQuery);
 
   async function search(next?: string) {
-    if (threadRootId && !searchActive) return; // thread mode skips text search unless search active
     if ((keyword || "").trim() || (keywords && keywords.length) || (phrases && phrases.length)) return; // 키워드/복합어 모드일 땐 텍스트 검색 비활성화
     const query = (next ?? q).trim();
     if (!query) { setItems([]); setLoading(false); abortRef.current?.abort(); reqIdRef.current++; return; }
@@ -70,7 +70,6 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
   }
 
   async function searchByKeyword() {
-    if (threadRootId && !searchActive) return; // thread mode skips keyword search unless search active
     const key = (keyword || "").trim();
     const kwArr = Array.isArray(keywords) ? keywords.filter((s) => (s || "").trim().length > 0) : [];
     const phArr = Array.isArray(phrases) ? phrases.filter((s) => (s || "").trim().length > 0) : [];
@@ -105,10 +104,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
   }
 
   useEffect(() => {
-    if (threadRootId && !searchActive) return; // thread mode: do not debounce text search unless search active
-    if ((keyword || "").trim() || (keywords && keywords.length) || (phrases && phrases.length)) return; // 키워드/복합어 모드일 때는 텍스트 디바운스 검색 생략
-    const t = setTimeout(() => { void search(q); }, 250);
-    return () => clearTimeout(t);
+    // disable auto text search; only Enter triggers search
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, refreshKey, keyword, JSON.stringify(keywords || []), JSON.stringify(phrases || []), threadRootId, searchActive]);
 
@@ -261,7 +257,8 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
               } else if (e.key === "Enter") {
                 e.preventDefault();
                 onClearKeyword?.();
-                void search(q);
+                const query = q.trim();
+                if (query) { setSubmittedQuery(query); void search(query); }
               }
             }}
             placeholder="질문을 입력하세요"
@@ -300,7 +297,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
       </div>
       {error && <div className="text-xs text-red-600">{error}</div>}
       {loading && <div className="text-xs text-gray-500">검색 중...</div>}
-      {!loading && !threadRootId && items.length === 0 && q.trim().length > 0 && (
+      {!loading && !threadRootId && items.length === 0 && submittedQuery.length > 0 && (
         <div className="text-xs text-gray-700 space-y-2">
           <div>유사한 Q&A가 없습니다.</div>
           <button
