@@ -164,9 +164,50 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
     const el = editorRef.current;
     if (!el) return;
     function insertRed(text: string) {
-      const safe = escapeHtml(text);
-      try { document.execCommand("insertHTML", false, `<span style="color:#dc2626">${safe}</span>`); } catch {}
-      try { setContentHtml(editorRef.current?.innerHTML || ""); } catch {}
+      const ed = editorRef.current;
+      if (!ed) return;
+      const sel = window.getSelection();
+      if (!sel) return;
+      let range: Range | null = null;
+      if (sel.rangeCount > 0) {
+        range = sel.getRangeAt(0);
+      } else if (lastRangeRef.current) {
+        range = lastRangeRef.current;
+      }
+      if (!range) {
+        range = document.createRange();
+        range.setStart(ed, ed.childNodes.length);
+        range.collapse(true);
+      }
+      // Ensure the range is inside editor
+      const container = range.commonAncestorContainer as Node;
+      if (!ed.contains(container)) {
+        const endRange = document.createRange();
+        endRange.selectNodeContents(ed);
+        endRange.collapse(false);
+        range = endRange;
+      }
+      // Insert text (supporting newlines)
+      const lines = text.split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        const span = document.createElement("span");
+        span.style.color = "#dc2626";
+        span.textContent = lines[i];
+        range.deleteContents();
+        range.insertNode(span);
+        // Move caret after span
+        range.setStartAfter(span);
+        range.collapse(true);
+        if (i < lines.length - 1) {
+          const br = document.createElement("br");
+          range.insertNode(br);
+          range.setStartAfter(br);
+          range.collapse(true);
+        }
+      }
+      sel.removeAllRanges();
+      sel.addRange(range);
+      lastRangeRef.current = range.cloneRange();
     }
     function onBeforeInput(e: InputEvent) {
       try { if ((e as InputEvent).isComposing) return; } catch {}
@@ -451,7 +492,9 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
           contentEditable
           suppressContentEditableWarning
           tabIndex={0}
-          onInput={(e) => setContentHtml((e.target as HTMLDivElement).innerHTML)}
+          onInput={() => {
+            // Avoid setting state on each keystroke to prevent caret jump
+          }}
           onMouseUp={() => {
             try {
               const sel = window.getSelection();
