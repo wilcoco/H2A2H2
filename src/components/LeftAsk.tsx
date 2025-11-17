@@ -30,9 +30,12 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
   const reqIdRef = useRef(0);
   const [chains, setChains] = useState<string[][]>([]);
   const [nodesByIdThread, setNodesByIdThread] = useState<Map<string, QAEntry>>(new Map());
+  const [chainsLoading, setChainsLoading] = useState(false);
+  const searchKey = (keyword || "").trim();
+  const searchActive = !!(searchKey || (Array.isArray(keywords) && keywords.length) || (Array.isArray(phrases) && phrases.length) || q.trim());
 
   async function search(next?: string) {
-    if (threadRootId) return; // thread mode skips text search
+    if (threadRootId && !searchActive) return; // thread mode skips text search unless search active
     if ((keyword || "").trim() || (keywords && keywords.length) || (phrases && phrases.length)) return; // 키워드/복합어 모드일 땐 텍스트 검색 비활성화
     const query = (next ?? q).trim();
     if (!query) { setItems([]); setLoading(false); abortRef.current?.abort(); reqIdRef.current++; return; }
@@ -67,7 +70,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
   }
 
   async function searchByKeyword() {
-    if (threadRootId) return; // thread mode skips keyword search
+    if (threadRootId && !searchActive) return; // thread mode skips keyword search unless search active
     const key = (keyword || "").trim();
     const kwArr = Array.isArray(keywords) ? keywords.filter((s) => (s || "").trim().length > 0) : [];
     const phArr = Array.isArray(phrases) ? phrases.filter((s) => (s || "").trim().length > 0) : [];
@@ -102,28 +105,29 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
   }
 
   useEffect(() => {
-    if (threadRootId) return; // thread mode: do not debounce text search
+    if (threadRootId && !searchActive) return; // thread mode: do not debounce text search unless search active
     if ((keyword || "").trim() || (keywords && keywords.length) || (phrases && phrases.length)) return; // 키워드/복합어 모드일 때는 텍스트 디바운스 검색 생략
     const t = setTimeout(() => { void search(q); }, 250);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, refreshKey, keyword, JSON.stringify(keywords || []), JSON.stringify(phrases || [])]);
+  }, [q, refreshKey, keyword, JSON.stringify(keywords || []), JSON.stringify(phrases || []), threadRootId, searchActive]);
 
   useEffect(() => {
-    if (threadRootId) return; // thread mode: keyword fetch handled separately
+    if (threadRootId && !searchActive) return; // thread mode: keyword fetch handled separately unless search active
     if ((keyword || "").trim() || (keywords && keywords.length) || (phrases && phrases.length)) {
       void searchByKeyword();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keyword, JSON.stringify(keywords || []), JSON.stringify(phrases || []), keywordMode, refreshKey]);
+  }, [keyword, JSON.stringify(keywords || []), JSON.stringify(phrases || []), keywordMode, refreshKey, threadRootId, searchActive]);
 
-  // Build grouped chains from search results (when not in thread mode)
+  // Build grouped chains from search results (when not in thread mode or when search is active)
   useEffect(() => {
-    if (threadRootId) return;
+    if (threadRootId && !searchActive) return;
     let active = true;
     (async () => {
       try {
-        if (items.length === 0) { if (active) { setChains([]); setNodesByIdThread(new Map()); } return; }
+        if (items.length === 0) { if (active) { setChains([]); setNodesByIdThread(new Map()); setChainsLoading(false); } return; }
+        setChainsLoading(true);
         // 1) Resolve roots for all items
         const rootIds = new Set<string>();
         await Promise.all(items.map(async (it) => {
@@ -175,16 +179,18 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
         if (active) { setChains(groups); setNodesByIdThread(allNodes); }
       } catch {
         if (active) { setChains([]); setNodesByIdThread(new Map()); }
+      } finally {
+        if (active) setChainsLoading(false);
       }
     })();
     return () => { active = false; };
-  }, [threadRootId, items, keyword, keywordMode, JSON.stringify(keywords || []), JSON.stringify(phrases || [])]);
+  }, [threadRootId, items, keyword, keywordMode, JSON.stringify(keywords || []), JSON.stringify(phrases || []), searchActive]);
 
-  // Thread mode: load nodes for the given root and show as a question-only list
+  // Thread mode: load nodes for the given root and show as a question-only list (disabled when search is active)
   useEffect(() => {
     let active = true;
     (async () => {
-      if (!threadRootId) return;
+      if (!threadRootId || searchActive) return;
       try {
         setLoading(true);
         setError(null);
@@ -303,7 +309,33 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
           >지금 AI에게 묻기</button>
         </div>
       )}
-      {(threadRootId || chains.length > 0) ? (
+      {searchActive ? (
+        // Search mode chains (Option B: only after computed)
+        chainsLoading && chains.length === 0 ? (
+          <div className="text-[11px] text-gray-600">체인 구성 중…</div>
+        ) : (
+          <ul className="space-y-2">
+            {chains.map((chain, cidx) => (
+              <li key={`ch-${cidx}`} className="rounded border border-gray-200/60 p-2 bg-white/60 dark:bg-gray-900/40">
+                <div className="text-[11px] text-gray-600 mb-1">Chain {cidx + 1}{chainsLoading ? ' · 구성 중…' : ''}</div>
+                <ul className="space-y-1">
+                  {chain.map((id) => {
+                    const it = nodesByIdThread.get(id);
+                    if (!it) return null;
+                    return (
+                      <li key={id} className="flex items-center justify-between gap-2">
+                        <button className="min-w-0 text-left text-sm truncate hover:opacity-90" onClick={() => { onSelectChainPath?.(chain); onSelectQA(id); }}>
+                          <span className="line-clamp-1">Q: {it.question}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        )
+      ) : (threadRootId ? (
         <ul className="space-y-2">
           {chains.map((chain, cidx) => (
             <li key={`ch-${cidx}`} className="rounded border border-gray-200/60 p-2 bg-white/60 dark:bg-gray-900/40">
@@ -330,7 +362,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
             <SuggestItem key={it.id} it={it} index={idx} onSelectQA={onSelectQA} />
           ))}
         </ul>
-      )}
+      ))}
     </div>
   );
 }
