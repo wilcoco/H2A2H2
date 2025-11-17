@@ -36,6 +36,12 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
   const searchActive = !!(searchKey || (Array.isArray(keywords) && keywords.length) || (Array.isArray(phrases) && phrases.length) || submittedQuery);
   const [edgesAll, setEdgesAll] = useState<Array<{ sourceId: string; targetId: string; type: string }>>([]);
   const [showGraph, setShowGraph] = useState(false);
+  const [gZoom, setGZoom] = useState(1);
+  const [gPanX, setGPanX] = useState(0);
+  const [gPanY, setGPanY] = useState(0);
+  const [gDragging, setGDragging] = useState(false);
+  const dragRef = useRef<{ x: number; y: number } | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
 
   async function search(next?: string) {
     if ((keyword || "").trim() || (keywords && keywords.length) || (phrases && phrases.length)) return; // 키워드/복합어 모드일 땐 텍스트 검색 비활성화
@@ -386,7 +392,12 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
           <div className="bg-white dark:bg-gray-900 rounded shadow-lg p-3 w-[920px] max-w-[95vw] max-h-[85vh] overflow-auto">
             <div className="flex items-center justify-between mb-2">
               <div className="text-sm font-semibold">질문 체인 그래프 (Chain 1~5)</div>
-              <button className="text-xs px-2 py-1 rounded border" onClick={() => setShowGraph(false)}>닫기</button>
+              <div className="flex items-center gap-2">
+                <button className="text-xs px-2 py-1 rounded border" onClick={() => setGZoom((z) => Math.max(0.3, z * 0.8))}>-</button>
+                <button className="text-xs px-2 py-1 rounded border" onClick={() => { setGZoom(1); setGPanX(0); setGPanY(0); }}>Fit</button>
+                <button className="text-xs px-2 py-1 rounded border" onClick={() => setGZoom((z) => Math.min(5, z * 1.25))}>+</button>
+                <button className="text-xs px-2 py-1 rounded border" onClick={() => setShowGraph(false)}>닫기</button>
+              </div>
             </div>
             {(() => {
               const selectedChains = chains.slice(0, 5);
