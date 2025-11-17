@@ -20,6 +20,7 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
   const editorRef = useRef<HTMLDivElement | null>(null);
   const [createdBy, setCreatedBy] = useState<string | undefined>(undefined);
   const lastRangeRef = useRef<Range | null>(null);
+  const compSpanRef = useRef<HTMLSpanElement | null>(null);
   type RefBlock = { id: string; type: 'ref'; qaId: string };
   type ChecklistItem = { id: string; text: string; done: boolean };
   type ChecklistBlock = { id: string; type: 'checklist'; items: ChecklistItem[] };
@@ -29,6 +30,51 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [meta, setMeta] = useState<{ reliability?: string; source?: string; freshness?: string }>({});
   function uid(p = 'blk_') { return p + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4); }
+
+  // Helper to insert red text at current caret, preserving selection
+  function insertRedText(text: string) {
+    const ed = editorRef.current;
+    if (!ed) return;
+    const sel = window.getSelection();
+    if (!sel) return;
+    let range: Range | null = null;
+    if (sel.rangeCount > 0) {
+      range = sel.getRangeAt(0);
+    } else if (lastRangeRef.current) {
+      range = lastRangeRef.current;
+    }
+    if (!range) {
+      range = document.createRange();
+      range.selectNodeContents(ed);
+      range.collapse(false);
+    }
+    const container = range.commonAncestorContainer as Node;
+    if (!ed.contains(container)) {
+      const endRange = document.createRange();
+      endRange.selectNodeContents(ed);
+      endRange.collapse(false);
+      range = endRange;
+    }
+    const lines = text.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const span = document.createElement("span");
+      span.style.color = "#dc2626";
+      if (lines[i] === " ") span.innerHTML = "&nbsp;"; else span.textContent = lines[i];
+      range.deleteContents();
+      range.insertNode(span);
+      range.setStartAfter(span);
+      range.collapse(true);
+      if (i < lines.length - 1) {
+        const br = document.createElement("br");
+        range.insertNode(br);
+        range.setStartAfter(br);
+        range.collapse(true);
+      }
+    }
+    sel.removeAllRanges();
+    sel.addRange(range);
+    lastRangeRef.current = range.cloneRange();
+  }
 
   async function fetchQa(id: string): Promise<{ question: string; summary?: string; answer?: string; createdBy?: string; patch?: unknown } | null> {
     try {
@@ -163,57 +209,74 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
   useEffect(() => {
     const el = editorRef.current;
     if (!el) return;
-    function insertRed(text: string) {
-      const ed = editorRef.current;
-      if (!ed) return;
-      const sel = window.getSelection();
-      if (!sel) return;
-      let range: Range | null = null;
-      if (sel.rangeCount > 0) {
-        range = sel.getRangeAt(0);
-      } else if (lastRangeRef.current) {
-        range = lastRangeRef.current;
-      }
-      if (!range) {
-        range = document.createRange();
-        range.setStart(ed, ed.childNodes.length);
-        range.collapse(true);
-      }
-      // Ensure the range is inside editor
-      const container = range.commonAncestorContainer as Node;
-      if (!ed.contains(container)) {
-        const endRange = document.createRange();
-        endRange.selectNodeContents(ed);
-        endRange.collapse(false);
-        range = endRange;
-      }
-      // Insert text (supporting newlines)
-      const lines = text.split("\n");
-      for (let i = 0; i < lines.length; i++) {
-        const span = document.createElement("span");
-        span.style.color = "#dc2626";
-        span.textContent = lines[i];
-        range.deleteContents();
-        range.insertNode(span);
-        // Move caret after span
-        range.setStartAfter(span);
-        range.collapse(true);
-        if (i < lines.length - 1) {
-          const br = document.createElement("br");
-          range.insertNode(br);
-          range.setStartAfter(br);
-          range.collapse(true);
-        }
-      }
-      sel.removeAllRanges();
-      sel.addRange(range);
-      lastRangeRef.current = range.cloneRange();
-    }
+    function insertRed(text: string) { insertRedText(text); }
     function onBeforeInput(e: InputEvent) {
-      try { if ((e as InputEvent).isComposing) return; } catch {}
-      if (e.inputType === "insertText" && typeof e.data === "string" && e.data.length > 0) {
+      const it = (e as InputEvent).inputType;
+      // Handle IME composition text
+      if (it === "insertCompositionText") {
+        e.preventDefault();
+        const data = typeof e.data === "string" ? e.data : "";
+        const ed = editorRef.current;
+        if (!ed) return;
+        const sel = window.getSelection();
+        if (!sel) return;
+        let range: Range | null = null;
+        if (sel.rangeCount > 0) {
+          range = sel.getRangeAt(0);
+        } else if (lastRangeRef.current) {
+          range = lastRangeRef.current;
+        }
+        if (!range) {
+          range = document.createRange();
+          range.selectNodeContents(ed);
+          range.collapse(false);
+        }
+        if (!compSpanRef.current) {
+          const span = document.createElement("span");
+          span.style.color = "#dc2626";
+          span.textContent = data;
+          range.deleteContents();
+          range.insertNode(span);
+          range.setStartAfter(span);
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
+          lastRangeRef.current = range.cloneRange();
+          compSpanRef.current = span;
+        } else {
+          compSpanRef.current.textContent = data;
+          // keep caret after the span
+          range.setStartAfter(compSpanRef.current);
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
+          lastRangeRef.current = range.cloneRange();
+        }
+        return;
+      }
+      // Normal typing
+      if (it === "insertText" && typeof e.data === "string" && e.data.length > 0) {
         e.preventDefault();
         insertRed(e.data);
+        return;
+      }
+      // Enter key (paragraph)
+      if (it === "insertParagraph") {
+        e.preventDefault();
+        const sel = window.getSelection();
+        if (!sel) return;
+        let range: Range | null = null;
+        if (sel.rangeCount > 0) range = sel.getRangeAt(0);
+        if (!range) return;
+        const br = document.createElement("br");
+        range.deleteContents();
+        range.insertNode(br);
+        range.setStartAfter(br);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        lastRangeRef.current = range.cloneRange();
+        return;
       }
     }
     function onPaste(e: ClipboardEvent) {
@@ -222,9 +285,14 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
       if (text) insertRed(text);
     }
     el.addEventListener("beforeinput", onBeforeInput as EventListener, true);
+    function onCompositionEnd() {
+      compSpanRef.current = null;
+    }
+    el.addEventListener("compositionend", onCompositionEnd as EventListener);
     el.addEventListener("paste", onPaste as EventListener);
     return () => {
       el.removeEventListener("beforeinput", onBeforeInput as EventListener, true);
+      el.removeEventListener("compositionend", onCompositionEnd as EventListener);
       el.removeEventListener("paste", onPaste as EventListener);
     };
   }, []);
@@ -488,7 +556,7 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
         </div>
         <div
           ref={editorRef}
-          className="min-h-[160px] rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60"
+          className="min-h-[160px] rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60 whitespace-pre-wrap break-words"
           contentEditable
           suppressContentEditableWarning
           tabIndex={0}
@@ -506,6 +574,17 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
               const sel = window.getSelection();
               if (sel && sel.rangeCount > 0) lastRangeRef.current = sel.getRangeAt(0);
             } catch {}
+          }}
+          onKeyDown={(e) => {
+            // Fallback for browsers where beforeinput may not fire for Space/Enter
+            if ((e as unknown as { nativeEvent?: { isComposing?: boolean } }).nativeEvent?.isComposing) return;
+            if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) {
+              e.preventDefault();
+              insertRedText(e.key);
+            } else if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+              e.preventDefault();
+              insertRedText('\n');
+            }
           }}
           dangerouslySetInnerHTML={{ __html: contentHtml }}
         />
