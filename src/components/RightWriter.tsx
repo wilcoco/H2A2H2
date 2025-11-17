@@ -20,7 +20,6 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
   const editorRef = useRef<HTMLDivElement | null>(null);
   const [createdBy, setCreatedBy] = useState<string | undefined>(undefined);
   const lastRangeRef = useRef<Range | null>(null);
-  const compSpanRef = useRef<HTMLSpanElement | null>(null);
   type RefBlock = { id: string; type: 'ref'; qaId: string };
   type ChecklistItem = { id: string; text: string; done: boolean };
   type ChecklistBlock = { id: string; type: 'checklist'; items: ChecklistItem[] };
@@ -209,90 +208,22 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
   useEffect(() => {
     const el = editorRef.current;
     if (!el) return;
-    function insertRed(text: string) { insertRedText(text); }
     function onBeforeInput(e: InputEvent) {
       const it = (e as InputEvent).inputType;
-      // Handle IME composition text
-      if (it === "insertCompositionText") {
-        e.preventDefault();
-        const data = typeof e.data === "string" ? e.data : "";
-        const ed = editorRef.current;
-        if (!ed) return;
-        const sel = window.getSelection();
-        if (!sel) return;
-        let range: Range | null = null;
-        if (sel.rangeCount > 0) {
-          range = sel.getRangeAt(0);
-        } else if (lastRangeRef.current) {
-          range = lastRangeRef.current;
-        }
-        if (!range) {
-          range = document.createRange();
-          range.selectNodeContents(ed);
-          range.collapse(false);
-        }
-        if (!compSpanRef.current) {
-          const span = document.createElement("span");
-          span.style.color = "#dc2626";
-          span.textContent = data;
-          range.deleteContents();
-          range.insertNode(span);
-          range.setStartAfter(span);
-          range.collapse(true);
-          sel.removeAllRanges();
-          sel.addRange(range);
-          lastRangeRef.current = range.cloneRange();
-          compSpanRef.current = span;
-        } else {
-          compSpanRef.current.textContent = data;
-          // keep caret after the span
-          range.setStartAfter(compSpanRef.current);
-          range.collapse(true);
-          sel.removeAllRanges();
-          sel.addRange(range);
-          lastRangeRef.current = range.cloneRange();
-        }
-        return;
-      }
-      // Normal typing
-      if (it === "insertText" && typeof e.data === "string" && e.data.length > 0) {
-        e.preventDefault();
-        insertRed(e.data);
-        return;
-      }
-      // Enter key (paragraph)
-      if (it === "insertParagraph") {
-        e.preventDefault();
-        const sel = window.getSelection();
-        if (!sel) return;
-        let range: Range | null = null;
-        if (sel.rangeCount > 0) range = sel.getRangeAt(0);
-        if (!range) return;
-        const br = document.createElement("br");
-        range.deleteContents();
-        range.insertNode(br);
-        range.setStartAfter(br);
-        range.collapse(true);
-        sel.removeAllRanges();
-        sel.addRange(range);
-        lastRangeRef.current = range.cloneRange();
-        return;
+      if (it === "insertText" || it === "insertCompositionText" || it === "insertParagraph") {
+        try { document.execCommand("styleWithCSS", false, "true"); } catch {}
+        try { document.execCommand("foreColor", false, "#dc2626"); } catch {}
       }
     }
     function onPaste(e: ClipboardEvent) {
       e.preventDefault();
       const text = e.clipboardData?.getData("text/plain") || "";
-      if (text) insertRed(text);
+      if (text) insertRedText(text);
     }
     el.addEventListener("beforeinput", onBeforeInput as EventListener, true);
-    function onCompositionEnd() {
-      compSpanRef.current = null;
-    }
-    el.addEventListener("compositionend", onCompositionEnd as EventListener);
     el.addEventListener("paste", onPaste as EventListener);
     return () => {
       el.removeEventListener("beforeinput", onBeforeInput as EventListener, true);
-      el.removeEventListener("compositionend", onCompositionEnd as EventListener);
       el.removeEventListener("paste", onPaste as EventListener);
     };
   }, []);
@@ -575,17 +506,7 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
               if (sel && sel.rangeCount > 0) lastRangeRef.current = sel.getRangeAt(0);
             } catch {}
           }}
-          onKeyDown={(e) => {
-            // Fallback for browsers where beforeinput may not fire for Space/Enter
-            if ((e as unknown as { nativeEvent?: { isComposing?: boolean } }).nativeEvent?.isComposing) return;
-            if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key.length === 1) {
-              e.preventDefault();
-              insertRedText(e.key);
-            } else if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-              e.preventDefault();
-              insertRedText('\n');
-            }
-          }}
+          
           dangerouslySetInnerHTML={{ __html: contentHtml }}
         />
       </div>
