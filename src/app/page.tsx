@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import LeftAsk from "@/components/LeftAsk";
 import CenterQAViewer from "@/components/CenterQAViewer";
 import ThreadDrawer from "@/components/ThreadDrawer";
@@ -63,6 +63,33 @@ export default function Home() {
   const [selectedContextIds, setSelectedContextIds] = useState<string[]>([]);
   const [detail, setDetail] = useState<"short" | "normal" | "long">("normal");
   const [writerQaId, setWriterQaId] = useState<string | null>(null);
+  const [leftWidth, setLeftWidth] = useState<number>(300);
+  const [rightWidth, setRightWidth] = useState<number>(360);
+  const dragRef = useRef<{ side: "left" | "right"; startX: number; startW: number } | null>(null);
+
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      const d = dragRef.current;
+      if (!d) return;
+      const dx = e.clientX - d.startX;
+      if (d.side === "left") {
+        const next = Math.max(220, Math.min(600, d.startW + dx));
+        setLeftWidth(next);
+      } else {
+        const next = Math.max(280, Math.min(640, d.startW - dx));
+        setRightWidth(next);
+      }
+    }
+    function onUp() {
+      dragRef.current = null;
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -312,8 +339,11 @@ export default function Home() {
           )}
         </div>
       </header>
-      <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr_360px] gap-3 md:gap-4 p-3 md:p-4 overflow-hidden">
-        <aside className="rounded border border-gray-200/60 p-3 md:p-3 overflow-auto">
+      <div className="p-3 md:p-4 overflow-hidden flex flex-col lg:flex-row gap-3 md:gap-4">
+        <aside
+          className="rounded border border-gray-200/60 p-3 md:p-3 overflow-auto"
+          style={{ width: leftWidth }}
+        >
           <LeftAsk
             onSelectQA={(id) => {
               setLastViewedQaId(id);
@@ -333,8 +363,12 @@ export default function Home() {
             onSelectChainPath={(path) => setLeftSelectedPath(path)}
           />
         </aside>
+        <div
+          className="hidden lg:block w-1 cursor-col-resize bg-transparent hover:bg-blue-200/50"
+          onMouseDown={(e) => { dragRef.current = { side: "left", startX: e.clientX, startW: leftWidth }; }}
+        />
 
-        <main className="rounded border border-gray-200/60 p-2 md:p-3 overflow-auto">
+        <main className="rounded border border-gray-200/60 p-2 md:p-3 overflow-auto flex-1 min-w-0">
           <CenterQAViewer
             qaId={selectedQaId || undefined}
             question={!selectedQaId ? centerQuestion : undefined}
@@ -378,8 +412,12 @@ export default function Home() {
             selectedChainPath={leftSelectedPath || undefined}
           />
         </main>
+        <div
+          className="hidden lg:block w-1 cursor-col-resize bg-transparent hover:bg-blue-200/50"
+          onMouseDown={(e) => { dragRef.current = { side: "right", startX: e.clientX, startW: rightWidth }; }}
+        />
 
-        <aside className="rounded border border-gray-200/60 p-0 overflow-hidden flex flex-col">
+        <aside className="rounded border border-gray-200/60 p-0 overflow-hidden flex flex-col" style={{ width: rightWidth }}>
           <div className="flex items-center border-b border-gray-200/60">
             <div className="text-xs px-3 py-2 border-b-2 border-blue-600 text-blue-700">문서 작성</div>
           </div>

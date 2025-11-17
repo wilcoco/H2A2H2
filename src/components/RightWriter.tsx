@@ -461,18 +461,18 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
         </div>
       </div>
       <div>
-        <div className="flex items-center gap-2 mb-1">
-          <div className="text-xs text-gray-600">내용</div>
-          <div className="ml-auto flex items-center gap-1">
+        <div className="flex items-start gap-2 mb-1 flex-wrap">
+          <div className="text-xs text-gray-600 mt-1">내용</div>
+          <div className="flex-1 flex flex-wrap items-center gap-1">
             <button className="text-[11px] px-2 py-0.5 rounded border" title="굵게" onClick={() => exec("bold")}>B</button>
             <button className="text-[11px] px-2 py-0.5 rounded border" title="기울임" onClick={() => exec("italic")}>I</button>
             <button className="text-[11px] px-2 py-0.5 rounded border" title="밑줄" onClick={() => exec("underline")}>U</button>
             <button className="text-[11px] px-2 py-0.5 rounded border" title="취소선" onClick={() => exec("strikeThrough")}>S</button>
             <span className="mx-1 text-gray-300">|</span>
-            <button className="text-[11px] px-2 py-0.5 rounded border" title="H1" onClick={() => exec("formatBlock", "H1")}>H1</button>
-            <button className="text-[11px] px-2 py-0.5 rounded border" title="H2" onClick={() => exec("formatBlock", "H2")}>H2</button>
-            <button className="text-[11px] px-2 py-0.5 rounded border" title="인용" onClick={() => exec("formatBlock", "BLOCKQUOTE")}>❝</button>
-            <button className="text-[11px] px-2 py-0.5 rounded border" title="코드" onClick={() => exec("formatBlock", "PRE")}>{"< >"}</button>
+            <button className="text-[11px] px-2 py-0.5 rounded border" title="H1" onClick={() => exec("formatBlock", "<H1>")}>H1</button>
+            <button className="text-[11px] px-2 py-0.5 rounded border" title="H2" onClick={() => exec("formatBlock", "<H2>")}>H2</button>
+            <button className="text-[11px] px-2 py-0.5 rounded border" title="인용" onClick={() => exec("formatBlock", "<BLOCKQUOTE>")}>❝</button>
+            <button className="text-[11px] px-2 py-0.5 rounded border" title="코드" onClick={() => exec("formatBlock", "<PRE>")}>{"< >"}</button>
             <span className="mx-1 text-gray-300">|</span>
             <button className="text-[11px] px-2 py-0.5 rounded border" title="불릿" onClick={() => exec("insertUnorderedList")}>• List</button>
             <button className="text-[11px] px-2 py-0.5 rounded border" title="번호" onClick={() => exec("insertOrderedList")}>1. List</button>
