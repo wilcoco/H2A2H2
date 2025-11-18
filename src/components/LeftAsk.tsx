@@ -42,8 +42,20 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
   const [gDragging, setGDragging] = useState(false);
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const isPointerDownRef = useRef(false);
+  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
+  const lastNodeDownRef = useRef<{ id: string; x: number; y: number } | null>(null);
+  const CLICK_TOL = 10;
 
-  // Ensure wheel/pointer events behave consistently across browsers (non-passive wheel)
+  // Lock background scroll while modal is open
+  useEffect(() => {
+    if (!showGraph) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [showGraph]);
+
+  // Ensure wheel/pointer events behave consistently across browsers (non-passive wheel) with drag threshold
   useEffect(() => {
     const el = svgRef.current;
     if (!el) return;
@@ -55,18 +67,27 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
       });
     };
     const onPointerDown = (e: PointerEvent) => {
-      setGDragging(true);
+      isPointerDownRef.current = true;
+      dragStartRef.current = { x: e.clientX, y: e.clientY };
       dragRef.current = { x: e.clientX, y: e.clientY };
-      try { (e.target as Element)?.setPointerCapture?.(e.pointerId); } catch {}
     };
     const onPointerUp = (e: PointerEvent) => {
+      isPointerDownRef.current = false;
       setGDragging(false);
       dragRef.current = null;
-      try { (e.target as Element)?.releasePointerCapture?.(e.pointerId); } catch {}
+      dragStartRef.current = null;
     };
     const onPointerMove = (e: PointerEvent) => {
-      if (!gDragging || !svgRef.current) return;
+      if (!isPointerDownRef.current || !svgRef.current) return;
       const rect = svgRef.current.getBoundingClientRect();
+      // Activate drag only after threshold to avoid swallowing clicks
+      if (!gDragging && dragStartRef.current) {
+        const dx0 = e.clientX - dragStartRef.current.x;
+        const dy0 = e.clientY - dragStartRef.current.y;
+        if (Math.hypot(dx0, dy0) < 8) return;
+        setGDragging(true);
+      }
+      if (!gDragging) return;
       const dxPx = e.clientX - (dragRef.current?.x || e.clientX);
       const dyPx = e.clientY - (dragRef.current?.y || e.clientY);
       const W = Number((svgRef.current.viewBox.baseVal?.width || 0) || 0) || rect.width;
@@ -549,21 +570,6 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
                       className="w-full h-full"
                       viewBox={`0 0 ${W} ${H}`}
                       style={{ touchAction: 'none', cursor: gDragging ? 'grabbing' as const : 'grab' as const }}
-                      onWheel={(e) => { e.preventDefault(); setGZoom((z) => { const next = e.deltaY < 0 ? z * 1.1 : z * 0.9; return Math.max(0.3, Math.min(5, next)); }); }}
-                      onMouseDown={(e) => { setGDragging(true); dragRef.current = { x: e.clientX, y: e.clientY }; }}
-                      onMouseUp={() => { setGDragging(false); dragRef.current = null; }}
-                      onMouseLeave={() => { setGDragging(false); dragRef.current = null; }}
-                      onMouseMove={(e) => {
-                        if (!gDragging || !svgRef.current) return;
-                        const rect = svgRef.current.getBoundingClientRect();
-                        const dxPx = e.clientX - (dragRef.current?.x || e.clientX);
-                        const dyPx = e.clientY - (dragRef.current?.y || e.clientY);
-                        const unitX = (W / rect.width) / gZoom;
-                        const unitY = (H / rect.height) / gZoom;
-                        setGPanX((p) => p + dxPx * unitX);
-                        setGPanY((p) => p + dyPx * unitY);
-                        dragRef.current = { x: e.clientX, y: e.clientY };
-                      }}
                     >
                       <g transform={`translate(${gPanX} ${gPanY}) scale(${gZoom})`}>
                         {edges.map((e, i) => {
@@ -581,7 +587,47 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
                           );
                         })}
                         {Array.from(pos.entries()).map(([k, p], i) => (
-                          <g key={`n-${i}`}>
+                          <g
+                            key={`n-${i}`}
+                            role="button"
+                            tabIndex={0}
+                            onPointerDown={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              const nid = k.split(":")[1] || "";
+                              lastNodeDownRef.current = { id: nid, x: e.clientX, y: e.clientY };
+                            }}
+                            onPointerUp={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              const nid = k.split(":")[1] || "";
+                              const dn = lastNodeDownRef.current;
+                              lastNodeDownRef.current = null;
+                              // End any ongoing pan drag to avoid stuck states
+                              isPointerDownRef.current = false;
+                              setGDragging(false);
+                              dragRef.current = null;
+                              dragStartRef.current = null;
+                              if (!dn || dn.id !== nid) return;
+                              const dx = Math.abs(e.clientX - dn.x);
+                              const dy = Math.abs(e.clientY - dn.y);
+                              if (dx <= CLICK_TOL && dy <= CLICK_TOL && !gDragging) {
+                                const ch = selectedChains.find((c) => c.includes(nid));
+                                if (ch) onSelectChainPath?.(ch);
+                                if (nid) onSelectQA(nid);
+                                setShowGraph(false);
+                              }
+                            }}
+                            onClick={(e) => { // fallback for mouse
+                              e.stopPropagation();
+                              const nid = k.split(":")[1] || "";
+                              const ch = selectedChains.find((c) => c.includes(nid));
+                              if (ch) onSelectChainPath?.(ch);
+                              if (nid) onSelectQA(nid);
+                              setShowGraph(false);
+                            }}
+                            style={{ cursor: 'pointer' }}
+                          >
                             <rect x={p.x} y={p.y} width={p.w} height={p.h} rx="6" ry="6" fill="#ffffff" stroke="#1f2937" strokeWidth="1.2" />
                             {p.lines.map((ln, idx) => (
                               <text key={`t-${i}-${idx}`} x={p.x + 10} y={p.y + 20 + idx * 16} fontSize="12" fill="#111827">{ln}</text>
