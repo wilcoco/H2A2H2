@@ -112,8 +112,8 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
     };
   }, [gDragging, gZoom]);
 
-  async function search(next?: string) {
-    if ((keyword || "").trim() || (keywords && keywords.length) || (phrases && phrases.length)) return; // 키워드/복합어 모드일 땐 텍스트 검색 비활성화
+  async function search(next?: string, force?: boolean) {
+    if (!force && ((keyword || "").trim() || (keywords && keywords.length) || (phrases && phrases.length))) return; // 기본: 키워드/복합어 모드일 땐 텍스트 검색 비활성화
     const query = (next ?? q).trim();
     if (!query) { setItems([]); setLoading(false); abortRef.current?.abort(); reqIdRef.current++; return; }
     abortRef.current?.abort();
@@ -342,7 +342,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault();
                 const query = q.trim();
-                if (query) { onClearKeyword?.(); setSubmittedQuery(query); void search(query); onAskAINow(query); }
+                if (query) { onClearKeyword?.(); setSubmittedQuery(query); void search(query, true); onAskAINow(query); }
               } else if (e.key === "Enter") {
                 // no-op: only buttons or Ctrl/Cmd+Enter should trigger actions
               }
@@ -355,12 +355,12 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
           <button
             className="text-xs px-2 py-2 rounded border text-gray-700 disabled:opacity-50"
             disabled={q.trim().length === 0}
-            onClick={() => { const query = q.trim(); if (query) { onClearKeyword?.(); setSubmittedQuery(query); void search(query); } }}
+            onClick={() => { const query = q.trim(); if (query) { onClearKeyword?.(); setSubmittedQuery(query); void search(query, true); } }}
           >기존 QA 검색</button>
           <button
             className="text-xs px-2 py-2 rounded bg-emerald-600 text-white disabled:opacity-50"
             disabled={q.trim().length === 0}
-            onClick={() => { const query = q.trim(); if (query) { onClearKeyword?.(); setSubmittedQuery(query); void search(query); onAskAINow(query); } }}
+            onClick={() => { const query = q.trim(); if (query) { onClearKeyword?.(); setSubmittedQuery(query); void search(query, true); onAskAINow(query); } }}
           >AI에게 묻기</button>
           <button
             className="text-xs px-2 py-2 rounded border text-gray-700"
