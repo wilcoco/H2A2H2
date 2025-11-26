@@ -1094,7 +1094,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   }
 
   if (question && !aiAnswer) {
-    return <div className="text-xs text-gray-600">유사한 Q&amp;A를 선택하거나 좌측에서 &quot;지금 AI에게 묻기&quot;를 눌러 답변을 받아보세요.</div>;
+    return <div className="text-xs text-gray-600">지금 답변을 준비하고 있습니다…</div>;
   }
 
   return <div className="text-xs text-gray-500">좌측에서 질문을 입력하세요.</div>;

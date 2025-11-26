@@ -91,6 +91,7 @@ export default function Home() {
     };
   }, []);
 
+
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -431,6 +432,8 @@ export default function Home() {
               onSaved={() => {
                 setGraphRefreshKey((k) => k + 1);
               }}
+              aiQuestion={!selectedQaId ? centerQuestion : undefined}
+              aiAnswer={!selectedQaId ? centerAiAnswer : undefined}
             />
           </div>
         </aside>

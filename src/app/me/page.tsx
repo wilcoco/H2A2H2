@@ -127,7 +127,10 @@ export default function MePage() {
 
   return (
     <div className="max-w-5xl mx-auto p-6">
-      <h1 className="text-xl font-semibold mb-4">내 페이지</h1>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-xl font-semibold">내 페이지</h1>
+        <a href="/me/chains" className="text-xs px-2 py-1 rounded border hover:bg-gray-100">나의 체인</a>
+      </div>
 
       {!authChecking && !isAuthed && (
         <div className="mb-8 p-4 rounded border">

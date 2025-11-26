@@ -9,9 +9,11 @@ type Props = {
   currentUserEmail?: string | null;
   onSetQaId?: (id: string) => void;
   onSaved?: () => void;
+  aiQuestion?: string;
+  aiAnswer?: string;
 };
 
-export default function RightWriter({ qaId, centerQaId, centerChainIds, currentUserEmail, onSetQaId, onSaved }: Props) {
+export default function RightWriter({ qaId, centerQaId, centerChainIds, currentUserEmail, onSetQaId, onSaved, aiQuestion, aiAnswer }: Props) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +30,7 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
   type Block = RefBlock | ChecklistBlock | DecisionBlock | CompareBlock;
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [meta, setMeta] = useState<{ reliability?: string; source?: string; freshness?: string }>({});
+  const [toast, setToast] = useState<string | null>(null);
   function uid(p = 'blk_') { return p + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4); }
 
   // Helper to insert red text at current caret, preserving selection
@@ -201,6 +204,17 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(centerChainIds)]);
 
+  useEffect(() => {
+    if (qaId) return;
+    const q = (aiQuestion || "").trim();
+    const a = (aiAnswer || "").trim();
+    if (!q && !a) return;
+    const html = [q ? `<p><strong>Q:</strong> ${escapeHtml(q)}</p>` : "", a ? `<div>${escapeHtml(a).replace(/\n/g, "<br/>")}</div>` : ""].filter(Boolean).join("");
+    if (editorRef.current) editorRef.current.innerHTML = html;
+    setContentHtml(html);
+    if (q) setTitle(q);
+  }, [qaId, aiQuestion, aiAnswer]);
+
   // Make newly typed/pasted edits appear in red
   useEffect(() => {
     const el = editorRef.current;
@@ -299,6 +313,8 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
         await fetch("/api/qa/keywords", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId, force: true, max: 8 }) });
       } catch {}
       onSaved?.();
+      setToast("저장 완료");
+      setTimeout(() => setToast(null), 2000);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
@@ -381,6 +397,9 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
       <div className="flex items-center gap-2">
         <button className="text-xs px-3 py-2 rounded bg-blue-600 text-white disabled:opacity-50" disabled={saving || !qaId} onClick={() => void save()}>{saving ? "Saving..." : "저장 (제목/내용/키워드)"}</button>
       </div>
+      {toast && (
+        <div className="fixed bottom-4 right-4 bg-gray-900 text-white text-xs px-3 py-2 rounded shadow">{toast}</div>
+      )}
     </div>
   );
 }

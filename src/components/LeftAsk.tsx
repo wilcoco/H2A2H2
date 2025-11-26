@@ -330,6 +330,30 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
     return () => { active = false; };
   }, [threadRootId, refreshKey]);
 
+  // Default feed: when not searching and not in thread mode, load staked-normalized feed
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        if (searchActive) return;
+        if (threadRootId) return;
+        setLoading(true);
+        setError(null);
+        const r = await fetch(`/api/qa/feed?sort=staked&window=24h&limit=20`, { cache: "no-store" });
+        const j = await r.json().catch(() => ({ items: [] }));
+        const its: QAEntry[] = Array.isArray(j?.items)
+          ? (j.items as Array<{ id: string; rootId?: string; question?: string }> ).map((x) => ({ id: x.id, question: x.question || x.id }))
+          : [];
+        if (active) setItems(its);
+      } catch (e: unknown) {
+        if (active) setError(e instanceof Error ? e.message : "Unknown error");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [searchActive, threadRootId, refreshKey]);
+
   return (
     <div className="flex flex-col gap-3">
       <div className="sticky top-0 bg-white dark:bg-gray-900 z-10 pb-2 border-b border-gray-100/60">
