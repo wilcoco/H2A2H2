@@ -1,6 +1,11 @@
 import { Pool } from "pg";
 
-let _pool: any = null;
+type DBRow = Record<string, unknown>;
+type DBQueryResult = { rowCount: number; rows: DBRow[] };
+type DBClient = { query: (text: string, params?: unknown[]) => Promise<DBQueryResult>; release: () => void };
+type DBPool = { connect: () => Promise<DBClient> };
+
+let _pool: DBPool | null = null;
 
 function getConnectionString(): string {
   const url = process.env.DATABASE_URL || process.env.POSTGRES_URL || "";
@@ -8,17 +13,17 @@ function getConnectionString(): string {
   return url;
 }
 
-export function getPool(): any {
+export function getPool(): DBPool {
   if (_pool) return _pool;
   const isProd = process.env.NODE_ENV === "production";
   _pool = new Pool({
     connectionString: getConnectionString(),
     ssl: isProd ? { rejectUnauthorized: false } : undefined,
-  });
+  }) as unknown as DBPool;
   return _pool;
 }
 
-export async function withConn<T>(fn: (c: any) => Promise<T>): Promise<T> {
+export async function withConn<T>(fn: (c: DBClient) => Promise<T>): Promise<T> {
   const pool = getPool();
   const client = await pool.connect();
   try {
@@ -151,5 +156,20 @@ export async function ensureTables() {
     `);
     await c.query(`create index if not exists qa_keywords_qa_idx on qa_keywords (qa_id)`);
     await c.query(`create index if not exists qa_keywords_kw_idx on qa_keywords (keyword)`);
+    await c.query(`
+      create table if not exists stake_ledger (
+        id text primary key,
+        user_id text not null,
+        qa_id text,
+        qa_root_id text not null,
+        amount integer not null,
+        lock_days smallint not null default 7,
+        created_at timestamptz not null default now(),
+        lock_until timestamptz not null
+      );
+    `);
+    await c.query(`create index if not exists stake_ledger_user_idx on stake_ledger (user_id)`);
+    await c.query(`create index if not exists stake_ledger_root_idx on stake_ledger (qa_root_id)`);
+    await c.query(`create index if not exists stake_ledger_created_idx on stake_ledger (created_at)`);
   });
 }
