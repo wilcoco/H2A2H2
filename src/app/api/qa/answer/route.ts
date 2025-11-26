@@ -11,17 +11,24 @@ export async function POST(req: NextRequest) {
     const answer: string | undefined = typeof body?.answer === "string" ? String(body.answer) : undefined;
     let summary: string | undefined = typeof body?.summary === "string" ? String(body.summary) : undefined;
     const question: string | undefined = typeof body?.question === "string" ? String(body.question) : undefined;
-    const patch: any | undefined = body?.patch ?? undefined;
+    const patch: unknown = body?.patch ?? undefined;
     const responseId: string | undefined = typeof body?.responseId === "string" ? String(body.responseId) : undefined;
-    if (!qaId || (!((answer || "").trim()) && !(summary && summary.trim()) && !(question && question.trim()))) {
+    const hasText = ((answer || "").trim().length > 0) || ((summary || "").trim().length > 0) || ((question || "").trim().length > 0);
+    const hasPatch = patch !== undefined && patch !== null;
+    if (!qaId || (!hasText && !hasPatch)) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
     }
 
     // derive summary fallback if not provided but answer exists
     if (!summary && (answer || "").trim()) {
       try {
-        if (patch?.description && typeof patch.description === "string") summary = String(patch.description).slice(0, 280);
-        else summary = (answer as string).replace(/\s+/g, " ").slice(0, 280);
+        if (patch && typeof patch === 'object' && patch !== null) {
+          const desc = (patch as Record<string, unknown>)["description"];
+          if (typeof desc === 'string') summary = desc.slice(0, 280);
+          else summary = (answer as string).replace(/\s+/g, " ").slice(0, 280);
+        } else {
+          summary = (answer as string).replace(/\s+/g, " ").slice(0, 280);
+        }
       } catch {}
     }
 
@@ -42,7 +49,7 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ ok: true });
-  } catch (e) {
+  } catch {
     return NextResponse.json({ error: "Failed" }, { status: 500 });
   }
 }
