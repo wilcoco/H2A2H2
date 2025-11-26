@@ -171,5 +171,6 @@ export async function ensureTables() {
     await c.query(`create index if not exists stake_ledger_user_idx on stake_ledger (user_id)`);
     await c.query(`create index if not exists stake_ledger_root_idx on stake_ledger (qa_root_id)`);
     await c.query(`create index if not exists stake_ledger_created_idx on stake_ledger (created_at)`);
+    try { await c.query(`alter table stake_ledger add column if not exists is_self boolean not null default false`); } catch {}
   });
 }

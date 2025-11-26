@@ -65,12 +65,26 @@ export async function POST(req: NextRequest) {
       if (todayOnChain + amount > perChainLimit) {
         return { error: `Per-chain daily limit exceeded (${perChainLimit})` } as StakeResult;
       }
+      const r3 = await c.query(
+        `select created_at from stake_ledger where user_id = $1 order by created_at desc limit 1`,
+        [userId]
+      );
+      if (r3.rowCount) {
+        const last = new Date(String(r3.rows[0].created_at));
+        if (Date.now() - last.getTime() < 30_000) {
+          return { error: `Cooldown: wait ${Math.ceil((30_000 - (Date.now() - last.getTime()))/1000)}s` } as StakeResult;
+        }
+      }
+
+      const rAuth = await c.query(`select created_by from qa_entries where id = $1 limit 1`, [rootId]);
+      const createdBy = rAuth.rowCount ? String(rAuth.rows[0].created_by || "") : "";
+      const isSelf = createdBy && createdBy === userId;
 
       const id = randomUUID();
       await c.query(
-        `insert into stake_ledger (id, user_id, qa_id, qa_root_id, amount, lock_days, created_at, lock_until)
-         values ($1,$2,$3,$4,$5,$6, now(), $7)`,
-        [id, userId, qaId ?? null, rootId, amount, lockDays, lockUntil]
+        `insert into stake_ledger (id, user_id, qa_id, qa_root_id, amount, lock_days, created_at, lock_until, is_self)
+         values ($1,$2,$3,$4,$5,$6, now(), $7, $8)`,
+        [id, userId, qaId ?? null, rootId, amount, lockDays, lockUntil, isSelf]
       );
       return { id } as StakeResult;
     });

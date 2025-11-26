@@ -83,11 +83,15 @@ type Props = {
   onKeywordClick?: (kw: string) => void;
   onKeywordSearch?: (opts: { keywords?: string[]; phrases?: string[]; mode?: "any" | "all" }) => void;
   selectedChainPath?: string[];
+  onGraphChanged?: () => void;
+  onSetSource?: (id: string) => void;
+  onSetTarget?: (id: string) => void;
+  onSetCard?: (id: string) => void;
 };
 
 type QaData = { id?: string; question: string; answer?: string; summary?: string; patch?: unknown; published?: boolean; createdBy?: string; lastResponseId?: string };
 
-export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, aiModel, aiFallbackUsed, aiResponseId, provider, detail, lockContext, onToggleLock, onSetPrevRespId, onOpenThread, onShared, onPinned, refreshKey, onSelectQA, currentUserEmail, onKeywordClick, onKeywordSearch, selectedChainPath }: Props) {
+export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, aiModel, aiFallbackUsed, aiResponseId, provider, detail, lockContext, onToggleLock, onSetPrevRespId, onOpenThread, onShared, onPinned, refreshKey, onSelectQA, currentUserEmail, onKeywordClick, onKeywordSearch, selectedChainPath, onGraphChanged, onSetSource, onSetTarget, onSetCard }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<QaData | null>(null);
@@ -116,6 +120,14 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   const [fuPer, setFuPer] = useState<Record<number, { input: string; loading: boolean }>>({});
   const [anchor, setAnchor] = useState<{ type: "qa" | "ai" | "fu" | "node"; id?: string; index?: number } | null>(null);
   const [chainUnder, setChainUnder] = useState<Array<{ id: string; question: string; answer?: string; summary?: string }>>([]);
+  const [rootId, setRootId] = useState<string | null>(null);
+  const [boostOpen, setBoostOpen] = useState(false);
+  const [boostAmount, setBoostAmount] = useState(5);
+  const [boostLock, setBoostLock] = useState<3 | 7 | 14>(7);
+  const [boostBusy, setBoostBusy] = useState(false);
+  const [boostError, setBoostError] = useState<string | null>(null);
+  const [boostMsg, setBoostMsg] = useState<string | null>(null);
+  const [readOK, setReadOK] = useState(false);
 
   function startSelect(mode: "any" | "all") {
     setSelectMode(mode);
@@ -583,10 +595,11 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       if (!qaId) { if (active) { setMapNodes([]); setMapEdges([]); } return; }
       try {
         const r = await fetch(`/api/qa/map?qaId=${encodeURIComponent(qaId)}`, { cache: "no-store" });
-        const j = await r.json().catch(() => ({ nodes: [], edges: [] }));
+        const j = await r.json().catch(() => ({ nodes: [], edges: [], rootId: null }));
         if (active) {
           setMapNodes(Array.isArray(j?.nodes) ? j.nodes : []);
           setMapEdges(Array.isArray(j?.edges) ? j.edges : []);
+          try { setRootId(j?.rootId ? String(j.rootId) : null); } catch { setRootId(null); }
         }
       } catch {
         if (active) { setMapNodes([]); setMapEdges([]); }
@@ -594,6 +607,15 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
     })();
     return () => { active = false; };
   }, [qaId, refreshKey]);
+
+  useEffect(() => {
+    setReadOK(false);
+    let t: ReturnType<typeof setTimeout> | undefined;
+    if (qaId && data) {
+      t = setTimeout(() => setReadOK(true), 5000);
+    }
+    return () => { if (t) clearTimeout(t); };
+  }, [qaId, data?.id]);
 
   useEffect(() => {
     try {
@@ -839,7 +861,55 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         <div className="mt-2 flex items-center gap-2">
           <button className="text-xs px-2 py-1 rounded border" onClick={() => setEditing((v) => !v)}>{editing ? "편집 취소" : "개선하기"}</button>
           <button className="text-xs px-2 py-1 rounded border" onClick={() => { if (!qaId) return; try { const url = location.origin + "/?qa=" + encodeURIComponent(qaId); navigator.clipboard?.writeText(url); } catch {} }}>공유하기</button>
+          <button
+            className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50"
+            disabled={!readOK || boostBusy || !qaId}
+            onClick={() => setBoostOpen((v) => !v)}
+          >{boostBusy ? "처리 중…" : (boostOpen ? "예치 닫기" : "예치(Boost)")}</button>
         </div>
+        {boostOpen && (
+          <div className="mt-2 p-2 border rounded bg-white/60 dark:bg-gray-900/40">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-600">크레딧</span>
+                <input type="range" min={1} max={20} step={1} value={boostAmount} onChange={(e) => setBoostAmount(Number(e.target.value))} />
+                <span className="text-xs font-medium">{boostAmount}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-600">락업</span>
+                <select className="text-xs border rounded px-2 py-1" value={boostLock} onChange={(e) => setBoostLock((Number(e.target.value) as 3|7|14))}>
+                  <option value={3}>3일</option>
+                  <option value={7}>7일</option>
+                  <option value={14}>14일</option>
+                </select>
+              </div>
+              <button
+                className="text-xs px-2 py-1 rounded border disabled:opacity-50"
+                disabled={!readOK || boostBusy || !qaId}
+                onClick={async () => {
+                  if (!qaId) return;
+                  const rid = rootId || qaId;
+                  try {
+                    setBoostBusy(true);
+                    setBoostError(null);
+                    setBoostMsg(null);
+                    const r = await fetch("/api/qa/stake", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rootId: rid, amount: boostAmount, lockDays: boostLock }) });
+                    const j = await r.json().catch(() => ({}));
+                    if (!r.ok) { setBoostError(String(j?.error || "예치 실패")); return; }
+                    setBoostMsg("예치 완료");
+                  } catch (err) {
+                    setBoostError(err instanceof Error ? err.message : "예치 실패");
+                  } finally {
+                    setBoostBusy(false);
+                  }
+                }}
+              >예치 실행</button>
+            </div>
+            {(!readOK) && <div className="text-[11px] text-gray-500 mt-1">내용을 충분히 읽은 후 예치가 가능합니다.</div>}
+            {boostError && <div className="text-[11px] text-red-600 mt-1">{boostError}</div>}
+            {boostMsg && <div className="text-[11px] text-emerald-700 mt-1">{boostMsg}</div>}
+          </div>
+        )}
         {data.answer && <div className="text-sm whitespace-pre-wrap break-words">A: {data.answer}</div>}
         {/* Summary display suppressed per UX request */}
         <div className="mt-2">
