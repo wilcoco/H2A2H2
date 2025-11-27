@@ -915,6 +915,18 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             <div className="text-[11px] text-gray-600">없음</div>
           ))}
         </div>
+        {chainUnder.length > 0 && (
+          <div className="mt-3 flex items-center gap-2 text-[11px] text-gray-600">
+            <span>예치/투표는 체인의 마지막 카드에서 입력 가능</span>
+            <button
+              className="text-xs px-2 py-1 rounded border"
+              onClick={() => {
+                const leafId = chainUnder[chainUnder.length - 1]?.id;
+                if (leafId) onSelectQA?.(leafId);
+              }}
+            >Leaf로 이동</button>
+          </div>
+        )}
         {chainUnder.length === 0 && (
           <>
             <div className="mt-3 flex items-center gap-2 flex-wrap">
