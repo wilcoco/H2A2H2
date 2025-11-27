@@ -52,6 +52,7 @@ export default function MePage() {
   const [authChecking, setAuthChecking] = useState(true);
   const [isAuthed, setIsAuthed] = useState(false);
   const [q, setQ] = useState("");
+  const [qaSearch, setQaSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "matured">("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -138,6 +139,16 @@ export default function MePage() {
   const nextMaturityTs = activeStakes.length > 0 ? Math.min(...activeStakes.map((s) => new Date(s.lockUntil).getTime())) : null;
   const nextMaturity = nextMaturityTs ? new Date(nextMaturityTs).toLocaleString() : null;
   const yieldTotal = yields.reduce((sum, y) => sum + (y.estimatedYield || 0), 0);
+  const filteredQa = useMemo(() => {
+    const ql = qaSearch.trim().toLowerCase();
+    if (!ql) return qa;
+    return qa.filter((x) => {
+      const s1 = (x.question || "").toLowerCase();
+      const s2 = (x.summary || "").toLowerCase();
+      const s3 = (x.rootId || "").toLowerCase();
+      return s1.includes(ql) || s2.includes(ql) || s3.includes(ql);
+    });
+  }, [qa, qaSearch]);
 
   const combinedItems = useMemo(() => {
     const yMap = new Map(yields.map((y) => [y.stakeId, y] as const));
@@ -247,13 +258,16 @@ export default function MePage() {
         <>
           <section className="mb-8">
             <h2 className="font-medium mb-2">나의 질문/답변 기록</h2>
+            <div className="mb-2 text-xs">
+              <input className="border rounded px-2 py-1" placeholder="검색(질문/요약/루트ID)" value={qaSearch} onChange={(e) => setQaSearch(e.target.value)} />
+            </div>
             {loading ? (
               <div>불러오는 중…</div>
-            ) : qa.length === 0 ? (
-              <div className="text-gray-500">기록이 없습니다.</div>
+            ) : filteredQa.length === 0 ? (
+              <div className="text-gray-500">조건에 해당하는 항목이 없습니다.</div>
             ) : (
               <ul className="space-y-2">
-                {qa.map((x) => (
+                {filteredQa.map((x) => (
                   <li key={x.id} className="p-3 rounded border">
                     <div className="text-sm text-gray-500">{new Date(x.createdAt).toLocaleString()}</div>
                     <div className="font-medium">{x.question}</div>
