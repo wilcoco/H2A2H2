@@ -125,6 +125,13 @@ export default function MePage() {
     } catch {}
   }
 
+  const nowMs = Date.now();
+  const activeStakes = stakes.filter((s) => new Date(s.lockUntil).getTime() > nowMs);
+  const activeTotal = activeStakes.reduce((sum, s) => sum + (s.amount || 0), 0);
+  const nextMaturityTs = activeStakes.length > 0 ? Math.min(...activeStakes.map((s) => new Date(s.lockUntil).getTime())) : null;
+  const nextMaturity = nextMaturityTs ? new Date(nextMaturityTs).toLocaleString() : null;
+  const yieldTotal = yields.reduce((sum, y) => sum + (y.estimatedYield || 0), 0);
+
   return (
     <div className="max-w-5xl mx-auto p-6">
       <div className="flex items-center justify-between mb-4">
@@ -166,14 +173,27 @@ export default function MePage() {
           </section>
 
           <section className="mb-8">
+            <h2 className="font-medium mb-2">나의 락업 현황</h2>
+            {loading ? (
+              <div>불러오는 중…</div>
+            ) : (
+              <div className="p-3 rounded border flex flex-col gap-1 text-sm">
+                <div>진행 중 {activeStakes.length}건 · 총 예치 {activeTotal} 크레딧</div>
+                <div>다음 만기 {nextMaturity ? nextMaturity : "-"}</div>
+                <div>누적 성과 {yieldTotal}</div>
+              </div>
+            )}
+          </section>
+
+          <section className="mb-8">
             <h2 className="font-medium mb-2">나의 투자(예치) 기록</h2>
             {loading ? (
               <div>불러오는 중…</div>
-            ) : stakes.length === 0 ? (
-              <div className="text-gray-500">예치 기록이 없습니다.</div>
+            ) : activeStakes.length === 0 ? (
+              <div className="text-gray-500">진행 중인 예치가 없습니다.</div>
             ) : (
               <ul className="space-y-2">
-                {stakes.map((s) => (
+                {activeStakes.map((s) => (
                   <li key={s.id} className="p-3 rounded border">
                     <div className="flex items-center justify-between">
                       <div className="font-medium truncate mr-4">{s.rootQuestion ?? s.rootId}</div>
