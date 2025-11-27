@@ -216,19 +216,38 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       setFuMap((m) => ({ ...m, [baseQaId]: { ...entry, loading: true } }));
       const ctxIds: string[] = [baseQaId];
       let prevRid: string | undefined = undefined;
+      let baseQ = "";
+      let baseA = "";
       if (qaId && baseQaId === qaId) {
         prevRid = (String(data?.lastResponseId || "").trim() || undefined) as string | undefined;
+        baseQ = String(data?.question || "");
+        baseA = String(data?.answer || data?.summary || "");
       } else {
+        // try local mapNodes first
+        try {
+          const node = mapNodes.find((n) => n.id === baseQaId);
+          if (node) {
+            baseQ = String(node.question || "");
+            baseA = String(node.answer || node.summary || "");
+          }
+        } catch {}
+        // fetch QA detail to get lastResponseId and fallback base Q/A
         try {
           const r0 = await fetch(`/api/qa/${encodeURIComponent(baseQaId)}`, { cache: "no-store" });
           if (r0.ok) {
             const j0 = await r0.json();
             const rid0 = String(j0?.lastResponseId || "").trim();
             if (rid0) prevRid = rid0;
+            if (!baseQ) baseQ = String(j0?.question || "");
+            if (!baseA) baseA = String(j0?.answer || j0?.summary || "");
           }
         } catch {}
       }
-      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider, detail: "long", previousResponseId: prevRid, contextIds: ctxIds }) });
+      // Provide minimal history so Anthropic can maintain context too
+      const hist = (baseQ && baseA)
+        ? ([{ role: "user", content: baseQ }, { role: "assistant", content: baseA }] as Array<{ role: "user" | "assistant"; content: string }>)
+        : ([] as Array<{ role: "user" | "assistant"; content: string }>);
+      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: hist, provider, detail: "long", previousResponseId: prevRid, contextIds: ctxIds }) });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
       const a = String(j?.answer || "");
@@ -293,7 +312,21 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       const ctxIds: string[] = qaId ? [qaId] : [];
       const baseRid = fuItems[idx]?.respId || (qaId ? (data?.lastResponseId as string | undefined) : aiResponseId);
       const prevRid = baseRid || undefined;
-      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider, detail: "long", previousResponseId: prevRid, contextIds: ctxIds }) });
+      // Build minimal history for Anthropic or providers without thread continuation
+      let hist: Array<{ role: "user" | "assistant"; content: string }> = [];
+      const baseItem = fuItems[idx];
+      if (baseItem && baseItem.q && baseItem.a) {
+        hist = [{ role: "user", content: baseItem.q }, { role: "assistant", content: baseItem.a }];
+      } else if (qaId) {
+        const bq = String(data?.question || "");
+        const ba = String(data?.answer || data?.summary || "");
+        if (bq && ba) hist = [{ role: "user", content: bq }, { role: "assistant", content: ba }];
+      } else {
+        const bq = String(question || "");
+        const ba = String(aiAnswer || "");
+        if (bq && ba) hist = [{ role: "user", content: bq }, { role: "assistant", content: ba }];
+      }
+      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: hist, provider, detail: "long", previousResponseId: prevRid, contextIds: ctxIds }) });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
       const a = String(j?.answer || "");
@@ -342,7 +375,13 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       const ctxIds: string[] = [];
       const baseRid = aiResponseId;
       const prevRid = baseRid || undefined;
-      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: [], provider, detail: "long", previousResponseId: prevRid, contextIds: ctxIds }) });
+      // Build minimal history from the current AI main pair so Anthropic can keep context
+      const q0 = String(question || "").trim();
+      const a0 = String(aiAnswer || "").trim();
+      const hist: Array<{ role: "user" | "assistant"; content: string }> = (q0 && a0)
+        ? [{ role: "user", content: q0 }, { role: "assistant", content: a0 }]
+        : [];
+      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: hist, provider, detail: "long", previousResponseId: prevRid, contextIds: ctxIds }) });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
       const a = String(j?.answer || "");
