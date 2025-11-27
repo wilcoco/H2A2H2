@@ -743,36 +743,6 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
     }
   }
 
-  function descendantLeavesOf(baseId: string): string[] {
-    try {
-      const nexts = new Map<string, string[]>();
-      for (const e of mapEdges) {
-        if ((e?.type || "").toLowerCase() !== "precedes") continue;
-        if (!nexts.has(e.sourceId)) nexts.set(e.sourceId, []);
-        nexts.get(e.sourceId)!.push(e.targetId);
-      }
-      const leaves: string[] = [];
-      const stack: string[] = [baseId];
-      const visited = new Set<string>();
-      while (stack.length) {
-        const cur = stack.pop()!;
-        if (visited.has(cur)) continue;
-        visited.add(cur);
-        const arr = nexts.get(cur) || [];
-        if (arr.length === 0) {
-          leaves.push(cur);
-        } else {
-          for (const t of arr) stack.push(t);
-        }
-      }
-      // dedupe while preserving order
-      const out: string[] = [];
-      const seen = new Set<string>();
-      for (const id of leaves) { if (!seen.has(id)) { seen.add(id); out.push(id); } }
-      return out;
-    } catch { return [baseId]; }
-  }
-
   async function voteFor(targetId: string, v: 1 | -1) {
     try {
       setVoteBusy(true);
@@ -944,7 +914,6 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
     let patchVal: unknown = rawPatch;
     try { if (typeof rawPatch === "string") patchVal = JSON.parse(rawPatch); } catch {}
     const hasLlmPatch = Array.isArray((patchVal as Record<string, unknown>)?.["ops"] as unknown[]);
-    const leavesAll = descendantLeavesOf(qaId);
     // connected-nodes hidden per UX: show only the main QA chain and its follow-ups
     return (
       <div className="flex flex-col gap-2">
@@ -1157,80 +1126,6 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                   )}
                 </div>
               ))}
-            </div>
-          )}
-          {(Array.isArray(leavesAll) && leavesAll.length > 0) && (
-            <div className="mt-3">
-              <div className="text-xs text-gray-700 mb-1">체인 최종 노드</div>
-              <div className="space-y-2">
-                {leavesAll.map((lid) => (
-                  <div key={`leaf-${lid}`} className="py-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <button
-                        className="text-xs px-2 py-1 rounded border"
-                        onClick={() => onSelectQA?.(lid)}
-                      >이 노드로 이동</button>
-                      <button
-                        className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50"
-                        disabled={boostBusy}
-                        onClick={() => setOpenBoostFor((cur) => cur === lid ? null : lid)}
-                      >{openBoostFor === lid ? "예치 닫기" : "예치(Boost)"}</button>
-                      <button
-                        className={`text-xs px-2 py-1 rounded border disabled:opacity-50 ${(mapNodes.find((n) => n.id === lid)?.myVote === 1) ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : ''}`}
-                        disabled={voteBusy}
-                        onClick={() => void voteFor(lid, 1)}
-                      >도움됨 ({Number(mapNodes.find((n) => n.id === lid)?.helpful || 0)})</button>
-                      <button
-                        className={`text-xs px-2 py-1 rounded border disabled:opacity-50 ${(mapNodes.find((n) => n.id === lid)?.myVote === -1) ? 'bg-red-50 border-red-200 text-red-700' : ''}`}
-                        disabled={voteBusy}
-                        onClick={() => void voteFor(lid, -1)}
-                      >도움 안됨 ({Number(mapNodes.find((n) => n.id === lid)?.unhelpful || 0)})</button>
-                    </div>
-                    {openBoostFor === lid && (
-                      <div className="mt-2 p-2 border rounded bg-white/60 dark:bg-gray-900/40">
-                        <div className="flex items-center gap-3 flex-wrap">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-600">크레딧</span>
-                            <input type="range" min={1} max={20} step={1} value={boostAmount} onChange={(e) => setBoostAmount(Number(e.target.value))} />
-                            <span className="text-xs font-medium">{boostAmount}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-600">락업</span>
-                            <select className="text-xs border rounded px-2 py-1" value={boostLock} onChange={(e) => setBoostLock((Number(e.target.value) as 3|7|14))}>
-                              <option value={3}>3일</option>
-                              <option value={7}>7일</option>
-                              <option value={14}>14일</option>
-                            </select>
-                          </div>
-                          <button
-                            className="text-xs px-2 py-1 rounded border disabled:opacity-50"
-                            disabled={boostBusy}
-                            onClick={async () => {
-                              try {
-                                setBoostBusy(true);
-                                setBoostError(null);
-                                setBoostMsg(null);
-                                const payload: any = { amount: boostAmount, lockDays: boostLock };
-                                if (rootId) payload.rootId = rootId; else payload.qaId = lid;
-                                const r = await fetch("/api/qa/stake", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-                                const j = await r.json().catch(() => ({}));
-                                if (!r.ok) { setBoostError(String(j?.error || "예치 실패")); return; }
-                                setBoostMsg("예치 완료");
-                              } catch (err) {
-                                setBoostError(err instanceof Error ? err.message : "예치 실패");
-                              } finally {
-                                setBoostBusy(false);
-                              }
-                            }}
-                          >예치 실행</button>
-                        </div>
-                        {boostError && <div className="text-[11px] text-red-600 mt-1">{boostError}</div>}
-                        {boostMsg && <div className="text-[11px] text-emerald-700 mt-1">{boostMsg}</div>}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
             </div>
           )}
         </div>
