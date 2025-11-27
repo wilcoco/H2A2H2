@@ -18,10 +18,11 @@ export async function GET(req: NextRequest) {
     if (!rootId && qaIdParam) {
       const row = await withConn(async (c) => {
         const r = await c.query(`select id, root_id from qa_entries where id = $1`, [qaIdParam]);
-        return r.rows?.[0] ?? null;
+        return (r.rows?.[0] as { id?: unknown; root_id?: unknown } | undefined) ?? null;
       });
       if (!row) return NextResponse.json({ error: "qa not found" }, { status: 404 });
-      rootId = row.root_id || row.id;
+      const rid = (row.root_id ?? row.id);
+      rootId = rid != null ? String(rid) : null;
     }
 
     if (!rootId) return NextResponse.json({ error: "Missing rootId or qaId" }, { status: 400 });
@@ -195,7 +196,15 @@ export async function GET(req: NextRequest) {
     }
     const mapEdges = Array.from(byKey.values()).map((e) => ({ sourceId: e.source_id, targetId: e.target_id, type: e.type, weight: e.weight, synthetic: !!e.synthetic }));
 
-    return NextResponse.json({ nodes: mapNodes, edges: mapEdges, rootId });
+    const helpfulAgg = mapNodes.reduce((s, n) => s + Number(n.helpful || 0), 0);
+    const unhelpfulAgg = mapNodes.reduce((s, n) => s + Number(n.unhelpful || 0), 0);
+    const stakeAggRow = await withConn(async (c) => {
+      const r = await c.query(`select coalesce(sum(amount),0) as sum from stake_ledger where qa_root_id = $1`, [rootId]);
+      return r.rows?.[0]?.sum ?? 0;
+    });
+    const stakeAgg = Number(stakeAggRow || 0);
+
+    return NextResponse.json({ nodes: mapNodes, edges: mapEdges, rootId, metrics: { helpful: helpfulAgg, unhelpful: unhelpfulAgg, stakeRaw: stakeAgg } });
   } catch (e) {
     return NextResponse.json({ error: "Failed" }, { status: 500 });
   }

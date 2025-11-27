@@ -46,6 +46,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
   const lastNodeDownRef = useRef<{ id: string; x: number; y: number } | null>(null);
   const CLICK_TOL = 10;
+  const [metricsByRoot, setMetricsByRoot] = useState<Record<string, { stakeRaw: number; helpful: number; unhelpful: number }>>({});
 
   // Lock background scroll while modal is open
   useEffect(() => {
@@ -225,6 +226,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
         const allNodes = new Map<string, QAEntry>();
         const allEdges: Array<{ sourceId: string; targetId: string; type: string }> = [];
         const groups: string[][] = [];
+        const met: Record<string, { stakeRaw: number; helpful: number; unhelpful: number }> = {};
         const MAX_PATHS = 500;
         for (const rid of Array.from(rootIds)) {
           try {
@@ -232,6 +234,10 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
             const j = await r.json().catch(() => ({ nodes: [], edges: [] }));
             const nodes: Array<{ id: string; question: string; summary?: string; answer?: string }> = Array.isArray(j?.nodes) ? j.nodes : [];
             const edges: Array<{ sourceId: string; targetId: string; type: string }> = Array.isArray(j?.edges) ? j.edges : [];
+            if (j?.metrics && typeof j.metrics === 'object') {
+              const m = j.metrics as { stakeRaw?: unknown; helpful?: unknown; unhelpful?: unknown };
+              met[rid] = { stakeRaw: Number(m.stakeRaw || 0), helpful: Number(m.helpful || 0), unhelpful: Number(m.unhelpful || 0) };
+            }
             nodes.forEach((n) => allNodes.set(n.id, { id: n.id, question: n.question, summary: n.summary, answer: n.answer } as QAEntry));
             allEdges.push(...edges.map((e) => ({ sourceId: e.sourceId, targetId: e.targetId, type: String(e.type || "") })));
             const pres = edges.filter((e) => (e.type || "").toLowerCase() === "precedes");
@@ -261,7 +267,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
             }
           } catch {}
         }
-        if (active) { setChains(groups); setNodesByIdThread(allNodes); setEdgesAll(allEdges); }
+        if (active) { setChains(groups); setNodesByIdThread(allNodes); setEdgesAll(allEdges); setMetricsByRoot((prev) => ({ ...prev, ...met })); }
       } catch {
         if (active) { setChains([]); setNodesByIdThread(new Map()); }
       } finally {
@@ -284,6 +290,10 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
         const its: QAEntry[] = Array.isArray(j?.nodes)
           ? (j.nodes as Array<{ id: string; question: string; summary?: string; answer?: string }>).map((n) => ({ id: n.id, question: n.question, summary: n.summary, answer: n.answer }))
           : [];
+        if (j?.metrics && typeof j.metrics === 'object') {
+          const m = j.metrics as { stakeRaw?: unknown; helpful?: unknown; unhelpful?: unknown };
+          setMetricsByRoot((prev) => ({ ...prev, [threadRootId]: { stakeRaw: Number(m.stakeRaw || 0), helpful: Number(m.helpful || 0), unhelpful: Number(m.unhelpful || 0) } }));
+        }
         const map = new Map<string, QAEntry>();
         for (const it of its) map.set(it.id, it);
         const edges: Array<{ sourceId: string; targetId: string; type: string }> = Array.isArray(j?.edges) ? j.edges : [];
@@ -344,6 +354,13 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
         const its: QAEntry[] = Array.isArray(j?.items)
           ? (j.items as Array<{ id: string; rootId?: string; question?: string }> ).map((x) => ({ id: x.id, question: x.question || x.id }))
           : [];
+        if (Array.isArray(j?.items)) {
+          const mm: Record<string, { stakeRaw: number; helpful: number; unhelpful: number }> = {};
+          for (const x of j.items as Array<{ id: string; stakeRaw?: number; helpful?: number; unhelpful?: number }>) {
+            mm[x.id] = { stakeRaw: Number(x.stakeRaw || 0), helpful: Number(x.helpful || 0), unhelpful: Number(x.unhelpful || 0) };
+          }
+          if (active) setMetricsByRoot(mm);
+        }
         if (active) setItems(its);
       } catch (e: unknown) {
         if (active) setError(e instanceof Error ? e.message : "Unknown error");
@@ -433,7 +450,11 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
           <ul className="space-y-2">
             {chains.map((chain, cidx) => (
               <li key={`ch-${cidx}`} className="rounded border border-gray-200/60 p-2 bg-white/60 dark:bg-gray-900/40">
-                <div className="text-[11px] text-gray-600 mb-1">Chain {cidx + 1}{chainsLoading ? ' · 구성 중…' : ''}</div>
+                <div className="text-[11px] text-gray-600 mb-1">
+                  {(() => { const rid = chain[0]; const m = rid ? metricsByRoot[rid] : undefined; return (
+                    <>Chain {cidx + 1}{chainsLoading ? ' · 구성 중…' : ''}{m ? <> · 예치 {m.stakeRaw} · 도움됨 {m.helpful} · 비도움 {m.unhelpful}</> : null}</>
+                  ); })()}
+                </div>
                 <ul className="space-y-1">
                   {chain.map((id) => {
                     const it = nodesByIdThread.get(id);
@@ -455,7 +476,11 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
         <ul className="space-y-2">
           {chains.map((chain, cidx) => (
             <li key={`ch-${cidx}`} className="rounded border border-gray-200/60 p-2 bg-white/60 dark:bg-gray-900/40">
-              <div className="text-[11px] text-gray-600 mb-1">Chain {cidx + 1}</div>
+              <div className="text-[11px] text-gray-600 mb-1">
+                {(() => { const rid = chain[0]; const m = rid ? metricsByRoot[rid] : undefined; return (
+                  <>Chain {cidx + 1}{m ? <> · 예치 {m.stakeRaw} · 도움됨 {m.helpful} · 비도움 {m.unhelpful}</> : null}</>
+                ); })()}
+              </div>
               <ul className="space-y-1">
                 {chain.map((id) => {
                   const it = nodesByIdThread.get(id);
@@ -475,7 +500,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
       ) : (
         <ul className="space-y-2">
           {items.map((it, idx) => (
-            <SuggestItem key={it.id} it={it} index={idx} onSelectQA={onSelectQA} />
+            <SuggestItem key={it.id} it={it} index={idx} onSelectQA={onSelectQA} metrics={metricsByRoot[it.id]} />
           ))}
         </ul>
       ))}
@@ -672,7 +697,7 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
   );
 }
 
-function SuggestItem({ it, index, onSelectQA }: { it: QAEntry; index: number; onSelectQA: (id: string) => void }) {
+function SuggestItem({ it, index, onSelectQA, metrics }: { it: QAEntry; index: number; onSelectQA: (id: string) => void; metrics?: { stakeRaw: number; helpful: number; unhelpful: number } }) {
   return (
     <li className="rounded border border-gray-200/60 p-2 bg-white/60 dark:bg-gray-900/40">
       <div className="flex items-center justify-between gap-2">
@@ -681,6 +706,9 @@ function SuggestItem({ it, index, onSelectQA }: { it: QAEntry; index: number; on
           <span className="line-clamp-1">{it.question}</span>
         </button>
       </div>
+      {metrics && (
+        <div className="text-[11px] text-gray-600 mt-1">예치 {metrics.stakeRaw} · 도움됨 {metrics.helpful} · 비도움 {metrics.unhelpful}</div>
+      )}
     </li>
   );
 }
