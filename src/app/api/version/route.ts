@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 export const runtime = "nodejs";
 
@@ -26,6 +28,20 @@ export async function GET(_req: NextRequest) {
     const headers: Record<string, string> = { Accept: "application/vnd.github+json" };
     const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_PAT;
     if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const base = process.cwd();
+    const candidates = ["version.json", "src/version.json", "public/version.json"];
+    for (const p of candidates) {
+      try {
+        const full = join(base, p);
+        const txt = readFileSync(full, "utf8");
+        const j = JSON.parse(txt);
+        const sha: string | undefined = j?.sha ? String(j.sha) : undefined;
+        const title: string = j?.title ? String(j.title) : "";
+        const message: string = j?.message ? String(j.message) : "";
+        if (title || sha) return NextResponse.json({ sha, title, message });
+      } catch {}
+    }
 
     // 1) Primary: commits/{branch}
     const primaryUrl = `https://api.github.com/repos/${owner}/${repo}/commits/${encodeURIComponent(branch)}`;
