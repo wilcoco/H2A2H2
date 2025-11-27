@@ -915,6 +915,70 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             <div className="text-[11px] text-gray-600">없음</div>
           ))}
         </div>
+        {chainUnder.length === 0 && (
+          <>
+            <div className="mt-3 flex items-center gap-2 flex-wrap">
+              <button
+                className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50"
+                disabled={!readOK || boostBusy || !qaId}
+                onClick={() => setBoostOpen((v) => !v)}
+              >{boostBusy ? "처리 중…" : (boostOpen ? "예치 닫기" : "예치(Boost)")}</button>
+              <button
+                className={`text-xs px-2 py-1 rounded border disabled:opacity-50 ${((data as any)?.myVote === 1) ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : ''}`}
+                disabled={voteBusy || !qaId}
+                onClick={() => void vote(1)}
+              >도움됨 ({Number((data as any)?.helpful || 0)})</button>
+              <button
+                className={`text-xs px-2 py-1 rounded border disabled:opacity-50 ${((data as any)?.myVote === -1) ? 'bg-red-50 border-red-200 text-red-700' : ''}`}
+                disabled={voteBusy || !qaId}
+                onClick={() => void vote(-1)}
+              >도움 안됨 ({Number((data as any)?.unhelpful || 0)})</button>
+            </div>
+            {boostOpen && (
+              <div className="mt-2 p-2 border rounded bg-white/60 dark:bg-gray-900/40">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-600">크레딧</span>
+                    <input type="range" min={1} max={20} step={1} value={boostAmount} onChange={(e) => setBoostAmount(Number(e.target.value))} />
+                    <span className="text-xs font-medium">{boostAmount}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-600">락업</span>
+                    <select className="text-xs border rounded px-2 py-1" value={boostLock} onChange={(e) => setBoostLock((Number(e.target.value) as 3|7|14))}>
+                      <option value={3}>3일</option>
+                      <option value={7}>7일</option>
+                      <option value={14}>14일</option>
+                    </select>
+                  </div>
+                  <button
+                    className="text-xs px-2 py-1 rounded border disabled:opacity-50"
+                    disabled={!readOK || boostBusy || !qaId}
+                    onClick={async () => {
+                      if (!qaId) return;
+                      const rid = rootId || qaId;
+                      try {
+                        setBoostBusy(true);
+                        setBoostError(null);
+                        setBoostMsg(null);
+                        const r = await fetch("/api/qa/stake", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rootId: rid, amount: boostAmount, lockDays: boostLock }) });
+                        const j = await r.json().catch(() => ({}));
+                        if (!r.ok) { setBoostError(String(j?.error || "예치 실패")); return; }
+                        setBoostMsg("예치 완료");
+                      } catch (err) {
+                        setBoostError(err instanceof Error ? err.message : "예치 실패");
+                      } finally {
+                        setBoostBusy(false);
+                      }
+                    }}
+                  >예치 실행</button>
+                </div>
+                {(!readOK) && <div className="text-[11px] text-gray-500 mt-1">내용을 충분히 읽은 후 예치가 가능합니다.</div>}
+                {boostError && <div className="text-[11px] text-red-600 mt-1">{boostError}</div>}
+                {boostMsg && <div className="text-[11px] text-emerald-700 mt-1">{boostMsg}</div>}
+              </div>
+            )}
+          </>
+        )}
         <div className="mt-2 flex items-center gap-2">
           <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 카드에서 이어서 물어보기" value={qaId ? (fuMap[qaId]?.input ?? '') : ''} onFocus={() => { if (qaId) setAnchor({ type: 'qa', id: qaId }); }} onChange={(e) => { if (!qaId) return; setFuMap((m) => ({ ...m, [qaId]: { ...(m[qaId] || { input: '', loading: false, items: [] }), input: e.target.value } })); }} />
           <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!qaId || !!(fuMap[qaId]?.loading) || !(((qaId && fuMap[qaId]?.input) ?? '').trim())} onClick={() => { if (qaId) { setAnchor({ type: 'qa', id: qaId }); void askFollowUpFor(qaId); } }}>{qaId && fuMap[qaId]?.loading ? "요청 중…" : "이 카드에서 답변 받기"}</button>

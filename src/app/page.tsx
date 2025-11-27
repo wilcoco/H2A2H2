@@ -291,6 +291,7 @@ export default function Home() {
         <h1 className="text-base font-semibold">업무 지식 편집기</h1>
         <div className="flex items-center gap-3">
           <div className="text-xs text-gray-500 hidden sm:block">MVP · 3-panels</div>
+          <a href="/me" className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100">내 페이지</a>
           <div className="flex items-center gap-1 text-xs">
             <span className="text-gray-600">Provider</span>
             <select
@@ -320,10 +321,6 @@ export default function Home() {
           {user ? (
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-700">{user.name || user.email}</span>
-              <button
-                className="text-xs px-2 py-1 rounded border border-blue-600 text-blue-700 hover:bg-blue-50"
-                onClick={() => setPublishOpen(true)}
-              >Publish</button>
               <button
                 className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
                 onClick={async () => {
