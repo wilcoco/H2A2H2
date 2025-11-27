@@ -12,6 +12,16 @@ function getRepo() {
 
 export async function GET(_req: NextRequest) {
   try {
+    const envMsgRaw = (process.env.VERSION_TITLE || process.env.NEXT_PUBLIC_VERSION_TITLE || process.env.VERCEL_GIT_COMMIT_MESSAGE || process.env.RAILWAY_GIT_COMMIT_MESSAGE || "").toString();
+    const envMsg = envMsgRaw.trim();
+    const envShaRaw = (process.env.VERCEL_GIT_COMMIT_SHA || process.env.RAILWAY_GIT_COMMIT_SHA || process.env.GIT_COMMIT_SHA || process.env.SOURCE_VERSION || "").toString();
+    const envSha = envShaRaw.trim();
+    if (envMsg) {
+      const [titleLine, ...rest] = envMsg.split("\n");
+      const title = (titleLine || "").trim();
+      const message = rest.join("\n").trim();
+      return NextResponse.json({ sha: envSha || undefined, title, message });
+    }
     const { owner, repo, branch } = getRepo();
     const headers: Record<string, string> = { Accept: "application/vnd.github+json" };
     const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_PAT;
