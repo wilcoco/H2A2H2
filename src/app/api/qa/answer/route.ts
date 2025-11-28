@@ -19,15 +19,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
     }
 
-    // derive summary fallback if not provided but answer exists
+    // derive summary fallback if not provided but answer exists (no truncation)
     if (!summary && (answer || "").trim()) {
       try {
         if (patch && typeof patch === 'object' && patch !== null) {
           const desc = (patch as Record<string, unknown>)["description"];
-          if (typeof desc === 'string') summary = desc.slice(0, 280);
-          else summary = (answer as string).replace(/\s+/g, " ").slice(0, 280);
+          if (typeof desc === 'string') summary = desc;
+          else summary = (answer as string).replace(/\s+/g, " ");
         } else {
-          summary = (answer as string).replace(/\s+/g, " ").slice(0, 280);
+          summary = (answer as string).replace(/\s+/g, " ");
         }
       } catch {}
     }

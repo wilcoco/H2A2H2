@@ -339,76 +339,86 @@ export default function Home() {
       </header>
       <div className="p-3 md:p-4 overflow-hidden flex flex-col lg:flex-row gap-3 md:gap-4">
         <aside
-          className="rounded border border-gray-200/60 p-3 md:p-3 overflow-auto"
+          className="rounded border border-gray-200/60 p-0 overflow-hidden flex flex-col"
           style={{ width: leftWidth }}
         >
-          <LeftAsk
-            onSelectQA={(id) => {
-              setLastViewedQaId(id);
-              setSelectedQaId(id);
-              setCenterAiAnswer("");
-            }}
-            onAskAINow={(q) => void askAiNow(q)}
-            refreshKey={graphRefreshKey}
-            keyword={leftKeyword}
-            keywordMode={leftKeywordMode}
-            keywords={leftKeywords}
-            phrases={leftPhrases}
-            onClearKeyword={() => { setLeftKeyword(null); setLeftKeywords(null); setLeftPhrases(null); setLeftKeywordMode("any"); }}
-            contextIds={selectedContextIds}
-            onToggleContext={(id, next) => setSelectedContextIds((prev) => next ? (prev.includes(id) ? prev : [...prev, id]) : prev.filter((x) => x !== id))}
-            threadRootId={leftThreadRootId}
-            onSelectChainPath={(path) => setLeftSelectedPath(path)}
-          />
+          <div className="flex items-center border-b border-gray-200/60">
+            <div className="text-xs px-3 py-2 border-b-2 border-blue-600 text-blue-700">질문/검색</div>
+          </div>
+          <div className="p-2 md:p-3 overflow-auto flex-1">
+            <LeftAsk
+              onSelectQA={(id) => {
+                setLastViewedQaId(id);
+                setSelectedQaId(id);
+                setCenterAiAnswer("");
+              }}
+              onAskAINow={(q) => void askAiNow(q)}
+              refreshKey={graphRefreshKey}
+              keyword={leftKeyword}
+              keywordMode={leftKeywordMode}
+              keywords={leftKeywords}
+              phrases={leftPhrases}
+              onClearKeyword={() => { setLeftKeyword(null); setLeftKeywords(null); setLeftPhrases(null); setLeftKeywordMode("any"); }}
+              contextIds={selectedContextIds}
+              onToggleContext={(id, next) => setSelectedContextIds((prev) => next ? (prev.includes(id) ? prev : [...prev, id]) : prev.filter((x) => x !== id))}
+              threadRootId={leftThreadRootId}
+              onSelectChainPath={(path) => setLeftSelectedPath(path)}
+            />
+          </div>
         </aside>
         <div
           className="hidden lg:block w-1 cursor-col-resize bg-transparent hover:bg-blue-200/50"
           onMouseDown={(e) => { dragRef.current = { side: "left", startX: e.clientX, startW: leftWidth }; }}
         />
 
-        <main className="rounded border border-gray-200/60 p-2 md:p-3 overflow-auto flex-1 min-w-0">
-          <CenterQAViewer
-            qaId={selectedQaId || undefined}
-            question={!selectedQaId ? centerQuestion : undefined}
-            aiAnswer={!selectedQaId ? centerAiAnswer : undefined}
-            aiProvider={!selectedQaId ? centerAiMeta?.providerUsed : undefined}
-            aiModel={!selectedQaId ? centerAiMeta?.modelUsed : undefined}
-            aiFallbackUsed={!selectedQaId ? centerAiMeta?.fallbackUsed : undefined}
-            aiResponseId={!selectedQaId ? (centerPrevRespId || undefined) : undefined}
-            provider={provider}
-            detail={detail}
-            lockContext={centerLockContext}
-            onToggleLock={(v) => setCenterLockContext(v)}
-            onSetPrevRespId={(rid) => setCenterPrevRespId(rid)}
-            onOpenThread={() => setThreadOpen(true)}
-            onKeywordClick={(kw) => { setLeftKeywords(null); setLeftPhrases(null); setLeftKeyword(kw); }}
-            onKeywordSearch={({ keywords, phrases, mode }) => {
-              setLeftKeywordMode(mode || "any");
-              if (phrases && phrases.length > 0) {
-                setLeftKeywords(null);
-                setLeftPhrases(phrases);
-                setLeftKeyword(phrases[0]);
-              } else if (keywords && keywords.length > 0) {
-                setLeftPhrases(null);
-                setLeftKeywords(keywords);
-                setLeftKeyword(keywords.join(" "));
-              }
-            }}
-            onShared={(newId: string) => {
-              setSelectedQaId(newId);
-              setCenterAiAnswer("");
-              setLastViewedQaId(newId);
-            }}
-            refreshKey={graphRefreshKey}
-            onGraphChanged={() => setGraphRefreshKey((k) => k + 1)}
-            onSelectQA={(id) => {
-              setLastViewedQaId(id);
-              setSelectedQaId(id);
-              setCenterAiAnswer("");
-            }}
-            currentUserEmail={user?.email}
-            selectedChainPath={leftSelectedPath || undefined}
-          />
+        <main className="rounded border border-gray-200/60 p-0 overflow-hidden flex-1 min-w-0 flex flex-col">
+          <div className="flex items-center border-b border-gray-200/60">
+            <div className="text-xs px-3 py-2 border-b-2 border-blue-600 text-blue-700">Q&A 보기</div>
+          </div>
+          <div className="p-2 md:p-3 overflow-auto flex-1">
+            <CenterQAViewer
+              qaId={selectedQaId || undefined}
+              question={!selectedQaId ? centerQuestion : undefined}
+              aiAnswer={!selectedQaId ? centerAiAnswer : undefined}
+              aiProvider={!selectedQaId ? centerAiMeta?.providerUsed : undefined}
+              aiModel={!selectedQaId ? centerAiMeta?.modelUsed : undefined}
+              aiFallbackUsed={!selectedQaId ? centerAiMeta?.fallbackUsed : undefined}
+              aiResponseId={!selectedQaId ? (centerPrevRespId || undefined) : undefined}
+              provider={provider}
+              detail={detail}
+              lockContext={centerLockContext}
+              onToggleLock={(v) => setCenterLockContext(v)}
+              onSetPrevRespId={(rid) => setCenterPrevRespId(rid)}
+              onOpenThread={() => setThreadOpen(true)}
+              onKeywordClick={(kw) => { setLeftKeywords(null); setLeftPhrases(null); setLeftKeyword(kw); }}
+              onKeywordSearch={({ keywords, phrases, mode }) => {
+                setLeftKeywordMode(mode || "any");
+                if (phrases && phrases.length > 0) {
+                  setLeftKeywords(null);
+                  setLeftPhrases(phrases);
+                  setLeftKeyword(phrases[0]);
+                } else if (keywords && keywords.length > 0) {
+                  setLeftPhrases(null);
+                  setLeftKeywords(keywords);
+                  setLeftKeyword(keywords.join(" "));
+                }
+              }}
+              onShared={(newId: string) => {
+                setSelectedQaId(newId);
+                setCenterAiAnswer("");
+                setLastViewedQaId(newId);
+              }}
+              refreshKey={graphRefreshKey}
+              onGraphChanged={() => setGraphRefreshKey((k) => k + 1)}
+              onSelectQA={(id) => {
+                setLastViewedQaId(id);
+                setSelectedQaId(id);
+                setCenterAiAnswer("");
+              }}
+              currentUserEmail={user?.email}
+              selectedChainPath={leftSelectedPath || undefined}
+            />
+          </div>
         </main>
         <div
           className="hidden lg:block w-1 cursor-col-resize bg-transparent hover:bg-blue-200/50"

@@ -34,13 +34,13 @@ export async function POST(req: NextRequest) {
     const q = question.trim();
     if (!q) return NextResponse.json({ error: "Missing question" }, { status: 400 });
 
-    // server-side summary fallback
+    // server-side summary fallback (no truncation)
     if (!summary) {
       try {
         if (patch?.description && typeof patch.description === "string") {
-          summary = String(patch.description).slice(0, 280);
+          summary = String(patch.description);
         } else if (answer) {
-          summary = answer.replace(/\s+/g, " ").slice(0, 280);
+          summary = answer.replace(/\s+/g, " ");
         }
       } catch {}
     }
@@ -50,9 +50,13 @@ export async function POST(req: NextRequest) {
     if (parentId) {
       const parent = await withConn(async (c) => {
         const r = await c.query(`select id, root_id from qa_entries where id = $1`, [parentId]);
-        return r.rows?.[0] ?? null;
+        return (r.rows?.[0] ?? null) as { id?: unknown; root_id?: unknown } | null;
       });
-      if (parent) rootId = parent.root_id ?? parent.id;
+      if (parent) {
+        const rid = typeof parent.root_id === 'string' ? parent.root_id : undefined;
+        const pid = typeof parent.id === 'string' ? parent.id : undefined;
+        rootId = rid || pid || null;
+      }
     }
     await withConn(async (c) => {
       await c.query(

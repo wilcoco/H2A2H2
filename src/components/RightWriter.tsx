@@ -324,7 +324,6 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="text-sm font-semibold">문서 작성</div>
       {error && <div className="text-xs text-red-600">{error}</div>}
       {/* blocks hidden */}
       {/* labels hidden */}
