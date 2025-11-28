@@ -1,0 +1,7 @@
+{
+  "sha": "e75a8ae5cac33db0d857bb2c30d4331e98d5f823",
+  "title": "chore(version): write version.json at predev/prebuild/prestart; ensure banner always shows push-time title",
+  "message": "",
+  "branch": "main",
+  "builtAt": "2025-11-27T00:45:46.808Z"
+}

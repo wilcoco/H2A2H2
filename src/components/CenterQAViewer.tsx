@@ -1224,8 +1224,8 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                     <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50" disabled={pairBusy} onClick={() => void savePairAndRelAt(i)}>{pairBusy ? "저장 중…" : "두 Q&A 저장 및 관계 생성"}</button>
                   </div>
                   <div className="mt-2 flex items-center gap-2">
-                    <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 카드에서 이어서 물어보기" value={fuPer[i]?.input ?? ''} onChange={(e) => setFuPer((m) => ({ ...m, [i]: { ...(m[i] || { input: '', loading: false }), input: e.target.value } }))} />
-                    <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!!(fuPer[i]?.loading) || !((fuPer[i]?.input ?? '').trim())} onClick={() => void askFollowUpAt(i)}>{fuPer[i]?.loading ? "요청 중…" : "이 카드에서 답변 받기"}</button>
+                    <textarea rows={1} className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60 resize-none overflow-hidden" placeholder="위 QA에 연결해서 질문하기" value={fuPer[i]?.input ?? ''} onInput={(e) => { const el = e.currentTarget as HTMLTextAreaElement; el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; }} onChange={(e) => setFuPer((m) => ({ ...m, [i]: { ...(m[i] || { input: '', loading: false }), input: e.target.value } }))} />
+                    <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!!(fuPer[i]?.loading) || !((fuPer[i]?.input ?? '').trim())} onClick={() => void askFollowUpAt(i)}>{fuPer[i]?.loading ? "요청 중…" : "AI에게 묻기"}</button>
                   </div>
                 </div>
               ))}
