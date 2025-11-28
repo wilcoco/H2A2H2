@@ -240,7 +240,10 @@ export default function MePage() {
     <div className="max-w-5xl mx-auto p-6">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-semibold">내 페이지</h1>
-        <a href="/me/chains" className="text-xs px-2 py-1 rounded border hover:bg-gray-100">나의 체인</a>
+        <div className="flex items-center gap-2">
+          <a href="/" className="text-xs px-2 py-1 rounded border hover:bg-gray-100">메인으로</a>
+          <a href="/me/chains" className="text-xs px-2 py-1 rounded border hover:bg-gray-100">나의 체인</a>
+        </div>
       </div>
 
       {!authChecking && !isAuthed && (
@@ -256,6 +259,9 @@ export default function MePage() {
 
       {isAuthed && (
         <>
+          <div className="mb-2">
+            <h2 className="text-lg font-semibold">체인 정보</h2>
+          </div>
           <section className="mb-8">
             <h2 className="font-medium mb-2">나의 질문/답변 기록</h2>
             <div className="mb-2 text-xs">
@@ -278,6 +284,10 @@ export default function MePage() {
               </ul>
             )}
           </section>
+
+          <div className="mt-8 mb-2 pt-4 border-t">
+            <h2 className="text-lg font-semibold">예치/락업</h2>
+          </div>
 
           <section className="mb-8">
             <h2 className="font-medium mb-2">나의 락업 현황</h2>
