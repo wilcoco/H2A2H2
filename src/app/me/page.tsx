@@ -259,31 +259,7 @@ export default function MePage() {
 
       {isAuthed && (
         <>
-          <div className="mb-2">
-            <h2 className="text-lg font-semibold">체인 정보</h2>
-          </div>
-          <section className="mb-8">
-            <h2 className="font-medium mb-2">나의 질문/답변 기록</h2>
-            <div className="mb-2 text-xs">
-              <input className="border rounded px-2 py-1" placeholder="검색(질문/요약/루트ID)" value={qaSearch} onChange={(e) => setQaSearch(e.target.value)} />
-            </div>
-            {loading ? (
-              <div>불러오는 중…</div>
-            ) : filteredQa.length === 0 ? (
-              <div className="text-gray-500">조건에 해당하는 항목이 없습니다.</div>
-            ) : (
-              <ul className="space-y-2">
-                {filteredQa.map((x) => (
-                  <li key={x.id} className="p-3 rounded border">
-                    <div className="text-sm text-gray-500">{new Date(x.createdAt).toLocaleString()}</div>
-                    <div className="font-medium">{x.question}</div>
-                    {x.summary && <div className="text-sm text-gray-600 mt-1">{x.summary}</div>}
-                    <div className="text-xs text-gray-500 mt-1">도움됨 {x.helpful} · 비도움 {x.unhelpful}</div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+          
 
           <div className="mt-8 mb-2 pt-4 border-t">
             <h2 className="text-lg font-semibold">예치/락업</h2>
@@ -383,6 +359,32 @@ export default function MePage() {
                       <div className="text-sm">예치 {y.amount} → 추정 성과 {y.estimatedYield}</div>
                     </div>
                     <div className="text-xs text-gray-500 mt-1">만기 {new Date(y.lockUntil).toLocaleString()} · 품질 {(y.qualityScore*100).toFixed(0)}%</div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <div className="mt-8 mb-2 pt-4 border-t">
+            <h2 className="text-lg font-semibold">체인 정보</h2>
+          </div>
+          <section className="mb-8">
+            <h2 className="font-medium mb-2">나의 질문/답변 기록</h2>
+            <div className="mb-2 text-xs">
+              <input className="border rounded px-2 py-1" placeholder="검색(질문/요약/루트ID)" value={qaSearch} onChange={(e) => setQaSearch(e.target.value)} />
+            </div>
+            {loading ? (
+              <div>불러오는 중…</div>
+            ) : filteredQa.length === 0 ? (
+              <div className="text-gray-500">조건에 해당하는 항목이 없습니다.</div>
+            ) : (
+              <ul className="space-y-2">
+                {filteredQa.map((x) => (
+                  <li key={x.id} className="p-3 rounded border">
+                    <div className="text-sm text-gray-500">{new Date(x.createdAt).toLocaleString()}</div>
+                    <div className="font-medium">{x.question}</div>
+                    {x.summary && <div className="text-sm text-gray-600 mt-1">{x.summary}</div>}
+                    <div className="text-xs text-gray-500 mt-1">도움됨 {x.helpful} · 비도움 {x.unhelpful}</div>
                   </li>
                 ))}
               </ul>

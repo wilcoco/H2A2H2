@@ -1019,8 +1019,8 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           </>
         )}
         <div className="mt-2 flex items-center gap-2">
-          <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 카드에서 이어서 물어보기" value={qaId ? (fuMap[qaId]?.input ?? '') : ''} onFocus={() => { if (qaId) setAnchor({ type: 'qa', id: qaId }); }} onChange={(e) => { if (!qaId) return; setFuMap((m) => ({ ...m, [qaId]: { ...(m[qaId] || { input: '', loading: false, items: [] }), input: e.target.value } })); }} />
-          <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!qaId || !!(fuMap[qaId]?.loading) || !(((qaId && fuMap[qaId]?.input) ?? '').trim())} onClick={() => { if (qaId) { setAnchor({ type: 'qa', id: qaId }); void askFollowUpFor(qaId); } }}>{qaId && fuMap[qaId]?.loading ? "요청 중…" : "이 카드에서 답변 받기"}</button>
+          <textarea rows={1} className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60 resize-none overflow-hidden" placeholder="위 QA에 연결해서 질문하기" value={qaId ? (fuMap[qaId]?.input ?? '') : ''} onInput={(e) => { const el = e.currentTarget as HTMLTextAreaElement; el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; }} onFocus={() => { if (qaId) setAnchor({ type: 'qa', id: qaId }); }} onChange={(e) => { if (!qaId) return; setFuMap((m) => ({ ...m, [qaId]: { ...(m[qaId] || { input: '', loading: false, items: [] }), input: e.target.value } })); }} />
+          <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!qaId || !!(fuMap[qaId]?.loading) || !(((qaId && fuMap[qaId]?.input) ?? '').trim())} onClick={() => { if (qaId) { setAnchor({ type: 'qa', id: qaId }); void askFollowUpFor(qaId); } }}>{qaId && fuMap[qaId]?.loading ? "요청 중…" : "AI에게 묻기"}</button>
           {anchor?.type === 'qa' && anchor.id === qaId && (
             <span className="text-[10px] px-1.5 py-[2px] rounded-full border bg-emerald-50 border-emerald-200 text-emerald-700">앵커</span>
           )}
@@ -1058,8 +1058,8 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                     <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50" disabled={pairBusy} onClick={() => void savePairAndRelAt(i)}>{pairBusy ? "저장 중…" : "두 Q&A 저장 및 관계 생성"}</button>
                   </div>
                   <div className="mt-2 flex items-center gap-2">
-                    <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 카드에서 이어서 물어보기" value={fuPer[i]?.input ?? ''} onFocus={() => setAnchor({ type: 'fu', index: i })} onChange={(e) => setFuPer((m) => ({ ...m, [i]: { ...(m[i] || { input: '', loading: false }), input: e.target.value } }))} />
-                    <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!!(fuPer[i]?.loading) || !((fuPer[i]?.input ?? '').trim())} onClick={() => { setAnchor({ type: 'fu', index: i }); void askFollowUpAt(i); }}>{fuPer[i]?.loading ? "요청 중…" : "이 카드에서 답변 받기"}</button>
+                    <textarea rows={1} className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60 resize-none overflow-hidden" placeholder="위 QA에 연결해서 질문하기" value={fuPer[i]?.input ?? ''} onInput={(e) => { const el = e.currentTarget as HTMLTextAreaElement; el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; }} onFocus={() => setAnchor({ type: 'fu', index: i })} onChange={(e) => setFuPer((m) => ({ ...m, [i]: { ...(m[i] || { input: '', loading: false }), input: e.target.value } }))} />
+                    <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!!(fuPer[i]?.loading) || !((fuPer[i]?.input ?? '').trim())} onClick={() => { setAnchor({ type: 'fu', index: i }); void askFollowUpAt(i); }}>{fuPer[i]?.loading ? "요청 중…" : "AI에게 묻기"}</button>
                   </div>
                   {it.savedId && isLeafNode(it.savedId) && (
                     <div className="mt-2">
@@ -1168,12 +1168,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50"
             disabled={saving}
             onClick={() => void shareAnd("card")}
-          >{saving ? "Sharing..." : "가이드에 추가"}</button>
-          <button
-            className="text-xs px-2 py-1 rounded border disabled:opacity-50"
-            disabled={saving}
-            onClick={() => void shareNew()}
-          >{saving ? "Sharing..." : "공유하기"}</button>
+          >{saving ? "Sharing..." : "이 QA를 저장"}</button>
         </div>
         <div className="mt-2">
           {kwLoading ? (
@@ -1191,14 +1186,10 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
             <div className="text-[11px] text-gray-600">없음</div>
           ))}
         </div>
-        <div className="flex items-center gap-2 mt-2">
-          <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={saving} onClick={() => void shareAnd("source")}>{saving ? "Sharing..." : "Set Source"}</button>
-          <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={saving} onClick={() => void shareAnd("target")}>{saving ? "Sharing..." : "Set Target"}</button>
-          <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={saving} onClick={() => void shareAnd("card")}>{saving ? "Sharing..." : "Set Card"}</button>
-        </div>
+        
         <div className="mt-2 flex items-center gap-2">
-          <input className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60" placeholder="이 카드에서 이어서 물어보기" value={fuInput} onFocus={() => setAnchor({ type: 'ai' })} onChange={(e) => setFuInput(e.target.value)} />
-          <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={fuLoading || !fuInput.trim()} onClick={() => { setAnchor({ type: 'ai' }); void askFollowUp(); }}>{fuLoading ? "요청 중…" : "이 카드에서 답변 받기"}</button>
+          <textarea rows={1} className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60 resize-none overflow-hidden" placeholder="위 QA에 연결해서 질문하기" value={fuInput} onInput={(e) => { const el = e.currentTarget as HTMLTextAreaElement; el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; }} onFocus={() => setAnchor({ type: 'ai' })} onChange={(e) => setFuInput(e.target.value)} />
+          <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={fuLoading || !fuInput.trim()} onClick={() => { setAnchor({ type: 'ai' }); void askFollowUp(); }}>{fuLoading ? "요청 중…" : "AI에게 묻기"}</button>
           {anchor?.type === 'ai' && (
             <span className="text-[10px] px-1.5 py-[2px] rounded-full border bg-emerald-50 border-emerald-200 text-emerald-700">앵커</span>
           )}

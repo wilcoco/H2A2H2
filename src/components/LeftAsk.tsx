@@ -374,10 +374,12 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
   return (
     <div className="flex flex-col gap-3">
       <div className="sticky top-0 bg-white dark:bg-gray-900 z-10 pb-2 border-b border-gray-100/60">
-        <div className="flex items-center gap-2">
-          <input
+        <div className="flex flex-col gap-2">
+          <textarea
+            rows={1}
             value={q}
             onChange={(e) => setQ(e.target.value)}
+            onInput={(e) => { const el = e.currentTarget as HTMLTextAreaElement; el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; }}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing) return; // allow IME composition
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -389,24 +391,26 @@ export default function LeftAsk({ onSelectQA, onAskAINow, connectMode, targetId,
               }
             }}
             placeholder="질문을 입력하세요"
-            className="flex-1 rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60"
+            className="w-full rounded border border-gray-300 bg-white/90 p-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/60 resize-none overflow-hidden"
             id="left-ask"
             name="left-ask"
           />
-          <button
-            className="text-xs px-2 py-2 rounded border text-gray-700 disabled:opacity-50"
-            disabled={q.trim().length === 0}
-            onClick={() => { const query = q.trim(); if (query) { onClearKeyword?.(); setSubmittedQuery(query); void search(query, true); } }}
-          >기존 QA 검색</button>
-          <button
-            className="text-xs px-2 py-2 rounded bg-emerald-600 text-white disabled:opacity-50"
-            disabled={q.trim().length === 0}
-            onClick={() => { const query = q.trim(); if (query) { onClearKeyword?.(); setSubmittedQuery(query); void search(query, true); onAskAINow(query); } }}
-          >AI에게 묻기</button>
-          <button
-            className="text-xs px-2 py-2 rounded border text-gray-700"
-            onClick={() => { setShowGraph(true); setGZoom(1); setGPanX(0); setGPanY(0); }}
-          >그래프 보기</button>
+          <div className="flex items-center gap-2">
+            <button
+              className="text-xs px-2 py-2 rounded border text-gray-700 disabled:opacity-50"
+              disabled={q.trim().length === 0}
+              onClick={() => { const query = q.trim(); if (query) { onClearKeyword?.(); setSubmittedQuery(query); void search(query, true); } }}
+            >기존 QA 검색</button>
+            <button
+              className="text-xs px-2 py-2 rounded bg-emerald-600 text-white disabled:opacity-50"
+              disabled={q.trim().length === 0}
+              onClick={() => { const query = q.trim(); if (query) { onClearKeyword?.(); setSubmittedQuery(query); void search(query, true); onAskAINow(query); } }}
+            >AI에게 묻기</button>
+            <button
+              className="text-xs px-2 py-2 rounded border text-gray-700"
+              onClick={() => { setShowGraph(true); setGZoom(1); setGPanX(0); setGPanY(0); }}
+            >그래프 보기</button>
+          </div>
         </div>
         {(((keyword || "").trim()) || (keywords && keywords.length) || (phrases && phrases.length)) && (
           <div className="mt-2 flex items-center gap-2 flex-wrap">
