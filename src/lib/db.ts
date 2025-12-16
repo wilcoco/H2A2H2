@@ -172,5 +172,39 @@ export async function ensureTables() {
     await c.query(`create index if not exists stake_ledger_root_idx on stake_ledger (qa_root_id)`);
     await c.query(`create index if not exists stake_ledger_created_idx on stake_ledger (created_at)`);
     try { await c.query(`alter table stake_ledger add column if not exists is_self boolean not null default false`); } catch {}
+
+    // Teams and Work Logs
+    await c.query(`
+      create table if not exists teams (
+        id text primary key,
+        name text not null unique,
+        created_at timestamptz not null default now()
+      );
+    `);
+    await c.query(`
+      create table if not exists team_members (
+        team_id text not null,
+        user_email text not null,
+        user_name text,
+        created_at timestamptz not null default now(),
+        primary key (team_id, user_email)
+      );
+    `);
+    await c.query(`create index if not exists team_members_team_idx on team_members (team_id)`);
+    await c.query(`create index if not exists team_members_user_idx on team_members (user_email)`);
+    await c.query(`
+      create table if not exists work_logs (
+        id text primary key,
+        title text not null,
+        content text not null,
+        team_id text,
+        user_email text,
+        user_name text,
+        created_at timestamptz not null default now()
+      );
+    `);
+    await c.query(`create index if not exists work_logs_team_idx on work_logs (team_id)`);
+    await c.query(`create index if not exists work_logs_user_idx on work_logs (user_email)`);
+    await c.query(`create index if not exists work_logs_created_idx on work_logs (created_at)`);
   });
 }

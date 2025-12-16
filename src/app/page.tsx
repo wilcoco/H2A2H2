@@ -66,6 +66,13 @@ export default function Home() {
   const [leftWidth, setLeftWidth] = useState<number>(300);
   const [rightWidth, setRightWidth] = useState<number>(360);
   const dragRef = useRef<{ side: "left" | "right"; startX: number; startW: number } | null>(null);
+  const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
+  const [members, setMembers] = useState<{ email: string; name: string }[]>([]);
+  const [selectedTeamId, setSelectedTeamId] = useState<string>("");
+  const [selectedUserEmail, setSelectedUserEmail] = useState<string>("");
+  const [showFullLog, setShowFullLog] = useState<boolean>(false);
+  const [workLogs, setWorkLogs] = useState<{ id: string; title: string; content: string; teamId?: string; teamName?: string; userEmail?: string; userName?: string; createdAt: string }[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
 
   useEffect(() => {
     function onMove(e: MouseEvent) {
@@ -98,6 +105,10 @@ export default function Home() {
       try {
         const me = await fetch("/api/auth/me", { cache: "no-store" }).then((r) => r.json()).catch(() => ({ user: null }));
         if (mounted && me?.user?.email) setUser({ email: me.user.email as string, name: me.user.name });
+        try {
+          const t = await fetch("/api/teams", { cache: "no-store" }).then((r) => r.json()).catch(() => ({ items: [] }));
+          if (mounted && Array.isArray(t?.items)) setTeams(t.items as { id: string; name: string }[]);
+        } catch {}
       } catch {}
     })();
     try {
@@ -123,6 +134,42 @@ export default function Home() {
   useEffect(() => {
     try { localStorage.setItem("ai_detail", detail); } catch {}
   }, [detail]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const url = selectedTeamId ? `/api/teams/members?teamId=${encodeURIComponent(selectedTeamId)}` : "/api/teams/members";
+        const r = await fetch(url, { cache: "no-store" });
+        const j = await r.json().catch(() => ({ items: [] }));
+        if (active) setMembers(Array.isArray(j?.items) ? (j.items as { email: string; name: string }[]) : []);
+      } catch {
+        if (active) setMembers([]);
+      }
+    })();
+    return () => { active = false; };
+  }, [selectedTeamId]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        setLogsLoading(true);
+        const params = new URLSearchParams();
+        if (selectedTeamId) params.set("teamId", selectedTeamId);
+        if (selectedUserEmail) params.set("userEmail", selectedUserEmail);
+        params.set("limit", "100");
+        const r = await fetch(`/api/work-logs?${params.toString()}`, { cache: "no-store" });
+        const j = await r.json().catch(() => ({ items: [] }));
+        if (active) setWorkLogs(Array.isArray(j?.items) ? j.items as any[] : []);
+      } catch {
+        if (active) setWorkLogs([]);
+      } finally {
+        if (active) setLogsLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [selectedTeamId, selectedUserEmail]);
 
   // Load thread root for the currently selected QA so left can show thread list
   useEffect(() => {
@@ -337,114 +384,159 @@ export default function Home() {
           )}
         </div>
       </header>
-      <div className="p-3 md:p-4 overflow-hidden flex flex-col lg:flex-row gap-3 md:gap-4">
-        <aside
-          className="rounded border border-gray-200/60 p-0 overflow-hidden flex flex-col"
-          style={{ width: leftWidth }}
-        >
-          <div className="flex items-center border-b border-gray-200/60">
-            <div className="text-xs px-3 py-2 border-b-2 border-blue-600 text-blue-700">질문/검색</div>
+      <div className="p-3 md:p-4 overflow-hidden flex flex-col gap-3 md:gap-4">
+        <section className="rounded border border-gray-200/60 p-2 md:p-3 bg-white/60 dark:bg-gray-900/40">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-semibold">업무일지</h2>
+            <label className="text-xs flex items-center gap-1">
+              <input type="checkbox" className="rounded" checked={showFullLog} onChange={(e) => setShowFullLog(e.target.checked)} /> 전체 보기
+            </label>
           </div>
-          <div className="p-2 md:p-3 overflow-auto flex-1">
-            <LeftAsk
-              onSelectQA={(id) => {
-                setLastViewedQaId(id);
-                setSelectedQaId(id);
-                setCenterAiAnswer("");
-              }}
-              onAskAINow={(q) => void askAiNow(q)}
-              refreshKey={graphRefreshKey}
-              keyword={leftKeyword}
-              keywordMode={leftKeywordMode}
-              keywords={leftKeywords}
-              phrases={leftPhrases}
-              onClearKeyword={() => { setLeftKeyword(null); setLeftKeywords(null); setLeftPhrases(null); setLeftKeywordMode("any"); }}
-              contextIds={selectedContextIds}
-              onToggleContext={(id, next) => setSelectedContextIds((prev) => next ? (prev.includes(id) ? prev : [...prev, id]) : prev.filter((x) => x !== id))}
-              threadRootId={leftThreadRootId}
-              onSelectChainPath={(path) => setLeftSelectedPath(path)}
-            />
+          <div className="flex flex-wrap items-center gap-2 mb-2 text-xs">
+            <select className="border rounded px-2 py-1" value={selectedTeamId} onChange={(e) => { setSelectedTeamId(e.target.value); }}>
+              <option value="">전체 팀</option>
+              {teams.map((t) => (<option key={t.id} value={t.id}>{t.name}</option>))}
+            </select>
+            <select className="border rounded px-2 py-1" value={selectedUserEmail} onChange={(e) => setSelectedUserEmail(e.target.value)}>
+              <option value="">전체 구성원</option>
+              {members.map((m) => (<option key={m.email} value={m.email}>{m.name || m.email}</option>))}
+            </select>
           </div>
-        </aside>
-        <div
-          className="hidden lg:block w-1 cursor-col-resize bg-transparent hover:bg-blue-200/50"
-          onMouseDown={(e) => { dragRef.current = { side: "left", startX: e.clientX, startW: leftWidth }; }}
-        />
+          {logsLoading ? (
+            <div className="text-xs text-gray-500">불러오는 중…</div>
+          ) : workLogs.length === 0 ? (
+            <div className="text-xs text-gray-500">표시할 업무일지가 없습니다.</div>
+          ) : (
+            <ul className="space-y-2">
+              {workLogs.map((it) => (
+                <li key={it.id} className="rounded border p-3 bg-white/70 dark:bg-gray-900/40">
+                  {showFullLog ? (
+                    <div>
+                      <div className="text-base font-semibold">{it.title}</div>
+                      <div className="text-[11px] text-gray-600 mt-0.5">{it.userName || it.userEmail || "-"} · {it.teamName || "-"} · {new Date(it.createdAt).toLocaleString()}</div>
+                      <div className="mt-2 text-[15px] leading-7 whitespace-pre-wrap break-words">{it.content}</div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="text-sm font-medium truncate">{it.title} · {it.userName || it.userEmail || "-"} · {it.teamName || "-"} · {new Date(it.createdAt).toLocaleString()}</div>
+                      <div className="mt-1 text-sm whitespace-pre-wrap break-words text-gray-800">{it.content}</div>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
 
-        <main className="rounded border border-gray-200/60 p-0 overflow-hidden flex-1 min-w-0 flex flex-col">
-          <div className="flex items-center border-b border-gray-200/60">
-            <div className="text-xs px-3 py-2 border-b-2 border-blue-600 text-blue-700">Q&A 보기</div>
-          </div>
-          <div className="p-2 md:p-3 overflow-auto flex-1">
-            <CenterQAViewer
-              qaId={selectedQaId || undefined}
-              question={!selectedQaId ? centerQuestion : undefined}
-              aiAnswer={!selectedQaId ? centerAiAnswer : undefined}
-              aiProvider={!selectedQaId ? centerAiMeta?.providerUsed : undefined}
-              aiModel={!selectedQaId ? centerAiMeta?.modelUsed : undefined}
-              aiFallbackUsed={!selectedQaId ? centerAiMeta?.fallbackUsed : undefined}
-              aiResponseId={!selectedQaId ? (centerPrevRespId || undefined) : undefined}
-              provider={provider}
-              detail={detail}
-              lockContext={centerLockContext}
-              onToggleLock={(v) => setCenterLockContext(v)}
-              onSetPrevRespId={(rid) => setCenterPrevRespId(rid)}
-              onOpenThread={() => setThreadOpen(true)}
-              onKeywordClick={(kw) => { setLeftKeywords(null); setLeftPhrases(null); setLeftKeyword(kw); }}
-              onKeywordSearch={({ keywords, phrases, mode }) => {
-                setLeftKeywordMode(mode || "any");
-                if (phrases && phrases.length > 0) {
-                  setLeftKeywords(null);
-                  setLeftPhrases(phrases);
-                  setLeftKeyword(phrases[0]);
-                } else if (keywords && keywords.length > 0) {
-                  setLeftPhrases(null);
-                  setLeftKeywords(keywords);
-                  setLeftKeyword(keywords.join(" "));
-                }
-              }}
-              onShared={(newId: string) => {
-                setSelectedQaId(newId);
-                setCenterAiAnswer("");
-                setLastViewedQaId(newId);
-              }}
-              refreshKey={graphRefreshKey}
-              onGraphChanged={() => setGraphRefreshKey((k) => k + 1)}
-              onSelectQA={(id) => {
-                setLastViewedQaId(id);
-                setSelectedQaId(id);
-                setCenterAiAnswer("");
-              }}
-              currentUserEmail={user?.email}
-              selectedChainPath={leftSelectedPath || undefined}
-            />
-          </div>
-        </main>
-        <div
-          className="hidden lg:block w-1 cursor-col-resize bg-transparent hover:bg-blue-200/50"
-          onMouseDown={(e) => { dragRef.current = { side: "right", startX: e.clientX, startW: rightWidth }; }}
-        />
+        <div className="overflow-hidden flex flex-col lg:flex-row gap-3 md:gap-4">
+          <aside
+            className="rounded border border-gray-200/60 p-0 overflow-hidden flex flex-col"
+            style={{ width: leftWidth }}
+          >
+            <div className="flex items-center border-b border-gray-200/60">
+              <div className="text-xs px-3 py-2 border-b-2 border-blue-600 text-blue-700">질문/검색</div>
+            </div>
+            <div className="p-2 md:p-3 overflow-auto flex-1">
+              <LeftAsk
+                onSelectQA={(id) => {
+                  setLastViewedQaId(id);
+                  setSelectedQaId(id);
+                  setCenterAiAnswer("");
+                }}
+                onAskAINow={(q) => void askAiNow(q)}
+                refreshKey={graphRefreshKey}
+                keyword={leftKeyword}
+                keywordMode={leftKeywordMode}
+                keywords={leftKeywords}
+                phrases={leftPhrases}
+                onClearKeyword={() => { setLeftKeyword(null); setLeftKeywords(null); setLeftPhrases(null); setLeftKeywordMode("any"); }}
+                contextIds={selectedContextIds}
+                onToggleContext={(id, next) => setSelectedContextIds((prev) => next ? (prev.includes(id) ? prev : [...prev, id]) : prev.filter((x) => x !== id))}
+                threadRootId={leftThreadRootId}
+                onSelectChainPath={(path) => setLeftSelectedPath(path)}
+              />
+            </div>
+          </aside>
+          <div
+            className="hidden lg:block w-1 cursor-col-resize bg-transparent hover:bg-blue-200/50"
+            onMouseDown={(e) => { dragRef.current = { side: "left", startX: e.clientX, startW: leftWidth }; }}
+          />
 
-        <aside className="rounded border border-gray-200/60 p-0 overflow-hidden flex flex-col" style={{ width: rightWidth }}>
-          <div className="flex items-center border-b border-gray-200/60">
-            <div className="text-xs px-3 py-2 border-b-2 border-blue-600 text-blue-700">문서 작성</div>
+          <main className="rounded border border-gray-200/60 p-0 overflow-hidden flex-1 min-w-0 flex flex-col">
+            <div className="flex items-center border-b border-gray-200/60">
+              <div className="text-xs px-3 py-2 border-b-2 border-blue-600 text-blue-700">Q&A 보기</div>
+            </div>
+            <div className="p-2 md:p-3 overflow-auto flex-1">
+              <CenterQAViewer
+                qaId={selectedQaId || undefined}
+                question={!selectedQaId ? centerQuestion : undefined}
+                aiAnswer={!selectedQaId ? centerAiAnswer : undefined}
+                aiProvider={!selectedQaId ? centerAiMeta?.providerUsed : undefined}
+                aiModel={!selectedQaId ? centerAiMeta?.modelUsed : undefined}
+                aiFallbackUsed={!selectedQaId ? centerAiMeta?.fallbackUsed : undefined}
+                aiResponseId={!selectedQaId ? (centerPrevRespId || undefined) : undefined}
+                provider={provider}
+                detail={detail}
+                lockContext={centerLockContext}
+                onToggleLock={(v) => setCenterLockContext(v)}
+                onSetPrevRespId={(rid) => setCenterPrevRespId(rid)}
+                onOpenThread={() => setThreadOpen(true)}
+                onKeywordClick={(kw) => { setLeftKeywords(null); setLeftPhrases(null); setLeftKeyword(kw); }}
+                onKeywordSearch={({ keywords, phrases, mode }) => {
+                  setLeftKeywordMode(mode || "any");
+                  if (phrases && phrases.length > 0) {
+                    setLeftKeywords(null);
+                    setLeftPhrases(phrases);
+                    setLeftKeyword(phrases[0]);
+                  } else if (keywords && keywords.length > 0) {
+                    setLeftPhrases(null);
+                    setLeftKeywords(keywords);
+                    setLeftKeyword(keywords.join(" "));
+                  }
+                }}
+                onShared={(newId: string) => {
+                  setSelectedQaId(newId);
+                  setCenterAiAnswer("");
+                  setLastViewedQaId(newId);
+                }}
+                refreshKey={graphRefreshKey}
+                onGraphChanged={() => setGraphRefreshKey((k) => k + 1)}
+                onSelectQA={(id) => {
+                  setLastViewedQaId(id);
+                  setSelectedQaId(id);
+                  setCenterAiAnswer("");
+                }}
+                currentUserEmail={user?.email}
+                selectedChainPath={leftSelectedPath || undefined}
+              />
+            </div>
+          </main>
+          <div
+            className="hidden lg:block w-1 cursor-col-resize bg-transparent hover:bg-blue-200/50"
+            onMouseDown={(e) => { dragRef.current = { side: "right", startX: e.clientX, startW: rightWidth }; }}
+          />
+
+          <aside className="rounded border border-gray-200/60 p-0 overflow-hidden flex flex-col" style={{ width: rightWidth }}>
+            <div className="flex items-center border-b border-gray-200/60">
+              <div className="text-xs px-3 py-2 border-b-2 border-blue-600 text-blue-700">문서 작성</div>
+            </div>
+            <div className="p-2 md:p-3 overflow-auto flex-1">
+              <RightWriter
+                qaId={writerQaId || undefined}
+                centerQaId={selectedQaId || undefined}
+                centerChainIds={(leftSelectedPath && selectedQaId) ? ((leftSelectedPath.indexOf(selectedQaId) >= 0) ? leftSelectedPath.slice(leftSelectedPath.indexOf(selectedQaId)) : leftSelectedPath) : (selectedQaId ? [selectedQaId] : undefined)}
+                currentUserEmail={user?.email || null}
+                onSetQaId={(id: string) => setWriterQaId(id)}
+                onSaved={() => {
+                  setGraphRefreshKey((k) => k + 1);
+                }}
+                aiQuestion={!selectedQaId ? centerQuestion : undefined}
+                aiAnswer={!selectedQaId ? centerAiAnswer : undefined}
+              />
+            </div>
+          </aside>
           </div>
-          <div className="p-2 md:p-3 overflow-auto flex-1">
-            <RightWriter
-              qaId={writerQaId || undefined}
-              centerQaId={selectedQaId || undefined}
-              centerChainIds={(leftSelectedPath && selectedQaId) ? ((leftSelectedPath.indexOf(selectedQaId) >= 0) ? leftSelectedPath.slice(leftSelectedPath.indexOf(selectedQaId)) : leftSelectedPath) : (selectedQaId ? [selectedQaId] : undefined)}
-              currentUserEmail={user?.email || null}
-              onSetQaId={(id: string) => setWriterQaId(id)}
-              onSaved={() => {
-                setGraphRefreshKey((k) => k + 1);
-              }}
-              aiQuestion={!selectedQaId ? centerQuestion : undefined}
-              aiAnswer={!selectedQaId ? centerAiAnswer : undefined}
-            />
-          </div>
-        </aside>
-      </div>
+        </div>
       <ThreadDrawer qaId={selectedQaId || undefined} open={threadOpen} onClose={() => setThreadOpen(false)} />
       <AuthModal
         open={authOpen}
