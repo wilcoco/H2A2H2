@@ -10,6 +10,8 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     let rootId = url.searchParams.get("rootId")?.toString() || null;
     const qaIdParam = url.searchParams.get("qaId")?.toString() || null;
+    const full = (url.searchParams.get("full") || "").toLowerCase();
+    const includeFullAnswer = full === "1" || full === "true";
 
     const token = req.cookies.get("session")?.value;
     const user = token ? await verifySession(token) : null;
@@ -171,7 +173,9 @@ export async function GET(req: NextRequest) {
       question: n.question,
       hasAnswer: !!n.answer,
       summary: n.summary ?? undefined,
-      answer: (n.answer ? String(n.answer).replace(/\s+/g, " ").slice(0, 200) : undefined),
+      answer: (n.answer
+        ? (includeFullAnswer ? String(n.answer) : String(n.answer).replace(/\s+/g, " ").slice(0, 200))
+        : undefined),
       helpful: Number(n.helpful || 0),
       unhelpful: Number(n.unhelpful || 0),
       myVote: n.my_vote === 1 ? 1 : n.my_vote === -1 ? -1 : 0,

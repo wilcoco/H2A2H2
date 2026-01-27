@@ -634,12 +634,12 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
     (async () => {
       if (!qaId) { if (active) { setMapNodes([]); setMapEdges([]); } return; }
       try {
-        const r = await fetch(`/api/qa/map?qaId=${encodeURIComponent(qaId)}`, { cache: "no-store" });
+        const r = await fetch(`/api/qa/map?qaId=${encodeURIComponent(qaId)}&full=1`, { cache: "no-store" });
         const j = await r.json().catch(() => ({ nodes: [], edges: [], rootId: null }));
         if (active) {
           setMapNodes(Array.isArray(j?.nodes) ? j.nodes : []);
           setMapEdges(Array.isArray(j?.edges) ? j.edges : []);
-          try { setRootId(j?.rootId ? String(j.rootId) : null); } catch { setRootId(null); }
+          setRootId(j?.rootId ? String(j.rootId) : null);
         }
       } catch {
         if (active) { setMapNodes([]); setMapEdges([]); }
