@@ -62,7 +62,6 @@ export async function POST(req: NextRequest) {
     const apiKeyHeader = req.headers.get("x-api-key");
     const serverKey = process.env.RELATION_API_KEY || process.env.API_KEY || "";
     const viaApiKey = !!apiKeyHeader && !!serverKey && apiKeyHeader === serverKey;
-    if (!user?.email && !viaApiKey) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
     const sourceId: string = (body?.sourceId ?? "").toString();
@@ -99,12 +98,6 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     await ensureTables();
-    const token = req.cookies.get("session")?.value;
-    const user = token ? await verifySession(token) : null;
-    const apiKeyHeader = req.headers.get("x-api-key");
-    const serverKey = process.env.RELATION_API_KEY || process.env.API_KEY || "";
-    const viaApiKey = !!apiKeyHeader && !!serverKey && apiKeyHeader === serverKey;
-    if (!user?.email && !viaApiKey) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
     const sourceId: string = (body?.sourceId ?? "").toString();
