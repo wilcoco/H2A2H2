@@ -66,13 +66,6 @@ export default function Home() {
   const [leftWidth, setLeftWidth] = useState<number>(300);
   const [rightWidth, setRightWidth] = useState<number>(360);
   const dragRef = useRef<{ side: "left" | "right"; startX: number; startW: number } | null>(null);
-  const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
-  const [members, setMembers] = useState<{ email: string; name: string }[]>([]);
-  const [selectedTeamId, setSelectedTeamId] = useState<string>("");
-  const [selectedUserEmail, setSelectedUserEmail] = useState<string>("");
-  const [showFullLog, setShowFullLog] = useState<boolean>(false);
-  const [workLogs, setWorkLogs] = useState<{ id: string; title: string; content: string; teamId?: string; teamName?: string; userEmail?: string; userName?: string; createdAt: string }[]>([]);
-  const [logsLoading, setLogsLoading] = useState(false);
 
   useEffect(() => {
     function onMove(e: MouseEvent) {
@@ -105,10 +98,6 @@ export default function Home() {
       try {
         const me = await fetch("/api/auth/me", { cache: "no-store" }).then((r) => r.json()).catch(() => ({ user: null }));
         if (mounted && me?.user?.email) setUser({ email: me.user.email as string, name: me.user.name });
-        try {
-          const t = await fetch("/api/teams", { cache: "no-store" }).then((r) => r.json()).catch(() => ({ items: [] }));
-          if (mounted && Array.isArray(t?.items)) setTeams(t.items as { id: string; name: string }[]);
-        } catch {}
       } catch {}
     })();
     try {
@@ -134,42 +123,6 @@ export default function Home() {
   useEffect(() => {
     try { localStorage.setItem("ai_detail", detail); } catch {}
   }, [detail]);
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const url = selectedTeamId ? `/api/teams/members?teamId=${encodeURIComponent(selectedTeamId)}` : "/api/teams/members";
-        const r = await fetch(url, { cache: "no-store" });
-        const j = await r.json().catch(() => ({ items: [] }));
-        if (active) setMembers(Array.isArray(j?.items) ? (j.items as { email: string; name: string }[]) : []);
-      } catch {
-        if (active) setMembers([]);
-      }
-    })();
-    return () => { active = false; };
-  }, [selectedTeamId]);
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        setLogsLoading(true);
-        const params = new URLSearchParams();
-        if (selectedTeamId) params.set("teamId", selectedTeamId);
-        if (selectedUserEmail) params.set("userEmail", selectedUserEmail);
-        params.set("limit", "100");
-        const r = await fetch(`/api/work-logs?${params.toString()}`, { cache: "no-store" });
-        const j = await r.json().catch(() => ({ items: [] }));
-        if (active) setWorkLogs(Array.isArray(j?.items) ? j.items as any[] : []);
-      } catch {
-        if (active) setWorkLogs([]);
-      } finally {
-        if (active) setLogsLoading(false);
-      }
-    })();
-    return () => { active = false; };
-  }, [selectedTeamId, selectedUserEmail]);
 
   // Load thread root for the currently selected QA so left can show thread list
   useEffect(() => {
@@ -385,49 +338,6 @@ export default function Home() {
         </div>
       </header>
       <div className="p-3 md:p-4 overflow-hidden flex flex-col gap-3 md:gap-4">
-        <section className="rounded border border-gray-200/60 p-2 md:p-3 bg-white/60 dark:bg-gray-900/40">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-semibold">업무일지</h2>
-            <label className="text-xs flex items-center gap-1">
-              <input type="checkbox" className="rounded" checked={showFullLog} onChange={(e) => setShowFullLog(e.target.checked)} /> 전체 보기
-            </label>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 mb-2 text-xs">
-            <select className="border rounded px-2 py-1" value={selectedTeamId} onChange={(e) => { setSelectedTeamId(e.target.value); }}>
-              <option value="">전체 팀</option>
-              {teams.map((t) => (<option key={t.id} value={t.id}>{t.name}</option>))}
-            </select>
-            <select className="border rounded px-2 py-1" value={selectedUserEmail} onChange={(e) => setSelectedUserEmail(e.target.value)}>
-              <option value="">전체 구성원</option>
-              {members.map((m) => (<option key={m.email} value={m.email}>{m.name || m.email}</option>))}
-            </select>
-          </div>
-          {logsLoading ? (
-            <div className="text-xs text-gray-500">불러오는 중…</div>
-          ) : workLogs.length === 0 ? (
-            <div className="text-xs text-gray-500">표시할 업무일지가 없습니다.</div>
-          ) : (
-            <ul className="space-y-2">
-              {workLogs.map((it) => (
-                <li key={it.id} className="rounded border p-3 bg-white/70 dark:bg-gray-900/40">
-                  {showFullLog ? (
-                    <div>
-                      <div className="text-base font-semibold">{it.title}</div>
-                      <div className="text-[11px] text-gray-600 mt-0.5">{it.userName || it.userEmail || "-"} · {it.teamName || "-"} · {new Date(it.createdAt).toLocaleString()}</div>
-                      <div className="mt-2 text-[15px] leading-7 whitespace-pre-wrap break-words">{it.content}</div>
-                    </div>
-                  ) : (
-                    <div>
-                      <div className="text-sm font-medium truncate">{it.title} · {it.userName || it.userEmail || "-"} · {it.teamName || "-"} · {new Date(it.createdAt).toLocaleString()}</div>
-                      <div className="mt-1 text-sm whitespace-pre-wrap break-words text-gray-800">{it.content}</div>
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
         <div className="overflow-hidden flex flex-col lg:flex-row gap-3 md:gap-4">
           <aside
             className="rounded border border-gray-200/60 p-0 overflow-hidden flex flex-col"
