@@ -1,7 +1,7 @@
 {
-  "sha": "e75a8ae5cac33db0d857bb2c30d4331e98d5f823",
-  "title": "chore(version): write version.json at predev/prebuild/prestart; ensure banner always shows push-time title",
+  "sha": "9a441d63eeed34d9e30f8cf78276a755de0f0729",
+  "title": "fix: allow relations without login",
   "message": "",
   "branch": "main",
-  "builtAt": "2025-11-27T00:45:46.808Z"
+  "builtAt": "2026-01-30T01:05:30.675Z"
 }

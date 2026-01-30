@@ -27,9 +27,6 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       return r.rows?.[0] ?? null;
     });
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    if (row.published === false && row.created_by !== userId) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
     return NextResponse.json({
       id: row.id,
       question: row.question,

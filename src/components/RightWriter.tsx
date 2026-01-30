@@ -1,19 +1,172 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import * as dagre from "dagre";
 
 type Props = {
   qaId?: string;
   centerQaId?: string;
   centerChainIds?: string[];
   currentUserEmail?: string | null;
+  refreshKey?: number;
   onSetQaId?: (id: string) => void;
   onSaved?: () => void;
   aiQuestion?: string;
   aiAnswer?: string;
 };
 
-export default function RightWriter({ qaId, centerQaId, centerChainIds, currentUserEmail, onSetQaId, onSaved, aiQuestion, aiAnswer }: Props) {
+type MapNode = { id: string; question: string; hasAnswer: boolean; summary?: string; answer?: string; helpful?: number; unhelpful?: number; myVote?: 1 | -1 | 0 };
+type MapEdge = { sourceId: string; targetId: string; type: string; weight?: number; synthetic?: boolean };
+
+function QAGraph({
+  nodes,
+  edges,
+  selectedId,
+  onSelect,
+  onOpen,
+}: {
+  nodes: MapNode[];
+  edges: MapEdge[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  onOpen: (id: string) => void;
+}) {
+  const nodeW = 240;
+  const nodeH = 74;
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [scale, setScale] = useState<number>(1);
+  const [tx, setTx] = useState<number>(0);
+  const [ty, setTy] = useState<number>(0);
+  const isPanningRef = useRef(false);
+  const graph = useMemo(() => {
+    const g = new dagre.graphlib.Graph();
+    g.setGraph({ rankdir: "LR", nodesep: 26, ranksep: 70 });
+    g.setDefaultEdgeLabel(() => ({}));
+    for (const n of nodes) g.setNode(n.id, { width: nodeW, height: nodeH } as any);
+    for (const e of edges) g.setEdge(e.sourceId, e.targetId, { id: `${e.sourceId}|${e.targetId}|${e.type}` } as any);
+    dagre.layout(g);
+    return g;
+  }, [nodes, edges]);
+
+  const G = graph.graph();
+  const W = Math.max(720, Number((G as any)?.width || 0) || 720);
+  const H = Math.max(360, Number((G as any)?.height || 0) || 360);
+  const pos = new Map<string, { x: number; y: number; n: MapNode }>();
+  for (const n of nodes) {
+    const p = graph.node(n.id) as { x: number; y: number } | undefined;
+    if (p) pos.set(n.id, { x: p.x, y: p.y, n });
+  }
+
+  const edgeColor = (t: string) => {
+    const s = (t || "").toLowerCase();
+    if (s === "supports") return "#16a34a";
+    if (s === "refutes") return "#dc2626";
+    if (s === "precedes") return "#2563eb";
+    if (s === "prerequisite") return "#7c3aed";
+    return "#6b7280";
+  };
+
+  const markerId = (t: string) => `qa_arrow_${(t || "rel").toLowerCase().replace(/[^a-z0-9_-]/g, "_")}`;
+  const types = useMemo(() => {
+    const set = new Set<string>();
+    for (const e of edges) set.add((e.type || "rel").toLowerCase());
+    if (set.size === 0) set.add("rel");
+    return Array.from(set);
+  }, [edges]);
+
+  const onWheel = (e: React.WheelEvent<SVGSVGElement>) => {
+    e.preventDefault();
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const zoom = Math.exp(-e.deltaY * 0.0015);
+    const newScale = Math.min(3, Math.max(0.3, scale * zoom));
+    const sx = (mx - tx) / scale;
+    const sy = (my - ty) / scale;
+    setTx(mx - sx * newScale);
+    setTy(my - sy * newScale);
+    setScale(newScale);
+  };
+
+  const onBgPointerDown = (e: React.PointerEvent<SVGRectElement>) => {
+    isPanningRef.current = true;
+    try { (e.currentTarget as unknown as Element & { setPointerCapture: (id: number) => void }).setPointerCapture(e.pointerId); } catch {}
+  };
+  const onBgPointerMove = (e: React.PointerEvent<SVGRectElement>) => {
+    if (!isPanningRef.current) return;
+    setTx((prev) => prev + e.movementX);
+    setTy((prev) => prev + e.movementY);
+  };
+  const onBgPointerUp = (e: React.PointerEvent<SVGRectElement>) => {
+    isPanningRef.current = false;
+    try { (e.currentTarget as unknown as Element & { releasePointerCapture: (id: number) => void }).releasePointerCapture(e.pointerId); } catch {}
+  };
+
+  const titleFor = (q: string) => {
+    const t = String(q || "").replace(/\s+/g, " ").trim();
+    if (t.length <= 44) return t;
+    return t.slice(0, 44) + "…";
+  };
+
+  return (
+    <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="w-full h-72 md:h-[420px]" onWheel={onWheel} style={{ touchAction: "none" }}>
+      <defs>
+        {types.map((t) => (
+          <marker key={t} id={markerId(t)} viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill={edgeColor(t)} />
+          </marker>
+        ))}
+      </defs>
+      <rect x={0} y={0} width={W} height={H} fill="transparent" onPointerDown={onBgPointerDown} onPointerMove={onBgPointerMove} onPointerUp={onBgPointerUp} />
+      <g transform={`translate(${tx},${ty}) scale(${scale})`}>
+        {edges
+          .filter((e) => pos.has(e.sourceId) && pos.has(e.targetId))
+          .map((e) => {
+            const s = pos.get(e.sourceId)!;
+            const t = pos.get(e.targetId)!;
+            const stroke = edgeColor(e.type);
+            const midx = (s.x + t.x) / 2;
+            const midy = (s.y + t.y) / 2;
+            return (
+              <g key={`${e.sourceId}|${e.targetId}|${e.type}`} opacity={0.95}>
+                <line
+                  x1={s.x + nodeW / 2}
+                  y1={s.y}
+                  x2={t.x - nodeW / 2}
+                  y2={t.y}
+                  stroke={stroke}
+                  strokeWidth={1.6}
+                  strokeDasharray={e.synthetic ? "4 3" : undefined}
+                  markerEnd={`url(#${markerId(e.type)})`}
+                />
+                <text x={midx} y={midy - 4} fontSize={10} textAnchor="middle" fill={stroke}>{String(e.type || "")}</text>
+              </g>
+            );
+          })}
+        {Array.from(pos.entries()).map(([id, p]) => {
+          const isSel = selectedId === id;
+          const fill = p.n.hasAnswer ? "#ffffff" : "#f3f4f6";
+          const sub = `${p.n.hasAnswer ? "A" : "No A"} · ${Number(p.n.helpful || 0)}↑ ${Number(p.n.unhelpful || 0)}↓`;
+          return (
+            <g
+              key={id}
+              onClick={() => onSelect(id)}
+              onDoubleClick={() => onOpen(id)}
+              style={{ cursor: "pointer" }}
+            >
+              <rect x={p.x - nodeW / 2} y={p.y - nodeH / 2} width={nodeW} height={nodeH} rx={8} ry={8} fill={fill} stroke={isSel ? "#2563eb" : "#111827"} strokeWidth={isSel ? 2 : 1.2} />
+              <text x={p.x - nodeW / 2 + 10} y={p.y - 10} fontSize={12} className="fill-gray-900">{titleFor(p.n.question)}</text>
+              <text x={p.x - nodeW / 2 + 10} y={p.y + 12} fontSize={10} className="fill-gray-600">{sub}</text>
+            </g>
+          );
+        })}
+      </g>
+    </svg>
+  );
+}
+
+export default function RightWriter({ qaId, centerQaId, centerChainIds, currentUserEmail, refreshKey, onSetQaId, onSaved, aiQuestion, aiAnswer }: Props) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +184,18 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [meta, setMeta] = useState<{ reliability?: string; source?: string; freshness?: string }>({});
   const [toast, setToast] = useState<string | null>(null);
+  const [view, setView] = useState<"graph" | "doc">("graph");
+  const focusQaId = useMemo(() => {
+    if (qaId) return qaId;
+    if (centerQaId) return centerQaId;
+    const first = Array.isArray(centerChainIds) && centerChainIds.length ? centerChainIds[0] : null;
+    return first || undefined;
+  }, [qaId, centerQaId, JSON.stringify(centerChainIds || [])]);
+  const [gLoading, setGLoading] = useState(false);
+  const [gError, setGError] = useState<string | null>(null);
+  const [gNodes, setGNodes] = useState<MapNode[]>([]);
+  const [gEdges, setGEdges] = useState<MapEdge[]>([]);
+  const [gSelectedId, setGSelectedId] = useState<string | null>(null);
   function uid(p = 'blk_') { return p + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4); }
 
   // Helper to insert red text at current caret, preserving selection
@@ -160,6 +325,31 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
     })();
     return () => { active = false; };
   }, [qaId]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        if (!focusQaId) { if (active) { setGNodes([]); setGEdges([]); } return; }
+        setGLoading(true);
+        setGError(null);
+        const r = await fetch(`/api/qa/map?qaId=${encodeURIComponent(focusQaId)}&full=1`, { cache: "no-store" });
+        const j = await r.json().catch(() => ({ nodes: [], edges: [] }));
+        if (!active) return;
+        setGNodes(Array.isArray(j?.nodes) ? (j.nodes as MapNode[]) : []);
+        setGEdges(Array.isArray(j?.edges) ? (j.edges as MapEdge[]) : []);
+        if (Array.isArray(j?.nodes) && (j.nodes as any[]).some((n) => n?.id === focusQaId)) setGSelectedId(focusQaId);
+      } catch (e: unknown) {
+        if (!active) return;
+        setGError(e instanceof Error ? e.message : "Failed to load graph");
+        setGNodes([]);
+        setGEdges([]);
+      } finally {
+        if (active) setGLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, [focusQaId, refreshKey]);
 
   useEffect(() => {
     // Ensure Enter creates paragraphs
@@ -327,6 +517,39 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
       {error && <div className="text-xs text-red-600">{error}</div>}
       {/* blocks hidden */}
       {/* labels hidden */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
+          <button className={`text-[11px] px-2 py-1 rounded border ${view === 'graph' ? 'bg-gray-100' : ''}`} onClick={() => setView('graph')}>Graph</button>
+          <button className={`text-[11px] px-2 py-1 rounded border ${view === 'doc' ? 'bg-gray-100' : ''}`} onClick={() => setView('doc')}>Doc</button>
+        </div>
+        <div className="text-[11px] text-gray-600">{focusQaId ? `Focus: ${focusQaId}` : "대상을 선택하세요."}</div>
+      </div>
+
+      {view === "graph" ? (
+        <div className="flex flex-col gap-2">
+          {gLoading && <div className="text-xs text-gray-500">불러오는 중...</div>}
+          {gError && <div className="text-xs text-red-600">{gError}</div>}
+          {!gLoading && !gError && gNodes.length > 0 && (
+            <QAGraph
+              nodes={gNodes}
+              edges={gEdges}
+              selectedId={gSelectedId}
+              onSelect={(id) => setGSelectedId(id)}
+              onOpen={(id) => { onSetQaId?.(id); setView('doc'); }}
+            />
+          )}
+          {!gLoading && !gError && gNodes.length === 0 && (
+            <div className="text-xs text-gray-500">그래프가 없습니다.</div>
+          )}
+          {gSelectedId && (
+            <div className="text-[11px] text-gray-700 flex items-center justify-between gap-2">
+              <div className="truncate">Selected: {gSelectedId}</div>
+              <button className="text-[11px] px-2 py-1 rounded border" onClick={() => { onSetQaId?.(gSelectedId); setView('doc'); }}>Edit</button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
       <div className="text-[11px] text-gray-600">{qaId ? `Editing: ${qaId}` : "오른쪽 상단에서 대상 설정 또는 좌측 선택 후 '대상=센터'를 누르세요."}</div>
       {(createdBy || currentUserEmail) && (
         <div className="text-[11px] text-gray-600">{createdBy ? `by ${createdBy}` : (currentUserEmail ? `by ${currentUserEmail}` : null)}</div>
@@ -396,6 +619,8 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
       <div className="flex items-center gap-2">
         <button className="text-xs px-3 py-2 rounded bg-blue-600 text-white disabled:opacity-50" disabled={saving || !qaId} onClick={() => void save()}>{saving ? "Saving..." : "저장 (제목/내용/키워드)"}</button>
       </div>
+        </>
+      )}
       {toast && (
         <div className="fixed bottom-4 right-4 bg-gray-900 text-white text-xs px-3 py-2 rounded shadow">{toast}</div>
       )}

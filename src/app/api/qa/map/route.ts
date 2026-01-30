@@ -39,11 +39,6 @@ export async function GET(req: NextRequest) {
          from qa_entries q
          left join qa_feedback f on f.qa_id = q.id
          where q.root_id = $1
-           and (
-             q.published = true
-             or q.created_by = $2
-             or q.created_by is null
-           )
          group by q.id
          order by q.created_at asc`,
         [rootId, userId]
@@ -79,12 +74,8 @@ export async function GET(req: NextRequest) {
           const r = await c.query(
             `select id, question, answer, summary
                from qa_entries
-              where id = any($1)
-                and (
-                  published = true
-                  or (created_by = $2 or created_by is null)
-                )`,
-            [Array.from(missingIds), userId]
+              where id = any($1)`,
+            [Array.from(missingIds)]
           );
           return r.rows as Array<{ id: string; question: string; answer: string | null; summary: string | null }>;
         });
@@ -130,12 +121,8 @@ export async function GET(req: NextRequest) {
           const r = await c.query(
             `select id, question, answer, summary
                from qa_entries
-              where id = any($1)
-                and (
-                  published = true
-                  or (created_by = $2 or created_by is null)
-                )`,
-            [Array.from(neighborMissing), userId]
+              where id = any($1)`,
+            [Array.from(neighborMissing)]
           );
           return r.rows as Array<{ id: string; question: string; answer: string | null; summary: string | null }>;
         });

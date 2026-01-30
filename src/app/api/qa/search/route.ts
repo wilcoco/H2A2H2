@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureTables, withConn } from "@/lib/db";
-import { verifySession } from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,9 +35,6 @@ export async function POST(req: NextRequest) {
   try {
     await ensureTables();
     const body = await req.json().catch(() => ({}));
-    const token = (req as any).cookies?.get?.("session")?.value ?? undefined;
-    const user = token ? await verifySession(token) : null;
-    const userId = user?.email ?? null;
     const query: string = (body?.query ?? "").toString();
     const limit: number = Math.min(Math.max(Number(body?.limit ?? 5), 1), 10);
     const strict: boolean = !!body?.strict;
@@ -64,8 +60,7 @@ export async function POST(req: NextRequest) {
                        similarity(lower(question), $1),
                        case when lower(question) like ('%' || $1 || '%') then 0.9 else 0 end,
                        case when lower(coalesce(summary, '')) like ('%' || $1 || '%') then 0.6 else 0 end
-                     ) >= $4
-              and (published = true or created_by = $3)
+                     ) >= $3
               order by greatest(
                        similarity(lower(question), $1),
                        case when lower(question) like ('%' || $1 || '%') then 0.9 else 0 end,
@@ -73,7 +68,7 @@ export async function POST(req: NextRequest) {
                      ) desc,
                        created_at desc
               limit $2`,
-            [q.toLowerCase(), limit, userId, minScore]
+            [q.toLowerCase(), limit, minScore]
           );
           return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string; created_by?: string }>;
         });
@@ -88,11 +83,10 @@ export async function POST(req: NextRequest) {
                 and greatest(
                       case when lower(question) like ('%' || $1 || '%') then 0.9 else 0 end,
                       case when lower(coalesce(summary, '')) like ('%' || $1 || '%') then 0.6 else 0 end
-                    ) >= $4
-                and (published = true or created_by = $3)
+                    ) >= $3
               order by created_at desc
               limit $2`,
-            [q.toLowerCase(), limit, userId, minScore]
+            [q.toLowerCase(), limit, minScore]
           );
           return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string }>; 
         });
@@ -109,11 +103,10 @@ export async function POST(req: NextRequest) {
                  from qa_entries e
                  join qa_keywords k on k.qa_id = e.id
                 where k.keyword = any($1)
-                  and (e.published = true or e.created_by = $3)
                 group by e.id
                 order by e.created_at desc
                 limit $2`,
-              [kws, limit, userId]
+              [kws, limit]
             );
             return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string; created_by?: string }>;
           });
@@ -124,15 +117,14 @@ export async function POST(req: NextRequest) {
               const r = await c.query(
                 `select e.id, e.question, e.answer, e.summary, e.work_id, e.created_by
                    from qa_entries e
-                  where (e.published = true or e.created_by = $3)
-                    and exists (
+                  where exists (
                       select 1 from qa_keywords k
                        where k.qa_id = e.id and k.keyword ilike any($1)
                     )
                   group by e.id
                   order by e.created_at desc
                   limit $2`,
-                [pats, limit, userId]
+                [pats, limit]
               );
               return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string; created_by?: string }>;
             });
@@ -144,14 +136,13 @@ export async function POST(req: NextRequest) {
               const r = await c.query(
                 `select id, question, answer, summary, work_id, created_by
                    from qa_entries
-                  where (published = true or created_by = $3)
-                    and (
+                  where (
                       question ilike any($1)
                       or coalesce(summary,'') ilike any($1)
                     )
                   order by created_at desc
                   limit $2`,
-                [pats, limit, userId]
+                [pats, limit]
               );
               return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string; created_by?: string }>;
             });
@@ -165,9 +156,8 @@ export async function POST(req: NextRequest) {
       rows = await withConn(async (c) => {
         const r = await c.query(
           `select id, question, answer, summary, work_id, created_by from qa_entries
-            where published = true or created_by = $2
             order by created_at desc limit $1`,
-          [limit, userId]
+          [limit]
         );
         return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string; created_by?: string }>;
       });

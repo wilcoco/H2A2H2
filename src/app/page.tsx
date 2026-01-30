@@ -436,6 +436,7 @@ export default function Home() {
                 centerQaId={selectedQaId || undefined}
                 centerChainIds={(leftSelectedPath && selectedQaId) ? ((leftSelectedPath.indexOf(selectedQaId) >= 0) ? leftSelectedPath.slice(leftSelectedPath.indexOf(selectedQaId)) : leftSelectedPath) : (selectedQaId ? [selectedQaId] : undefined)}
                 currentUserEmail={user?.email || null}
+                refreshKey={graphRefreshKey}
                 onSetQaId={(id: string) => setWriterQaId(id)}
                 onSaved={() => {
                   setGraphRefreshKey((k) => k + 1);

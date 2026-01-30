@@ -79,7 +79,6 @@ export async function GET(req: NextRequest) {
         const sql = `
           select id, question, created_at
           from qa_entries
-          where published = true
           order by created_at desc
           limit $1`;
         const r = await c.query(sql, [limit]);
