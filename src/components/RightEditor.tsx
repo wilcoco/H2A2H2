@@ -257,6 +257,9 @@ export default function RightEditor({ qaId, question, aiAnswer, user, onRequireL
             ))}
           </ul>
         )}
+        {relQuery.trim().length > 0 && relResults.length === 0 && (
+          <div className="text-[11px] text-gray-600 mt-1">유사한 Q&A가 없습니다.</div>
+        )}
         {!qaId && (
           <div className="text-[11px] text-gray-600 mt-1">먼저 Q&A를 공유하여 ID를 생성하세요.</div>
         )}

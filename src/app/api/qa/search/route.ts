@@ -42,6 +42,10 @@ export async function POST(req: NextRequest) {
     const query: string = (body?.query ?? "").toString();
     const limit: number = Math.min(Math.max(Number(body?.limit ?? 5), 1), 10);
     const strict: boolean = !!body?.strict;
+    const minScoreRaw = Number(body?.minScore);
+    const minScore: number = Number.isFinite(minScoreRaw)
+      ? Math.max(0, Math.min(1, minScoreRaw))
+      : (strict ? 0.35 : 0.2);
     const q = query.trim();
     let rows: Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string; created_by?: string }> = [];
     if (q) {
@@ -56,6 +60,11 @@ export async function POST(req: NextRequest) {
                 or lower(question) like ('%' || $1 || '%')
                 or lower(coalesce(summary, '')) like ('%' || $1 || '%')
               )
+              and greatest(
+                       similarity(lower(question), $1),
+                       case when lower(question) like ('%' || $1 || '%') then 0.9 else 0 end,
+                       case when lower(coalesce(summary, '')) like ('%' || $1 || '%') then 0.6 else 0 end
+                     ) >= $4
               and (published = true or created_by = $3)
               order by greatest(
                        similarity(lower(question), $1),
@@ -64,7 +73,7 @@ export async function POST(req: NextRequest) {
                      ) desc,
                        created_at desc
               limit $2`,
-            [q.toLowerCase(), limit, userId]
+            [q.toLowerCase(), limit, userId, minScore]
           );
           return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string; created_by?: string }>;
         });
@@ -76,17 +85,21 @@ export async function POST(req: NextRequest) {
                from qa_entries
               where (lower(question) like ('%' || $1 || '%')
                  or lower(coalesce(summary,'')) like ('%' || $1 || '%'))
+                and greatest(
+                      case when lower(question) like ('%' || $1 || '%') then 0.9 else 0 end,
+                      case when lower(coalesce(summary, '')) like ('%' || $1 || '%') then 0.6 else 0 end
+                    ) >= $4
                 and (published = true or created_by = $3)
               order by created_at desc
               limit $2`,
-            [q.toLowerCase(), limit, userId]
+            [q.toLowerCase(), limit, userId, minScore]
           );
           return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string }>; 
         });
       }
 
       // If no results (common with very long queries), fall back to keyword index matching
-      if (!rows.length) {
+      if (!rows.length && !strict) {
         const kws = heuristic(q, 8);
         if (kws.length) {
           // ANY keyword match via qa_keywords

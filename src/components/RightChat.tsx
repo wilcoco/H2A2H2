@@ -283,7 +283,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
       const works: Work[] = Array.isArray(wj?.works) ? (wj.works as Work[]) : [];
       setReuseFound(works.slice(0, 3));
       // Also query QA index
-      const qares = await fetch("/api/qa/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: question, limit: 5 }) });
+      const qares = await fetch("/api/qa/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: question, limit: 5, strict: true }) });
       const qaj = await qares.json().catch(() => ({ items: [] }));
       const items: QAEntry[] = Array.isArray(qaj?.items) ? (qaj.items as QAEntry[]) : [];
       setQaFound(items);
