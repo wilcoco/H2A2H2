@@ -64,6 +64,8 @@ export async function POST(req: Request) {
         ? "Be thorough and well-structured with clear paragraphs and bullet points as needed."
         : "Be balanced and complete without unnecessary brevity.";
     const sys = `You are a helpful assistant. Answer in the user's language. Provide ONLY the final answer. Do not include analysis or review sections. Do not use headings like '검토 결과', '개선점', '불확실성', or '추가 확인 질문'. Do not enumerate sections (no (1)(2)(3)). Include a brief caveat only if strictly necessary for correctness. ${styleLine}`;
+    const reasoningEffort = detail === "short" ? "low" : detail === "long" ? "high" : "medium";
+    const isReasoningModel = /^o\d/i.test(model);
     const maxTokens = detail === "long" ? 2500 : detail === "short" ? 800 : 1500;
     const refineTokens = Math.min(maxTokens + 400, 3000);
     const historyText = (input.history || [])
@@ -216,7 +218,7 @@ export async function POST(req: Request) {
         }
         if (!answer && client && !explicitProvider) {
           const base: any = { model, input: combined, temperature: 0.2, max_output_tokens: maxTokens };
-          if (model.startsWith("o3")) base.reasoning = { effort: "high" };
+          if (isReasoningModel) base.reasoning = { effort: reasoningEffort };
           try {
             if (input.previousResponseId) base.previous_response_id = input.previousResponseId;
             else if (anchorPrevId) base.previous_response_id = anchorPrevId;
@@ -267,7 +269,7 @@ export async function POST(req: Request) {
               } catch {}
             } else if (client) {
               const refineBody: any = { model, input: refineInput, temperature: 0.2, max_output_tokens: refineTokens };
-              if (model.startsWith("o3")) refineBody.reasoning = { effort: "high" };
+              if (isReasoningModel) refineBody.reasoning = { effort: reasoningEffort };
               if (responseId) refineBody.previous_response_id = responseId;
               let improved = "";
               try {
@@ -287,11 +289,11 @@ export async function POST(req: Request) {
             }
           } catch {}
         }
-        return NextResponse.json({ answer, providerUsed, modelUsed, fallbackUsed, detailUsed: detail, responseId });
+        return NextResponse.json({ answer, providerUsed, modelUsed, fallbackUsed, detailUsed: detail, responseId, maxTokensUsed: maxTokens, reasoningEffortUsed: isReasoningModel ? reasoningEffort : undefined });
       } else {
         if (client) {
           const base: any = { model, input: combined, temperature: 0.2, max_output_tokens: maxTokens };
-          if (model.startsWith("o3")) base.reasoning = { effort: "high" };
+          if (isReasoningModel) base.reasoning = { effort: reasoningEffort };
           try {
             if (input.previousResponseId) base.previous_response_id = input.previousResponseId;
             else if (anchorPrevId) base.previous_response_id = anchorPrevId;
@@ -340,7 +342,7 @@ export async function POST(req: Request) {
             const refineInstr = `Rewrite into a final, direct answer only. Remove any meta-analysis, review-style sections, or numbered structure. Keep the user's language and tone. Do not add follow-up questions. ${detail === "short" ? "Keep it concise (3–5 sentences)." : detail === "long" ? "Make it thorough and well-structured." : "Balance brevity and completeness."}`;
             const refineInput = `${refineInstr}\n\nQuestion: ${promptText}\n\nDraft:\n${answer}\n\n${selectedText ? `Selected context (user-picked):\n${selectedText}\n\n` : ""}${relatedText ? `Context (may be partial):\n${relatedText}\n` : ""}`;
             const refineBody: any = { model, input: refineInput, temperature: 0.2, max_output_tokens: refineTokens };
-            if (model.startsWith("o3")) refineBody.reasoning = { effort: "high" };
+            if (isReasoningModel) refineBody.reasoning = { effort: reasoningEffort };
             if (responseId) refineBody.previous_response_id = responseId;
             let improved = "";
             try {
@@ -359,7 +361,7 @@ export async function POST(req: Request) {
             if (improved) answer = improved;
           } catch {}
         }
-        return NextResponse.json({ answer, providerUsed, modelUsed, fallbackUsed, detailUsed: detail, responseId });
+        return NextResponse.json({ answer, providerUsed, modelUsed, fallbackUsed, detailUsed: detail, responseId, maxTokensUsed: maxTokens, reasoningEffortUsed: isReasoningModel ? reasoningEffort : undefined });
       }
     } catch {
       return fallback();

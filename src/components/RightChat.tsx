@@ -53,7 +53,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
   const [voteBusy, setVoteBusy] = useState<Record<string, boolean>>({});
   const [provider, setProvider] = useState<"openai" | "anthropic">("openai");
   const [detail, setDetail] = useState<"short" | "normal" | "long">("normal");
-  const [lastMeta, setLastMeta] = useState<{ providerUsed?: "openai" | "anthropic"; modelUsed?: string; fallbackUsed?: boolean } | null>(null);
+  const [lastMeta, setLastMeta] = useState<{ providerUsed?: "openai" | "anthropic"; modelUsed?: string; fallbackUsed?: boolean; maxTokensUsed?: number; reasoningEffortUsed?: "low" | "medium" | "high" } | null>(null);
 
   async function useQA(id: string) {
     try {
@@ -325,11 +325,11 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
         const err = await res.json().catch(() => ({}));
         throw new Error(err?.error || "Chat failed");
       }
-      const data = (await res.json()) as { answer?: string; providerUsed?: "openai" | "anthropic"; modelUsed?: string; fallbackUsed?: boolean; responseId?: string };
+      const data = (await res.json()) as { answer?: string; providerUsed?: "openai" | "anthropic"; modelUsed?: string; fallbackUsed?: boolean; responseId?: string; maxTokensUsed?: number; reasoningEffortUsed?: "low" | "medium" | "high" };
       const answer = data.answer ?? "";
       if (answer) {
         setHistory((h) => [...h, { role: "user", content: question }, { role: "assistant", content: answer }]);
-        setLastMeta({ providerUsed: data.providerUsed, modelUsed: data.modelUsed, fallbackUsed: Boolean(data.fallbackUsed) });
+        setLastMeta({ providerUsed: data.providerUsed, modelUsed: data.modelUsed, fallbackUsed: Boolean(data.fallbackUsed), maxTokensUsed: data.maxTokensUsed, reasoningEffortUsed: data.reasoningEffortUsed });
         setLastAnswer(answer);
         if (data.responseId) try { setPrevRespId(String(data.responseId)); } catch {}
         setPrompt("");
@@ -737,6 +737,8 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
                   via {lastMeta!.providerUsed === "anthropic" ? "Anthropic (Claude)" : lastMeta!.providerUsed === "openai" ? "OpenAI" : "AI"}
                   {lastMeta!.modelUsed ? <> · {lastMeta!.modelUsed}</> : null}
                   {lastMeta!.fallbackUsed ? " · fallback" : ""}
+                  {typeof lastMeta!.maxTokensUsed === "number" ? <> · maxTokens: {lastMeta!.maxTokensUsed}</> : null}
+                  {lastMeta!.reasoningEffortUsed ? <> · effort: {lastMeta!.reasoningEffortUsed}</> : null}
                 </div>
               )}
             </div>

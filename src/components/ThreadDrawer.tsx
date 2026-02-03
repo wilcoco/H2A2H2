@@ -18,9 +18,11 @@ type Props = {
   qaId?: string;
   open: boolean;
   onClose: () => void;
+  provider?: "openai" | "anthropic";
+  detail?: "short" | "normal" | "long";
 };
 
-export default function ThreadDrawer({ qaId, open, onClose }: Props) {
+export default function ThreadDrawer({ qaId, open, onClose, provider: providerProp, detail: detailProp }: Props) {
   const [rootId, setRootId] = useState<string | null>(null);
   const [tree, setTree] = useState<ThreadNode | null>(null);
   const [loading, setLoading] = useState(false);
@@ -35,9 +37,10 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
   const [toId, setToId] = useState<string | null>(null);
   const [relType, setRelType] = useState<string>("precedes");
   const [connecting, setConnecting] = useState(false);
-  const [provider, setProvider] = useState<"openai" | "anthropic">("openai");
-  const [detail, setDetail] = useState<"short" | "normal" | "long">("normal");
+  const [provider, setProvider] = useState<"openai" | "anthropic">(providerProp ?? "openai");
+  const [detail, setDetail] = useState<"short" | "normal" | "long">(detailProp ?? "normal");
   const [prevRespId, setPrevRespId] = useState<string | null>(null);
+  const [lastAiMeta, setLastAiMeta] = useState<Record<string, { maxTokensUsed?: number; reasoningEffortUsed?: "low" | "medium" | "high" }>>({});
 
   useEffect(() => {
     let mounted = true;
@@ -63,13 +66,23 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
   }, [open, qaId]);
 
   useEffect(() => {
+    if (providerProp) setProvider(providerProp);
+    if (detailProp) setDetail(detailProp);
+  }, [providerProp, detailProp]);
+
+  useEffect(() => {
+    setLastAiMeta({});
+  }, [open, qaId]);
+
+  useEffect(() => {
+    if (providerProp || detailProp) return;
     try {
       const saved = localStorage.getItem("ai_provider");
       if (saved === "openai" || saved === "anthropic") setProvider(saved);
       const det = localStorage.getItem("ai_detail");
       if (det === "short" || det === "normal" || det === "long") setDetail(det);
     } catch {}
-  }, []);
+  }, [providerProp, detailProp]);
 
   useEffect(() => {
     if (tab === "map") void loadMap();
@@ -93,6 +106,16 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
       if (!r.ok) throw new Error("AI failed");
       const j = await r.json();
       if (j?.responseId) try { setPrevRespId(String(j.responseId)); } catch {}
+      const maxTokensUsed = (() => {
+        const v = j?.maxTokensUsed;
+        const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
+        return Number.isFinite(n) ? n : undefined;
+      })();
+      const reasoningEffortUsed = (() => {
+        const v = j?.reasoningEffortUsed;
+        return v === "low" || v === "medium" || v === "high" ? v : undefined;
+      })();
+      setLastAiMeta((m) => ({ ...m, [id]: { maxTokensUsed, reasoningEffortUsed } }));
       const answer = String(j?.answer || "");
       if (!answer) return;
       const u = await fetch("/api/qa/answer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qaId: id, answer, responseId: j?.responseId || undefined }) });
@@ -102,19 +125,20 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
   }
 
   useEffect(() => {
+    if (providerProp || detailProp) return;
     function onStorage(e: StorageEvent) {
       if (e.key === "ai_provider") {
         const v = e.newValue || "";
-        if (v === "openai" || v === "anthropic") setProvider(v as any);
+        if (v === "openai" || v === "anthropic") setProvider(v);
       }
       if (e.key === "ai_detail") {
         const v = e.newValue || "";
-        if (v === "short" || v === "normal" || v === "long") setDetail(v as any);
+        if (v === "short" || v === "normal" || v === "long") setDetail(v);
       }
     }
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-  }, []);
+  }, [providerProp, detailProp]);
 
   async function refresh() {
     if (!rootId) return;
@@ -160,12 +184,18 @@ export default function ThreadDrawer({ qaId, open, onClose }: Props) {
 
   function NodeItem({ node }: { node: ThreadNode }) {
     const fid = node.id;
+    const meta = lastAiMeta[fid];
     return (
       <div className="border-l pl-3 ml-1 my-2 w-full min-w-0">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="text-sm font-medium">Q: {node.question}</div>
-            <div className="text-[11px] text-gray-600 mt-0.5">{node.hasAnswer ? "답변 있음" : "미답변"}{node.lastResponseId ? ` · RID: ${node.lastResponseId}` : ""}</div>
+            <div className="text-[11px] text-gray-600 mt-0.5">
+              {node.hasAnswer ? "답변 있음" : "미답변"}
+              {node.lastResponseId ? ` · RID: ${node.lastResponseId}` : ""}
+              {typeof meta?.maxTokensUsed === "number" ? ` · maxTokens: ${meta.maxTokensUsed}` : ""}
+              {meta?.reasoningEffortUsed ? ` · effort: ${meta.reasoningEffortUsed}` : ""}
+            </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <button className="text-[11px] px-2 py-1 rounded border" disabled={!!busyVote[fid]} onClick={() => void sendVote(fid, 1)}>도움됨 ({node.helpful})</button>

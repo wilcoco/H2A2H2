@@ -57,7 +57,7 @@ export default function Home() {
   const [leftPhrases, setLeftPhrases] = useState<string[] | null>(null);
   // relations UI removed
   const [provider, setProvider] = useState<"openai" | "anthropic">("openai");
-  const [centerAiMeta, setCenterAiMeta] = useState<{ providerUsed?: "openai" | "anthropic"; modelUsed?: string; fallbackUsed?: boolean } | null>(null);
+  const [centerAiMeta, setCenterAiMeta] = useState<{ providerUsed?: "openai" | "anthropic"; modelUsed?: string; fallbackUsed?: boolean; maxTokensUsed?: number; reasoningEffortUsed?: "low" | "medium" | "high" } | null>(null);
   const [centerPrevRespId, setCenterPrevRespId] = useState<string | null>(null);
   const [centerLockContext, setCenterLockContext] = useState<boolean>(true);
   const [selectedContextIds, setSelectedContextIds] = useState<string[]>([]);
@@ -196,7 +196,14 @@ export default function Home() {
       const providerUsed = j?.providerUsed === "openai" || j?.providerUsed === "anthropic" ? (j.providerUsed as "openai" | "anthropic") : undefined;
       const modelUsed = typeof j?.modelUsed === "string" ? j.modelUsed : undefined;
       const fallbackUsed = Boolean(j?.fallbackUsed);
-      setCenterAiMeta({ providerUsed, modelUsed, fallbackUsed });
+      const maxTokensUsed = (() => {
+        const v = j?.maxTokensUsed;
+        const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
+        return Number.isFinite(n) ? n : undefined;
+      })();
+      const reasoningEffortUsed = j?.reasoningEffortUsed;
+      const reasoningEffort = reasoningEffortUsed === "low" || reasoningEffortUsed === "medium" || reasoningEffortUsed === "high" ? reasoningEffortUsed : undefined;
+      setCenterAiMeta({ providerUsed, modelUsed, fallbackUsed, maxTokensUsed, reasoningEffortUsed: reasoningEffort });
       if (j?.responseId) try { setCenterPrevRespId(String(j.responseId)); } catch {}
     } catch {}
   }
@@ -304,7 +311,7 @@ export default function Home() {
             </select>
           </div>
           <div className="flex items-center gap-1 text-xs">
-            <span className="text-gray-600">답변 길이</span>
+            <span className="text-gray-600">답변 레벨</span>
             <select
               className="border rounded px-2 py-1 text-xs"
               value={detail}
@@ -313,9 +320,9 @@ export default function Home() {
                 setDetail(v === "short" ? "short" : v === "long" ? "long" : "normal");
               }}
             >
-              <option value="short">간결</option>
-              <option value="normal">중간</option>
-              <option value="long">자세함</option>
+              <option value="short">간단</option>
+              <option value="normal">표준</option>
+              <option value="long">심화</option>
             </select>
           </div>
           {user ? (
@@ -385,6 +392,8 @@ export default function Home() {
                 aiModel={!selectedQaId ? centerAiMeta?.modelUsed : undefined}
                 aiFallbackUsed={!selectedQaId ? centerAiMeta?.fallbackUsed : undefined}
                 aiResponseId={!selectedQaId ? (centerPrevRespId || undefined) : undefined}
+                aiMaxTokensUsed={!selectedQaId ? centerAiMeta?.maxTokensUsed : undefined}
+                aiReasoningEffortUsed={!selectedQaId ? centerAiMeta?.reasoningEffortUsed : undefined}
                 provider={provider}
                 detail={detail}
                 lockContext={centerLockContext}
@@ -448,7 +457,7 @@ export default function Home() {
           </aside>
           </div>
         </div>
-      <ThreadDrawer qaId={selectedQaId || undefined} open={threadOpen} onClose={() => setThreadOpen(false)} />
+      <ThreadDrawer qaId={selectedQaId || undefined} open={threadOpen} onClose={() => setThreadOpen(false)} provider={provider} detail={detail} />
       <AuthModal
         open={authOpen}
         onClose={() => setAuthOpen(false)}

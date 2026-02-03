@@ -69,6 +69,8 @@ type Props = {
   aiModel?: string;
   aiFallbackUsed?: boolean;
   aiResponseId?: string;
+  aiMaxTokensUsed?: number;
+  aiReasoningEffortUsed?: "low" | "medium" | "high";
   provider?: "openai" | "anthropic";
   detail?: "short" | "normal" | "long";
   lockContext?: boolean;
@@ -91,7 +93,7 @@ type Props = {
 
 type QaData = { id?: string; question: string; answer?: string; summary?: string; patch?: unknown; published?: boolean; createdBy?: string; lastResponseId?: string };
 
-export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, aiModel, aiFallbackUsed, aiResponseId, provider, detail, lockContext, onToggleLock, onSetPrevRespId, onOpenThread, onShared, onPinned, refreshKey, onSelectQA, currentUserEmail, onKeywordClick, onKeywordSearch, selectedChainPath, onGraphChanged, onSetSource, onSetTarget, onSetCard }: Props) {
+export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, aiModel, aiFallbackUsed, aiResponseId, aiMaxTokensUsed, aiReasoningEffortUsed, provider, detail, lockContext, onToggleLock, onSetPrevRespId, onOpenThread, onShared, onPinned, refreshKey, onSelectQA, currentUserEmail, onKeywordClick, onKeywordSearch, selectedChainPath, onGraphChanged, onSetSource, onSetTarget, onSetCard }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<QaData | null>(null);
@@ -111,11 +113,11 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   const [selPhrases, setSelPhrases] = useState<string[]>([]);
   const [fuInput, setFuInput] = useState("");
   const [fuLoading, setFuLoading] = useState(false);
-  const [fuItems, setFuItems] = useState<Array<{ q: string; a: string; respId: string | null; savedId?: string; baseQaId?: string; baseFuIndex?: number; baseIsAiMain?: boolean; relType?: string; relDir?: "current_to_new" | "new_to_current" }>>([]);
+  const [fuItems, setFuItems] = useState<Array<{ q: string; a: string; respId: string | null; maxTokensUsed?: number; reasoningEffortUsed?: "low" | "medium" | "high"; savedId?: string; baseQaId?: string; baseFuIndex?: number; baseIsAiMain?: boolean; relType?: string; relDir?: "current_to_new" | "new_to_current" }>>([]);
   const [relType, setRelType] = useState<string>("precedes");
   const [relDir, setRelDir] = useState<"current_to_new" | "new_to_current">("current_to_new");
   const [pairBusy, setPairBusy] = useState(false);
-  const [fuMap, setFuMap] = useState<Record<string, { input: string; loading: boolean; items: Array<{ q: string; a: string; respId: string | null; savedId?: string; relType?: string; relDir?: "current_to_new" | "new_to_current" }> }>>({});
+  const [fuMap, setFuMap] = useState<Record<string, { input: string; loading: boolean; items: Array<{ q: string; a: string; respId: string | null; maxTokensUsed?: number; reasoningEffortUsed?: "low" | "medium" | "high"; savedId?: string; relType?: string; relDir?: "current_to_new" | "new_to_current" }> }>>({});
   const [connectedKw, setConnectedKw] = useState<Record<string, { keywords: string[]; phrases: string[] }>>({});
   const [fuPer, setFuPer] = useState<Record<number, { input: string; loading: boolean }>>({});
   const [anchor, setAnchor] = useState<{ type: "qa" | "ai" | "fu" | "node"; id?: string; index?: number } | null>(null);
@@ -129,6 +131,8 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
   const [boostMsg, setBoostMsg] = useState<string | null>(null);
   const [readOK, setReadOK] = useState(false);
   const [openBoostFor, setOpenBoostFor] = useState<string | null>(null);
+
+  const detailUsed = detail ?? "normal";
 
   function startSelect(mode: "any" | "all") {
     setSelectMode(mode);
@@ -248,17 +252,26 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       const hist = (baseQ && baseA)
         ? ([{ role: "user", content: baseQ }, { role: "assistant", content: baseA }] as Array<{ role: "user" | "assistant"; content: string }>)
         : ([] as Array<{ role: "user" | "assistant"; content: string }>);
-      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: hist, provider, detail: "long", previousResponseId: prevRid, contextIds: ctxIds }) });
+      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: hist, provider, detail: detailUsed, previousResponseId: prevRid, contextIds: ctxIds }) });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
       const a = String(j?.answer || "");
       const rid = j?.responseId ? String(j.responseId) : null;
+      const maxTokensUsed = (() => {
+        const v = j?.maxTokensUsed;
+        const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
+        return Number.isFinite(n) ? n : undefined;
+      })();
+      const reasoningEffortUsed = (() => {
+        const v = j?.reasoningEffortUsed;
+        return v === "low" || v === "medium" || v === "high" ? v : undefined;
+      })();
       if (qaId && baseQaId === qaId) {
         // Main QA: keep using flat fuItems at top
         setFuItems((prev) => {
           const arr = [...prev];
           const insertAt = 0;
-          arr.splice(insertAt, 0, { q, a, respId: rid, baseQaId, relType, relDir });
+          arr.splice(insertAt, 0, { q, a, respId: rid, baseQaId, relType, relDir, maxTokensUsed, reasoningEffortUsed });
           for (let k = 0; k < arr.length; k++) {
             if (k === insertAt) continue;
             const bf = arr[k]?.baseFuIndex;
@@ -272,7 +285,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         // Connected node: append under that node's item list
         setFuMap((m) => {
           const prev = m[baseQaId] || { input: "", loading: false, items: [] };
-          const items = [...prev.items, { q, a, respId: rid, relType, relDir }];
+          const items = [...prev.items, { q, a, respId: rid, relType, relDir, maxTokensUsed, reasoningEffortUsed }];
           return { ...m, [baseQaId]: { input: "", loading: false, items } };
         });
       }
@@ -327,16 +340,25 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         const ba = String(aiAnswer || "");
         if (bq && ba) hist = [{ role: "user", content: bq }, { role: "assistant", content: ba }];
       }
-      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: hist, provider, detail: "long", previousResponseId: prevRid, contextIds: ctxIds }) });
+      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: hist, provider, detail: detailUsed, previousResponseId: prevRid, contextIds: ctxIds }) });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
       const a = String(j?.answer || "");
       const rid = j?.responseId ? String(j.responseId) : null;
+      const maxTokensUsed = (() => {
+        const v = j?.maxTokensUsed;
+        const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
+        return Number.isFinite(n) ? n : undefined;
+      })();
+      const reasoningEffortUsed = (() => {
+        const v = j?.reasoningEffortUsed;
+        return v === "low" || v === "medium" || v === "high" ? v : undefined;
+      })();
       setFuItems((prev) => {
         const arr = [...prev];
         // Option B: insert immediately under the anchor card
         const insertAt = Math.min(idx + 1, arr.length);
-        arr.splice(insertAt, 0, { q, a, respId: rid, baseFuIndex: idx, relType, relDir });
+        arr.splice(insertAt, 0, { q, a, respId: rid, baseFuIndex: idx, relType, relDir, maxTokensUsed, reasoningEffortUsed });
         // rebase indices for items shifted to the right
         for (let k = 0; k < arr.length; k++) {
           if (k === insertAt) continue; // skip the newly inserted item
@@ -382,16 +404,25 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       const hist: Array<{ role: "user" | "assistant"; content: string }> = (q0 && a0)
         ? [{ role: "user", content: q0 }, { role: "assistant", content: a0 }]
         : [];
-      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: hist, provider, detail: "long", previousResponseId: prevRid, contextIds: ctxIds }) });
+      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: hist, provider, detail: detailUsed, previousResponseId: prevRid, contextIds: ctxIds }) });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
       const a = String(j?.answer || "");
       const rid = j?.responseId ? String(j.responseId) : null;
+      const maxTokensUsed = (() => {
+        const v = j?.maxTokensUsed;
+        const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
+        return Number.isFinite(n) ? n : undefined;
+      })();
+      const reasoningEffortUsed = (() => {
+        const v = j?.reasoningEffortUsed;
+        return v === "low" || v === "medium" || v === "high" ? v : undefined;
+      })();
       setFuItems((prev) => {
         const arr = [...prev];
         // Option B for AI main: insert immediately under main (top of list)
         const insertAt = 0;
-        arr.splice(insertAt, 0, { q, a, respId: rid, baseIsAiMain: true, relType, relDir });
+        arr.splice(insertAt, 0, { q, a, respId: rid, baseIsAiMain: true, relType, relDir, maxTokensUsed, reasoningEffortUsed });
         // reindex baseFuIndex for items shifted to the right
         for (let k = 0; k < arr.length; k++) {
           if (k === insertAt) continue;
@@ -1040,7 +1071,11 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                   </div>
                   <div className="text-sm font-semibold">Q: {it.q}</div>
                   <div className="text-sm whitespace-pre-wrap break-words mt-1">A: {it.a}</div>
-                  <div className="mt-1 text-[10px] text-gray-500">{it.respId ? `RID: ${it.respId}` : ''}</div>
+                  <div className="mt-1 text-[10px] text-gray-500">
+                    {it.respId ? `RID: ${it.respId}` : ""}
+                    {typeof it.maxTokensUsed === "number" ? ` · maxTokens: ${it.maxTokensUsed}` : ""}
+                    {it.reasoningEffortUsed ? ` · effort: ${it.reasoningEffortUsed}` : ""}
+                  </div>
                   <div className="mt-2 flex items-center gap-2 flex-wrap">
                     <select className="text-xs border rounded px-2 py-1" value={it.relType || relType} onChange={(e) => setFuItems((prev) => { const val = e.target.value; const arr = [...prev]; const dir = defaultDirForType(val); arr[i] = { ...arr[i], relType: val, relDir: dir }; return arr; })}>
                       {Object.entries(REL_HEADS).map(([hk, hv]) => (
@@ -1155,12 +1190,14 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       <div className="flex flex-col gap-2">
         <div className="text-sm font-semibold">Q: {question}</div>
         <div className="text-sm whitespace-pre-wrap break-words">A: {aiAnswer}</div>
-        {(aiProvider || aiModel || aiResponseId) && (
+        {(aiProvider || aiModel || aiResponseId || typeof aiMaxTokensUsed === "number" || aiReasoningEffortUsed) && (
           <div className="text-[11px] text-gray-600">
             via {aiProvider === "anthropic" ? "Anthropic (Claude)" : aiProvider === "openai" ? "OpenAI" : "AI"}
             {aiModel ? ` · ${aiModel}` : ""}
             {aiFallbackUsed ? " · fallback" : ""}
             {aiResponseId ? ` · RID: ${aiResponseId}` : ""}
+            {typeof aiMaxTokensUsed === "number" ? ` · maxTokens: ${aiMaxTokensUsed}` : ""}
+            {aiReasoningEffortUsed ? ` · effort: ${aiReasoningEffortUsed}` : ""}
           </div>
         )}
         <div className="mt-2 flex items-center gap-2">
@@ -1206,7 +1243,11 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                   </div>
                   <div className="text-sm font-semibold">Q: {it.q}</div>
                   <div className="text-sm whitespace-pre-wrap mt-1">A: {it.a}</div>
-                  <div className="mt-1 text-[10px] text-gray-500">{it.respId ? `RID: ${it.respId}` : ''}</div>
+                  <div className="mt-1 text-[10px] text-gray-500">
+                    {it.respId ? `RID: ${it.respId}` : ""}
+                    {typeof it.maxTokensUsed === "number" ? ` · maxTokens: ${it.maxTokensUsed}` : ""}
+                    {it.reasoningEffortUsed ? ` · effort: ${it.reasoningEffortUsed}` : ""}
+                  </div>
                   <div className="mt-2 flex items-center gap-2 flex-wrap">
                     <select className="text-xs border rounded px-2 py-1" value={it.relType || relType} onChange={(e) => setFuItems((prev) => { const val = e.target.value; const arr = [...prev]; const dir = defaultDirForType(val); arr[i] = { ...arr[i], relType: val, relDir: dir }; return arr; })}>
                       {Object.entries(REL_HEADS).map(([hk, hv]) => (
