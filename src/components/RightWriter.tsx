@@ -24,20 +24,30 @@ function QAGraph({
   selectedId,
   onSelect,
   onOpen,
+  heightClass,
 }: {
   nodes: MapNode[];
   edges: MapEdge[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   onOpen: (id: string) => void;
+  heightClass?: string;
 }) {
-  const nodeW = 240;
-  const nodeH = 74;
+  const nodeW = 270;
+  const nodeH = 88;
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [scale, setScale] = useState<number>(1);
   const [tx, setTx] = useState<number>(0);
   const [ty, setTy] = useState<number>(0);
-  const isPanningRef = useRef(false);
+  const [hoverNodeId, setHoverNodeId] = useState<string | null>(null);
+  const [hoverEdgeId, setHoverEdgeId] = useState<string | null>(null);
+  const isPointerDownRef = useRef(false);
+  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
+  const dragRef = useRef<{ x: number; y: number } | null>(null);
+  const didDragRef = useRef(false);
+  const suppressClickRef = useRef(false);
+  const [dragging, setDragging] = useState(false);
+  const clickTol = 8;
   const graph = useMemo(() => {
     const g = new dagre.graphlib.Graph();
     g.setGraph({ rankdir: "LR", nodesep: 26, ranksep: 70 });
@@ -63,6 +73,10 @@ function QAGraph({
     if (s === "refutes") return "#dc2626";
     if (s === "precedes") return "#2563eb";
     if (s === "prerequisite") return "#7c3aed";
+    if (s === "elaborates") return "#0d9488";
+    if (s === "clarifies") return "#0891b2";
+    if (s === "narrows") return "#f59e0b";
+    if (s === "alternative") return "#db2777";
     return "#6b7280";
   };
 
@@ -78,8 +92,8 @@ function QAGraph({
     e.preventDefault();
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+    const mx = ((e.clientX - rect.left) / rect.width) * W;
+    const my = ((e.clientY - rect.top) / rect.height) * H;
     const zoom = Math.exp(-e.deltaY * 0.0015);
     const newScale = Math.min(3, Math.max(0.3, scale * zoom));
     const sx = (mx - tx) / scale;
@@ -89,18 +103,49 @@ function QAGraph({
     setScale(newScale);
   };
 
-  const onBgPointerDown = (e: React.PointerEvent<SVGRectElement>) => {
-    isPanningRef.current = true;
+  const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.button !== 0) return;
+    isPointerDownRef.current = true;
+    didDragRef.current = false;
+    suppressClickRef.current = false;
+    dragStartRef.current = { x: e.clientX, y: e.clientY };
+    dragRef.current = { x: e.clientX, y: e.clientY };
     try { (e.currentTarget as unknown as Element & { setPointerCapture: (id: number) => void }).setPointerCapture(e.pointerId); } catch {}
   };
-  const onBgPointerMove = (e: React.PointerEvent<SVGRectElement>) => {
-    if (!isPanningRef.current) return;
-    setTx((prev) => prev + e.movementX);
-    setTy((prev) => prev + e.movementY);
+  const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!isPointerDownRef.current) return;
+    const start = dragStartRef.current;
+    if (start && !didDragRef.current) {
+      const dx0 = e.clientX - start.x;
+      const dy0 = e.clientY - start.y;
+      if (Math.hypot(dx0, dy0) < clickTol) return;
+      didDragRef.current = true;
+      suppressClickRef.current = true;
+      setDragging(true);
+    }
+    if (!didDragRef.current) return;
+    const prev = dragRef.current;
+    const dx = e.clientX - (prev?.x ?? e.clientX);
+    const dy = e.clientY - (prev?.y ?? e.clientY);
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const unitX = W / rect.width;
+    const unitY = H / rect.height;
+    dragRef.current = { x: e.clientX, y: e.clientY };
+    setTx((p) => p + (dx * unitX) / scale);
+    setTy((p) => p + (dy * unitY) / scale);
   };
-  const onBgPointerUp = (e: React.PointerEvent<SVGRectElement>) => {
-    isPanningRef.current = false;
+  const onPointerUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    const shouldResetSuppress = suppressClickRef.current;
+    isPointerDownRef.current = false;
+    didDragRef.current = false;
+    dragStartRef.current = null;
+    dragRef.current = null;
+    setDragging(false);
     try { (e.currentTarget as unknown as Element & { releasePointerCapture: (id: number) => void }).releasePointerCapture(e.pointerId); } catch {}
+    if (shouldResetSuppress) {
+      setTimeout(() => { suppressClickRef.current = false; }, 0);
+    }
   };
 
   const titleFor = (q: string) => {
@@ -110,7 +155,17 @@ function QAGraph({
   };
 
   return (
-    <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="w-full h-72 md:h-[420px]" onWheel={onWheel} style={{ touchAction: "none" }}>
+    <svg
+      ref={svgRef}
+      viewBox={`0 0 ${W} ${H}`}
+      className={`w-full ${heightClass || "h-72 md:h-[420px]"} ${dragging ? "cursor-grabbing" : "cursor-grab"}`}
+      onWheel={onWheel}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerLeave={onPointerUp}
+      style={{ touchAction: "none" }}
+    >
       <defs>
         {types.map((t) => (
           <marker key={t} id={markerId(t)} viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -118,7 +173,7 @@ function QAGraph({
           </marker>
         ))}
       </defs>
-      <rect x={0} y={0} width={W} height={H} fill="transparent" onPointerDown={onBgPointerDown} onPointerMove={onBgPointerMove} onPointerUp={onBgPointerUp} />
+      <rect x={0} y={0} width={W} height={H} fill="transparent" />
       <g transform={`translate(${tx},${ty}) scale(${scale})`}>
         {edges
           .filter((e) => pos.has(e.sourceId) && pos.has(e.targetId))
@@ -126,36 +181,63 @@ function QAGraph({
             const s = pos.get(e.sourceId)!;
             const t = pos.get(e.targetId)!;
             const stroke = edgeColor(e.type);
+            const eid = `${e.sourceId}|${e.targetId}|${e.type}`;
+            const focus = hoverNodeId || selectedId;
+            const isConnected = !!focus && (e.sourceId === focus || e.targetId === focus);
+            const isHover = hoverEdgeId === eid;
+            const dim = (focus || hoverEdgeId) && !(isHover || isConnected);
+            const opacity = dim ? 0.15 : 0.95;
+            const strokeW = isHover ? 3.2 : isConnected ? 2.3 : 1.6;
             const midx = (s.x + t.x) / 2;
             const midy = (s.y + t.y) / 2;
+            const showLabel = isHover || isConnected;
             return (
-              <g key={`${e.sourceId}|${e.targetId}|${e.type}`} opacity={0.95}>
+              <g
+                key={eid}
+                opacity={opacity}
+                onMouseEnter={() => setHoverEdgeId(eid)}
+                onMouseLeave={() => setHoverEdgeId(null)}
+              >
                 <line
                   x1={s.x + nodeW / 2}
                   y1={s.y}
                   x2={t.x - nodeW / 2}
                   y2={t.y}
                   stroke={stroke}
-                  strokeWidth={1.6}
+                  strokeWidth={strokeW}
+                  strokeLinecap="round"
                   strokeDasharray={e.synthetic ? "4 3" : undefined}
                   markerEnd={`url(#${markerId(e.type)})`}
                 />
-                <text x={midx} y={midy - 4} fontSize={10} textAnchor="middle" fill={stroke}>{String(e.type || "")}</text>
+                {showLabel && (
+                  <text x={midx} y={midy - 4} fontSize={10} textAnchor="middle" fill={stroke}>{String(e.type || "")}</text>
+                )}
               </g>
             );
           })}
         {Array.from(pos.entries()).map(([id, p]) => {
           const isSel = selectedId === id;
+          const isHover = hoverNodeId === id;
           const fill = p.n.hasAnswer ? "#ffffff" : "#f3f4f6";
+          const stroke = isSel ? "#2563eb" : isHover ? "#0f172a" : "#111827";
+          const strokeW = isSel ? 2.3 : isHover ? 2 : 1.2;
           const sub = `${p.n.hasAnswer ? "A" : "No A"} · ${Number(p.n.helpful || 0)}↑ ${Number(p.n.unhelpful || 0)}↓`;
           return (
             <g
               key={id}
-              onClick={() => onSelect(id)}
-              onDoubleClick={() => onOpen(id)}
+              onMouseEnter={() => setHoverNodeId(id)}
+              onMouseLeave={() => setHoverNodeId(null)}
+              onClick={() => {
+                if (suppressClickRef.current) return;
+                onSelect(id);
+              }}
+              onDoubleClick={() => {
+                if (suppressClickRef.current) return;
+                onOpen(id);
+              }}
               style={{ cursor: "pointer" }}
             >
-              <rect x={p.x - nodeW / 2} y={p.y - nodeH / 2} width={nodeW} height={nodeH} rx={8} ry={8} fill={fill} stroke={isSel ? "#2563eb" : "#111827"} strokeWidth={isSel ? 2 : 1.2} />
+              <rect x={p.x - nodeW / 2} y={p.y - nodeH / 2} width={nodeW} height={nodeH} rx={8} ry={8} fill={fill} stroke={stroke} strokeWidth={strokeW} />
               <text x={p.x - nodeW / 2 + 10} y={p.y - 10} fontSize={12} className="fill-gray-900">{titleFor(p.n.question)}</text>
               <text x={p.x - nodeW / 2 + 10} y={p.y + 12} fontSize={10} className="fill-gray-600">{sub}</text>
             </g>
@@ -185,6 +267,7 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
   const [meta, setMeta] = useState<{ reliability?: string; source?: string; freshness?: string }>({});
   const [toast, setToast] = useState<string | null>(null);
   const [view, setView] = useState<"graph" | "doc">("graph");
+  const [graphFullscreen, setGraphFullscreen] = useState(false);
   const focusQaId = useMemo(() => {
     if (qaId) return qaId;
     if (centerQaId) return centerQaId;
@@ -350,6 +433,25 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
     })();
     return () => { active = false; };
   }, [focusQaId, refreshKey]);
+
+  useEffect(() => {
+    if (!graphFullscreen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [graphFullscreen]);
+
+  useEffect(() => {
+    if (!graphFullscreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setGraphFullscreen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [graphFullscreen]);
 
   useEffect(() => {
     // Ensure Enter creates paragraphs
@@ -522,7 +624,12 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
           <button className={`text-[11px] px-2 py-1 rounded border ${view === 'graph' ? 'bg-gray-100' : ''}`} onClick={() => setView('graph')}>Graph</button>
           <button className={`text-[11px] px-2 py-1 rounded border ${view === 'doc' ? 'bg-gray-100' : ''}`} onClick={() => setView('doc')}>Doc</button>
         </div>
-        <div className="text-[11px] text-gray-600">{focusQaId ? `Focus: ${focusQaId}` : "대상을 선택하세요."}</div>
+        <div className="flex items-center gap-2">
+          <div className="text-[11px] text-gray-600">{focusQaId ? `Focus: ${focusQaId}` : "대상을 선택하세요."}</div>
+          {view === 'graph' && (
+            <button className="text-[11px] px-2 py-1 rounded border disabled:opacity-50" disabled={gLoading || !!gError || gNodes.length === 0} onClick={() => setGraphFullscreen(true)}>전체화면</button>
+          )}
+        </div>
       </div>
 
       {view === "graph" ? (
@@ -621,6 +728,33 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
       </div>
         </>
       )}
+
+      {graphFullscreen && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-3" onClick={(e) => { if (e.target === e.currentTarget) setGraphFullscreen(false); }}>
+          <div className="bg-white dark:bg-gray-900 rounded shadow-lg p-3 w-[1100px] max-w-[98vw] max-h-[92vh] overflow-auto">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-xs font-semibold">Graph</div>
+              <button className="text-xs px-2 py-1 rounded border" onClick={() => setGraphFullscreen(false)}>닫기</button>
+            </div>
+            {gLoading && <div className="text-xs text-gray-500">불러오는 중...</div>}
+            {gError && <div className="text-xs text-red-600">{gError}</div>}
+            {!gLoading && !gError && gNodes.length > 0 && (
+              <QAGraph
+                nodes={gNodes}
+                edges={gEdges}
+                selectedId={gSelectedId}
+                onSelect={(id) => setGSelectedId(id)}
+                onOpen={(id) => { onSetQaId?.(id); setView('doc'); setGraphFullscreen(false); }}
+                heightClass="h-[80vh]"
+              />
+            )}
+            {!gLoading && !gError && gNodes.length === 0 && (
+              <div className="text-xs text-gray-500">그래프가 없습니다.</div>
+            )}
+          </div>
+        </div>
+      )}
+
       {toast && (
         <div className="fixed bottom-4 right-4 bg-gray-900 text-white text-xs px-3 py-2 rounded shadow">{toast}</div>
       )}
