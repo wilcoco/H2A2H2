@@ -33,14 +33,15 @@ function QAGraph({
   onOpen: (id: string) => void;
   heightClass?: string;
 }) {
-  const nodeW = 270;
-  const nodeH = 88;
+  const nodeW = 340;
+  const nodeH = 118;
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [scale, setScale] = useState<number>(1);
   const [tx, setTx] = useState<number>(0);
   const [ty, setTy] = useState<number>(0);
   const [hoverNodeId, setHoverNodeId] = useState<string | null>(null);
   const [hoverEdgeId, setHoverEdgeId] = useState<string | null>(null);
+  const autoKeyRef = useRef<string | null>(null);
   const isPointerDownRef = useRef(false);
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
   const dragRef = useRef<{ x: number; y: number } | null>(null);
@@ -50,22 +51,34 @@ function QAGraph({
   const clickTol = 8;
   const graph = useMemo(() => {
     const g = new dagre.graphlib.Graph();
-    g.setGraph({ rankdir: "LR", nodesep: 26, ranksep: 70 });
+    g.setGraph({ rankdir: "LR", nodesep: 18, ranksep: 48 });
     g.setDefaultEdgeLabel(() => ({}));
-    for (const n of nodes) g.setNode(n.id, { width: nodeW, height: nodeH } as any);
-    for (const e of edges) g.setEdge(e.sourceId, e.targetId, { id: `${e.sourceId}|${e.targetId}|${e.type}` } as any);
+    for (const n of nodes) g.setNode(n.id, { width: nodeW, height: nodeH });
+    for (const e of edges) g.setEdge(e.sourceId, e.targetId, { id: `${e.sourceId}|${e.targetId}|${e.type}` });
     dagre.layout(g);
     return g;
   }, [nodes, edges]);
 
-  const G = graph.graph();
-  const W = Math.max(720, Number((G as any)?.width || 0) || 720);
-  const H = Math.max(360, Number((G as any)?.height || 0) || 360);
+  const G = graph.graph() as unknown as { width?: number; height?: number };
+  const W = Math.max(720, Number(G.width || 0) || 720);
+  const H = Math.max(360, Number(G.height || 0) || 360);
   const pos = new Map<string, { x: number; y: number; n: MapNode }>();
   for (const n of nodes) {
     const p = graph.node(n.id) as { x: number; y: number } | undefined;
     if (p) pos.set(n.id, { x: p.x, y: p.y, n });
   }
+
+  useEffect(() => {
+    const key = `${nodes.length}|${edges.length}|${W}|${H}`;
+    if (autoKeyRef.current === key) return;
+    autoKeyRef.current = key;
+    const s = Math.min(2.8, Math.max(1, Math.max(W / 820, H / 460)));
+    const cx = W / 2;
+    const cy = H / 2;
+    setScale(s);
+    setTx(cx * (1 - s));
+    setTy(cy * (1 - s));
+  }, [nodes.length, edges.length, W, H]);
 
   const edgeColor = (t: string) => {
     const s = (t || "").toLowerCase();
@@ -148,10 +161,16 @@ function QAGraph({
     }
   };
 
-  const titleFor = (q: string) => {
+  const titleLines = (q: string) => {
     const t = String(q || "").replace(/\s+/g, " ").trim();
-    if (t.length <= 44) return t;
-    return t.slice(0, 44) + "…";
+    const max = 72;
+    const tt = t.length <= max ? t : t.slice(0, Math.max(0, max - 1)) + "…";
+    const lineLen = 30;
+    const l1 = tt.slice(0, lineLen);
+    const rest = tt.slice(lineLen);
+    if (!rest) return [l1];
+    const l2 = rest.length <= lineLen ? rest : rest.slice(0, Math.max(0, lineLen - 1)) + "…";
+    return [l1, l2];
   };
 
   return (
@@ -168,7 +187,7 @@ function QAGraph({
     >
       <defs>
         {types.map((t) => (
-          <marker key={t} id={markerId(t)} viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <marker key={t} id={markerId(t)} viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
             <path d="M 0 0 L 10 5 L 0 10 z" fill={edgeColor(t)} />
           </marker>
         ))}
@@ -186,11 +205,11 @@ function QAGraph({
             const isConnected = !!focus && (e.sourceId === focus || e.targetId === focus);
             const isHover = hoverEdgeId === eid;
             const dim = (focus || hoverEdgeId) && !(isHover || isConnected);
-            const opacity = dim ? 0.15 : 0.95;
-            const strokeW = isHover ? 3.2 : isConnected ? 2.3 : 1.6;
+            const opacity = dim ? 0.35 : 0.95;
+            const strokeW = isHover ? 4.4 : isConnected ? 3.4 : 2.4;
             const midx = (s.x + t.x) / 2;
             const midy = (s.y + t.y) / 2;
-            const showLabel = isHover || isConnected;
+            const showLabel = true;
             return (
               <g
                 key={eid}
@@ -210,7 +229,7 @@ function QAGraph({
                   markerEnd={`url(#${markerId(e.type)})`}
                 />
                 {showLabel && (
-                  <text x={midx} y={midy - 4} fontSize={10} textAnchor="middle" fill={stroke}>{String(e.type || "")}</text>
+                  <text x={midx} y={midy - 8} fontSize={11} fontWeight={600} textAnchor="middle" fill={stroke} stroke="#ffffff" strokeWidth={3} strokeLinejoin="round" paintOrder="stroke">{String(e.type || "")}</text>
                 )}
               </g>
             );
@@ -220,7 +239,9 @@ function QAGraph({
           const isHover = hoverNodeId === id;
           const fill = p.n.hasAnswer ? "#ffffff" : "#f3f4f6";
           const stroke = isSel ? "#2563eb" : isHover ? "#0f172a" : "#111827";
-          const strokeW = isSel ? 2.3 : isHover ? 2 : 1.2;
+          const strokeW = isSel ? 3 : isHover ? 2.4 : 1.6;
+          const x0 = p.x - nodeW / 2 + 12;
+          const lines = titleLines(p.n.question);
           const sub = `${p.n.hasAnswer ? "A" : "No A"} · ${Number(p.n.helpful || 0)}↑ ${Number(p.n.unhelpful || 0)}↓`;
           return (
             <g
@@ -237,9 +258,13 @@ function QAGraph({
               }}
               style={{ cursor: "pointer" }}
             >
-              <rect x={p.x - nodeW / 2} y={p.y - nodeH / 2} width={nodeW} height={nodeH} rx={8} ry={8} fill={fill} stroke={stroke} strokeWidth={strokeW} />
-              <text x={p.x - nodeW / 2 + 10} y={p.y - 10} fontSize={12} className="fill-gray-900">{titleFor(p.n.question)}</text>
-              <text x={p.x - nodeW / 2 + 10} y={p.y + 12} fontSize={10} className="fill-gray-600">{sub}</text>
+              <rect x={p.x - nodeW / 2} y={p.y - nodeH / 2} width={nodeW} height={nodeH} rx={8} ry={8} fill={fill} stroke={stroke} strokeWidth={strokeW} style={{ filter: "drop-shadow(0px 1px 1.5px rgba(0,0,0,0.12))" }} />
+              <text x={x0} y={p.y - 26} fontSize={13} fontWeight={600} className="fill-gray-900">
+                {lines.map((ln, i) => (
+                  <tspan key={i} x={x0} dy={i === 0 ? 0 : 16}>{ln}</tspan>
+                ))}
+              </text>
+              <text x={x0} y={p.y + 34} fontSize={11} fontWeight={500} className="fill-gray-700">{sub}</text>
             </g>
           );
         })}
@@ -419,9 +444,11 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
         const r = await fetch(`/api/qa/map?qaId=${encodeURIComponent(focusQaId)}&full=1`, { cache: "no-store" });
         const j = await r.json().catch(() => ({ nodes: [], edges: [] }));
         if (!active) return;
-        setGNodes(Array.isArray(j?.nodes) ? (j.nodes as MapNode[]) : []);
-        setGEdges(Array.isArray(j?.edges) ? (j.edges as MapEdge[]) : []);
-        if (Array.isArray(j?.nodes) && (j.nodes as any[]).some((n) => n?.id === focusQaId)) setGSelectedId(focusQaId);
+        const nodesArr = Array.isArray(j?.nodes) ? (j.nodes as MapNode[]) : [];
+        const edgesArr = Array.isArray(j?.edges) ? (j.edges as MapEdge[]) : [];
+        setGNodes(nodesArr);
+        setGEdges(edgesArr);
+        if (nodesArr.some((n) => n.id === focusQaId)) setGSelectedId(focusQaId);
       } catch (e: unknown) {
         if (!active) return;
         setGError(e instanceof Error ? e.message : "Failed to load graph");
