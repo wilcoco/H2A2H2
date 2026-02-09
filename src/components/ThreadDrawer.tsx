@@ -37,13 +37,23 @@ export default function ThreadDrawer({ qaId, open, onClose, provider: providerPr
   const [toId, setToId] = useState<string | null>(null);
   const [relType, setRelType] = useState<string>("precedes");
   const [connecting, setConnecting] = useState(false);
+  const [relSuggestBusy, setRelSuggestBusy] = useState(false);
+  const [relSuggestError, setRelSuggestError] = useState<string | null>(null);
+  const [relSuggest, setRelSuggest] = useState<{
+    sourceId: string;
+    targetId: string;
+    type: string;
+    confidence: number;
+    rationale: string;
+    providerUsed?: "openai" | "anthropic" | "fallback";
+    modelUsed?: string;
+  } | null>(null);
   const [provider, setProvider] = useState<"openai" | "anthropic">(providerProp ?? "openai");
   const [detail, setDetail] = useState<"short" | "normal" | "long">(detailProp ?? "normal");
   const [prevRespId, setPrevRespId] = useState<string | null>(null);
   const [lastAiMeta, setLastAiMeta] = useState<Record<string, { maxTokensUsed?: number; reasoningEffortUsed?: "low" | "medium" | "high" }>>({});
 
   useEffect(() => {
-    let mounted = true;
     async function load() {
       if (!open || !qaId) { setRootId(null); setTree(null); return; }
       try {
@@ -62,7 +72,7 @@ export default function ThreadDrawer({ qaId, open, onClose, provider: providerPr
       } finally { setLoading(false); }
     }
     void load();
-    return () => { mounted = false; };
+    return () => {};
   }, [open, qaId]);
 
   useEffect(() => {
@@ -177,9 +187,50 @@ export default function ThreadDrawer({ qaId, open, onClose, provider: providerPr
       const r = await fetch("/api/qa/relation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceId: s, targetId: t, type: ty, weight: 1 }) });
       if (!r.ok) throw new Error("Connect failed");
       setFromId(null); setToId(null);
+      setRelSuggest(null);
+      setRelSuggestError(null);
       await loadMap();
     } catch {}
     finally { setConnecting(false); }
+  }
+
+  async function suggestRelation() {
+    const aId = fromId?.trim();
+    const bId = toId?.trim();
+    if (!aId || !bId || aId === bId) return;
+    try {
+      setRelSuggestBusy(true);
+      setRelSuggestError(null);
+      const r = await fetch("/api/qa/relation/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aId, bId, provider }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(String(j?.error || "Suggest failed"));
+      const sourceId = String(j?.sourceId || "");
+      const targetId = String(j?.targetId || "");
+      const type = String(j?.type || "");
+      const confidenceRaw = typeof j?.confidence === "number" ? j.confidence : typeof j?.confidence === "string" ? Number(j.confidence) : NaN;
+      const confidence = Number.isFinite(confidenceRaw) ? Math.max(0, Math.min(1, confidenceRaw)) : 0;
+      const rationale = String(j?.rationale || "");
+      const providerUsed = (j?.providerUsed === "openai" || j?.providerUsed === "anthropic" || j?.providerUsed === "fallback") ? (j.providerUsed as "openai" | "anthropic" | "fallback") : undefined;
+      const modelUsed = typeof j?.modelUsed === "string" ? j.modelUsed : undefined;
+      if (!sourceId || !targetId || !type) throw new Error("Invalid suggestion");
+      setRelSuggest({ sourceId, targetId, type, confidence, rationale, providerUsed, modelUsed });
+    } catch (e: unknown) {
+      setRelSuggest(null);
+      setRelSuggestError(e instanceof Error ? e.message : "Suggest failed");
+    } finally {
+      setRelSuggestBusy(false);
+    }
+  }
+
+  function titleOf(id: string): string {
+    const q = mNodes.find((n) => n.id === id)?.question || id;
+    const t = String(q || "").replace(/\s+/g, " ").trim();
+    if (t.length <= 80) return t;
+    return t.slice(0, 79) + "…";
   }
 
   function NodeItem({ node }: { node: ThreadNode }) {
@@ -255,11 +306,45 @@ export default function ThreadDrawer({ qaId, open, onClose, provider: providerPr
                     <option value="refutes">refutes</option>
                     <option value="alternative">alternative</option>
                   </select>
+                  <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!fromId || !toId || relSuggestBusy} onClick={() => void suggestRelation()}>{relSuggestBusy ? "추천 중…" : "AI 추천"}</button>
                   <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!fromId || !toId || connecting} onClick={() => void connect()}>{connecting ? "Connecting..." : "Connect"}</button>
                   {(fromId || toId) && (
-                    <button className="text-xs px-2 py-1 rounded border" onClick={() => { setFromId(null); setToId(null); }}>Reset</button>
+                    <button className="text-xs px-2 py-1 rounded border" onClick={() => { setFromId(null); setToId(null); setRelSuggest(null); setRelSuggestError(null); }}>Reset</button>
                   )}
                 </div>
+                {relSuggestError && <div className="text-[11px] text-red-600">{relSuggestError}</div>}
+                {relSuggest && (
+                  <div className="p-2 border rounded bg-white/60 dark:bg-gray-900/40 text-[11px]">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-semibold">AI 추천</div>
+                      <button className="text-[11px] px-2 py-0.5 rounded border" onClick={() => { setRelSuggest(null); setRelSuggestError(null); }}>닫기</button>
+                    </div>
+                    <div className="mt-1 text-gray-700">
+                      {relSuggest.sourceId} → {relSuggest.targetId} · {relSuggest.type}
+                      {Number.isFinite(relSuggest.confidence) ? ` · ${Math.round(relSuggest.confidence * 100)}%` : ""}
+                    </div>
+                    <div className="mt-1 text-[10px] text-gray-600">
+                      <div className="line-clamp-2">From: {titleOf(relSuggest.sourceId)}</div>
+                      <div className="line-clamp-2">To: {titleOf(relSuggest.targetId)}</div>
+                    </div>
+                    {relSuggest.rationale && <div className="mt-1 text-[10px] text-gray-600 whitespace-pre-wrap break-words">{relSuggest.rationale}</div>}
+                    <div className="mt-1 text-[10px] text-gray-500">
+                      {relSuggest.providerUsed ? `provider: ${relSuggest.providerUsed}` : ""}
+                      {relSuggest.modelUsed ? ` · model: ${relSuggest.modelUsed}` : ""}
+                    </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <button
+                        className="text-xs px-2 py-1 rounded bg-emerald-600 text-white disabled:opacity-50"
+                        disabled={connecting}
+                        onClick={() => {
+                          setRelType(relSuggest.type);
+                          setFromId(relSuggest.sourceId);
+                          setToId(relSuggest.targetId);
+                        }}
+                      >적용</button>
+                    </div>
+                  </div>
+                )}
                 <div className="text-[11px] text-gray-600">노드 선택: 먼저 From, 그다음 To 선택</div>
                 <ul className="space-y-1">
                   {mNodes.map((n) => (
@@ -269,8 +354,8 @@ export default function ThreadDrawer({ qaId, open, onClose, provider: providerPr
                         <div className="text-[10px] text-gray-500">도움됨 {n.helpful} · {n.hasAnswer ? "답변 있음" : "미답변"}</div>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
-                        <button className={`text-[11px] px-2 py-1 rounded border ${fromId === n.id ? "bg-gray-100" : ""}`} onClick={() => setFromId(n.id)}>From</button>
-                        <button className={`text-[11px] px-2 py-1 rounded border ${toId === n.id ? "bg-gray-100" : ""}`} onClick={() => setToId(n.id)}>To</button>
+                        <button className={`text-[11px] px-2 py-1 rounded border ${fromId === n.id ? "bg-gray-100" : ""}`} onClick={() => { setFromId(n.id); setRelSuggest(null); setRelSuggestError(null); }}>From</button>
+                        <button className={`text-[11px] px-2 py-1 rounded border ${toId === n.id ? "bg-gray-100" : ""}`} onClick={() => { setToId(n.id); setRelSuggest(null); setRelSuggestError(null); }}>To</button>
                       </div>
                     </li>
                   ))}
