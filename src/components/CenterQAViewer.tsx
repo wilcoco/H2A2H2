@@ -61,6 +61,20 @@ function labelKoForType(t: string): string {
   return t;
 }
 
+function suggestRelTypeForFollowUp(baseQ: string, nextQ: string): string {
+  const s = (baseQ || "").toLowerCase();
+  const t = (nextQ || "").toLowerCase();
+  const has = (str: string, arr: string[]) => arr.some((k) => str.includes(k));
+  if (has(t, ["예:", "예시", "사례", "예를 들어", "요약", "정리", "적용", "로컬라이즈"])) return "elaborates";
+  if (has(t, ["정의", "의미", "란", "오해", "명확", "요약해", "정리해"])) return "clarifies";
+  if (has(t, ["먼저", "선행", "필요", "해야", "전제", "필수"])) return "prerequisite";
+  if (has(t, ["근거", "증거", "데이터", "입증", "검증", "지표"])) return "supports";
+  if (has(t, ["반박", "틀리", "오류", "문제점", "모순", "왜 안", "왜안"])) return "refutes";
+  if (has(t, ["대안", "비교", "차이", "vs", "유사", "비슷", "다른 방법", "대체"])) return "alternative";
+  if (t.length > s.length + 10 || has(t, ["종류", "유형", "세부", "구체", "특정"])) return "narrows";
+  return "precedes";
+}
+
 type Props = {
   qaId?: string;
   question?: string;
@@ -248,15 +262,41 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
           }
         } catch {}
       }
+      const heurRelType = suggestRelTypeForFollowUp(baseQ, q);
+      const heurRelDir = defaultDirForType(heurRelType);
       // Provide minimal history so Anthropic can maintain context too
       const hist = (baseQ && baseA)
         ? ([{ role: "user", content: baseQ }, { role: "assistant", content: baseA }] as Array<{ role: "user" | "assistant"; content: string }>)
         : ([] as Array<{ role: "user" | "assistant"; content: string }>);
-      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: hist, provider, detail: detailUsed, previousResponseId: prevRid, contextIds: ctxIds }) });
+      const res = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: q,
+          history: hist,
+          provider,
+          detail: detailUsed,
+          previousResponseId: prevRid,
+          contextIds: ctxIds,
+          suggestRelation: true,
+          relationA: { question: baseQ, answerOrSummary: baseA },
+          relationB: { question: q },
+        }),
+      });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
       const a = String(j?.answer || "");
       const rid = j?.responseId ? String(j.responseId) : null;
+      const aiRelType = (() => {
+        const t = j?.relationSuggestion?.type;
+        return typeof t === "string" ? t : null;
+      })();
+      const aiRelDir = (() => {
+        const d = j?.relationSuggestion?.relDir;
+        return d === "current_to_new" || d === "new_to_current" ? d : null;
+      })();
+      const suggestedRelType = aiRelType || heurRelType;
+      const suggestedRelDir = (aiRelDir as RelDir | null) || heurRelDir;
       const maxTokensUsed = (() => {
         const v = j?.maxTokensUsed;
         const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
@@ -271,7 +311,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         setFuItems((prev) => {
           const arr = [...prev];
           const insertAt = 0;
-          arr.splice(insertAt, 0, { q, a, respId: rid, baseQaId, relType, relDir, maxTokensUsed, reasoningEffortUsed });
+          arr.splice(insertAt, 0, { q, a, respId: rid, baseQaId, relType: suggestedRelType, relDir: suggestedRelDir, maxTokensUsed, reasoningEffortUsed });
           for (let k = 0; k < arr.length; k++) {
             if (k === insertAt) continue;
             const bf = arr[k]?.baseFuIndex;
@@ -285,7 +325,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         // Connected node: append under that node's item list
         setFuMap((m) => {
           const prev = m[baseQaId] || { input: "", loading: false, items: [] };
-          const items = [...prev.items, { q, a, respId: rid, relType, relDir, maxTokensUsed, reasoningEffortUsed }];
+          const items = [...prev.items, { q, a, respId: rid, relType: suggestedRelType, relDir: suggestedRelDir, maxTokensUsed, reasoningEffortUsed }];
           return { ...m, [baseQaId]: { input: "", loading: false, items } };
         });
       }
@@ -329,6 +369,18 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       // Build minimal history for Anthropic or providers without thread continuation
       let hist: Array<{ role: "user" | "assistant"; content: string }> = [];
       const baseItem = fuItems[idx];
+      const baseQForRel = (() => {
+        if (baseItem && baseItem.q) return baseItem.q;
+        if (qaId) return String(data?.question || "");
+        return String(question || "");
+      })();
+      const baseAForRel = (() => {
+        if (baseItem && baseItem.a) return baseItem.a;
+        if (qaId) return String(data?.answer || data?.summary || "");
+        return String(aiAnswer || "");
+      })();
+      const heurRelType = suggestRelTypeForFollowUp(baseQForRel, q);
+      const heurRelDir = defaultDirForType(heurRelType);
       if (baseItem && baseItem.q && baseItem.a) {
         hist = [{ role: "user", content: baseItem.q }, { role: "assistant", content: baseItem.a }];
       } else if (qaId) {
@@ -340,11 +392,35 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         const ba = String(aiAnswer || "");
         if (bq && ba) hist = [{ role: "user", content: bq }, { role: "assistant", content: ba }];
       }
-      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: hist, provider, detail: detailUsed, previousResponseId: prevRid, contextIds: ctxIds }) });
+      const res = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: q,
+          history: hist,
+          provider,
+          detail: detailUsed,
+          previousResponseId: prevRid,
+          contextIds: ctxIds,
+          suggestRelation: true,
+          relationA: { question: baseQForRel, answerOrSummary: baseAForRel },
+          relationB: { question: q },
+        }),
+      });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
       const a = String(j?.answer || "");
       const rid = j?.responseId ? String(j.responseId) : null;
+      const aiRelType = (() => {
+        const t = j?.relationSuggestion?.type;
+        return typeof t === "string" ? t : null;
+      })();
+      const aiRelDir = (() => {
+        const d = j?.relationSuggestion?.relDir;
+        return d === "current_to_new" || d === "new_to_current" ? d : null;
+      })();
+      const suggestedRelType = aiRelType || heurRelType;
+      const suggestedRelDir = (aiRelDir as RelDir | null) || heurRelDir;
       const maxTokensUsed = (() => {
         const v = j?.maxTokensUsed;
         const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
@@ -358,7 +434,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         const arr = [...prev];
         // Option B: insert immediately under the anchor card
         const insertAt = Math.min(idx + 1, arr.length);
-        arr.splice(insertAt, 0, { q, a, respId: rid, baseFuIndex: idx, relType, relDir, maxTokensUsed, reasoningEffortUsed });
+        arr.splice(insertAt, 0, { q, a, respId: rid, baseFuIndex: idx, relType: suggestedRelType, relDir: suggestedRelDir, maxTokensUsed, reasoningEffortUsed });
         // rebase indices for items shifted to the right
         for (let k = 0; k < arr.length; k++) {
           if (k === insertAt) continue; // skip the newly inserted item
@@ -401,14 +477,40 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       // Build minimal history from the current AI main pair so Anthropic can keep context
       const q0 = String(question || "").trim();
       const a0 = String(aiAnswer || "").trim();
+      const heurRelType = suggestRelTypeForFollowUp(q0, q);
+      const heurRelDir = defaultDirForType(heurRelType);
       const hist: Array<{ role: "user" | "assistant"; content: string }> = (q0 && a0)
         ? [{ role: "user", content: q0 }, { role: "assistant", content: a0 }]
         : [];
-      const res = await fetch("/api/ai/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q, history: hist, provider, detail: detailUsed, previousResponseId: prevRid, contextIds: ctxIds }) });
+      const res = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: q,
+          history: hist,
+          provider,
+          detail: detailUsed,
+          previousResponseId: prevRid,
+          contextIds: ctxIds,
+          suggestRelation: true,
+          relationA: { question: q0, answerOrSummary: a0 },
+          relationB: { question: q },
+        }),
+      });
       if (!res.ok) throw new Error("AI call failed");
       const j = await res.json();
       const a = String(j?.answer || "");
       const rid = j?.responseId ? String(j.responseId) : null;
+      const aiRelType = (() => {
+        const t = j?.relationSuggestion?.type;
+        return typeof t === "string" ? t : null;
+      })();
+      const aiRelDir = (() => {
+        const d = j?.relationSuggestion?.relDir;
+        return d === "current_to_new" || d === "new_to_current" ? d : null;
+      })();
+      const suggestedRelType = aiRelType || heurRelType;
+      const suggestedRelDir = (aiRelDir as RelDir | null) || heurRelDir;
       const maxTokensUsed = (() => {
         const v = j?.maxTokensUsed;
         const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
@@ -422,7 +524,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
         const arr = [...prev];
         // Option B for AI main: insert immediately under main (top of list)
         const insertAt = 0;
-        arr.splice(insertAt, 0, { q, a, respId: rid, baseIsAiMain: true, relType, relDir, maxTokensUsed, reasoningEffortUsed });
+        arr.splice(insertAt, 0, { q, a, respId: rid, baseIsAiMain: true, relType: suggestedRelType, relDir: suggestedRelDir, maxTokensUsed, reasoningEffortUsed });
         // reindex baseFuIndex for items shifted to the right
         for (let k = 0; k < arr.length; k++) {
           if (k === insertAt) continue;

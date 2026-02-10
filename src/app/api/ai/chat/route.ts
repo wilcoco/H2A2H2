@@ -18,7 +18,199 @@ const Body = z.object({
   detail: z.enum(["short", "normal", "long"]).optional(),
   previousResponseId: z.string().optional(),
   contextIds: z.array(z.string()).optional().default([]),
+  suggestRelation: z.boolean().optional().default(false),
+  relationA: z
+    .object({
+      question: z.string().optional().default(""),
+      answerOrSummary: z.string().optional().default(""),
+    })
+    .optional(),
+  relationB: z
+    .object({
+      question: z.string().optional().default(""),
+      answerOrSummary: z.string().optional().default(""),
+    })
+    .optional(),
 });
+
+const REL_TYPES = [
+  "narrows",
+  "elaborates",
+  "clarifies",
+  "prerequisite",
+  "precedes",
+  "supports",
+  "refutes",
+  "alternative",
+] as const;
+
+const RelSuggestSchema = z.object({
+  type: z.enum(REL_TYPES),
+  direction: z.enum(["a_to_b", "b_to_a"]),
+  confidence: z.number().min(0).max(1),
+  rationale: z.string().min(1).max(280),
+});
+
+type RelSuggestion = z.infer<typeof RelSuggestSchema>;
+
+function clip(s: string, max: number): string {
+  const t = (s || "").replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  return t.slice(0, Math.max(0, max - 1)) + "…";
+}
+
+type OpenAIResponsesCreateParams = Parameters<InstanceType<typeof OpenAI>["responses"]["create"]>[0];
+
+function openAiOutputText(res: unknown): string {
+  const v = (res as { output_text?: unknown } | null | undefined)?.output_text;
+  return typeof v === "string" ? v.trim() : "";
+}
+
+async function suggestRelationWithAi(opts: {
+  provider: "openai" | "anthropic";
+  openaiKey?: string;
+  anthropicKey?: string;
+  model: string;
+  anthropicModel: string;
+  aQ: string;
+  aA: string;
+  bQ: string;
+  bA: string;
+}): Promise<{ suggestion: RelSuggestion; providerUsed: "openai" | "anthropic"; modelUsed: string } | null> {
+  const aQ = clip(opts.aQ, 240);
+  const bQ = clip(opts.bQ, 240);
+  const aA = clip(opts.aA, 520);
+  const bA = clip(opts.bA, 520);
+
+  const system = `You classify the relationship between two Q&A entries A and B.
+Pick exactly one relation type from: ${REL_TYPES.join(", ")}.
+Return direction as:
+- a_to_b if the relation should be stored as A -> B
+- b_to_a if the relation should be stored as B -> A
+Direction semantics (stored edge source -> target):
+- precedes: source happens before / should be learned before target
+- prerequisite: source is a prerequisite for target
+- supports: source supports target (evidence -> claim)
+- refutes: source refutes/contradicts target
+- clarifies: source clarifies target (definition/summary/disambiguation -> clarified)
+- elaborates: target is a more detailed elaboration of source
+- narrows: target is a narrower/specific subset of source
+- alternative: target is an alternative/compare item to source (use low confidence if unsure)
+If unsure, choose alternative or precedes with confidence <= 0.55.
+Return ONLY valid JSON with keys: type, direction, confidence, rationale. rationale must be in Korean.`;
+
+  const userText = `A.question=${aQ}
+A.answer_or_summary=${aA || "(none)"}
+
+B.question=${bQ}
+B.answer_or_summary=${bA || "(none)"}`;
+
+  const runOpenAI = async (): Promise<{ suggestion: RelSuggestion; modelUsed: string } | null> => {
+    if (!opts.openaiKey) return null;
+    const client = new OpenAI({ apiKey: opts.openaiKey });
+    const body: Record<string, unknown> = {
+      model: opts.model,
+      input: `${system}\n\n${userText}`,
+      temperature: 0.1,
+      max_output_tokens: 400,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "RelationSuggestion",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              type: { type: "string", enum: REL_TYPES as unknown as string[] },
+              direction: { type: "string", enum: ["a_to_b", "b_to_a"] },
+              confidence: { type: "number" },
+              rationale: { type: "string" },
+            },
+            required: ["type", "direction", "confidence", "rationale"],
+            additionalProperties: false,
+          },
+        },
+      },
+    };
+    try {
+      const rr = await client.responses.create(body as unknown as OpenAIResponsesCreateParams);
+      const text = openAiOutputText(rr);
+      if (!text) return null;
+      const parsed = JSON.parse(text);
+      const suggestion = RelSuggestSchema.parse(parsed);
+      return { suggestion, modelUsed: opts.model };
+    } catch {
+      if (opts.model !== "gpt-4o") {
+        try {
+          const rr = await client.responses.create({ ...body, model: "gpt-4o" } as unknown as OpenAIResponsesCreateParams);
+          const text = openAiOutputText(rr);
+          if (!text) return null;
+          const parsed = JSON.parse(text);
+          const suggestion = RelSuggestSchema.parse(parsed);
+          return { suggestion, modelUsed: "gpt-4o" };
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    }
+  };
+
+  const runAnthropic = async (): Promise<{ suggestion: RelSuggestion; modelUsed: string } | null> => {
+    if (!opts.anthropicKey) return null;
+    try {
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": opts.anthropicKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: opts.anthropicModel,
+          system: "Return ONLY valid JSON.",
+          max_tokens: 700,
+          temperature: 0.1,
+          messages: [{ role: "user", content: [{ type: "text", text: `${system}\n\n${userText}` }] }],
+        }),
+      });
+      const j: unknown = await resp.json().catch(() => ({}));
+      const content = (j && typeof j === "object" && "content" in j) ? (j as { content?: unknown }).content : undefined;
+      const parts: unknown[] = Array.isArray(content) ? content : [];
+      const text = parts
+        .map((p) => {
+          if (!p || typeof p !== "object") return "";
+          const ty = (p as { type?: unknown }).type;
+          if (ty !== "text") return "";
+          const tx = (p as { text?: unknown }).text;
+          return typeof tx === "string" ? tx : "";
+        })
+        .filter((s) => !!s)
+        .join("\n")
+        .trim();
+      if (!text) return null;
+      const parsed = JSON.parse(text);
+      const suggestion = RelSuggestSchema.parse(parsed);
+      return { suggestion, modelUsed: opts.anthropicModel };
+    } catch {
+      return null;
+    }
+  };
+
+  if (opts.provider === "anthropic") {
+    const a = await runAnthropic();
+    if (a) return { ...a, providerUsed: "anthropic" };
+    const o = await runOpenAI();
+    if (o) return { ...o, providerUsed: "openai" };
+    return null;
+  }
+
+  const o = await runOpenAI();
+  if (o) return { ...o, providerUsed: "openai" };
+  const a = await runAnthropic();
+  if (a) return { ...a, providerUsed: "anthropic" };
+  return null;
+}
 
 function kwHeuristic(text: string, max = 8): string[] {
   const stop = new Set([
@@ -190,6 +382,16 @@ export async function POST(req: Request) {
       let modelUsed: string = "";
       let fallbackUsed = false;
       let responseId: string | undefined;
+      let relationSuggestion:
+        | {
+            type: (typeof REL_TYPES)[number];
+            relDir: "current_to_new" | "new_to_current";
+            confidence: number;
+            rationale: string;
+            providerUsed: "openai" | "anthropic";
+            modelUsed: string;
+          }
+        | undefined;
       if (provider === "anthropic") {
         const antKey = process.env.ANTHROPIC_API_KEY;
         if (antKey) {
@@ -289,7 +491,34 @@ export async function POST(req: Request) {
             }
           } catch {}
         }
-        return NextResponse.json({ answer, providerUsed, modelUsed, fallbackUsed, detailUsed: detail, responseId, maxTokensUsed: maxTokens, reasoningEffortUsed: isReasoningModel ? reasoningEffort : undefined });
+        if (input.suggestRelation) {
+          const aQ = String(input.relationA?.question || (input.history?.[0]?.role === "user" ? input.history?.[0]?.content : "") || "");
+          const aA = String(input.relationA?.answerOrSummary || "");
+          const bQ = String(input.relationB?.question || input.prompt || "");
+          const bA = String(input.relationB?.answerOrSummary || "");
+          const rel = await suggestRelationWithAi({
+            provider,
+            openaiKey: process.env.OPENAI_API_KEY,
+            anthropicKey: process.env.ANTHROPIC_API_KEY,
+            model,
+            anthropicModel,
+            aQ,
+            aA,
+            bQ,
+            bA,
+          });
+          if (rel?.suggestion) {
+            relationSuggestion = {
+              type: rel.suggestion.type,
+              relDir: rel.suggestion.direction === "a_to_b" ? "current_to_new" : "new_to_current",
+              confidence: rel.suggestion.confidence,
+              rationale: rel.suggestion.rationale,
+              providerUsed: rel.providerUsed,
+              modelUsed: rel.modelUsed,
+            };
+          }
+        }
+        return NextResponse.json({ answer, providerUsed, modelUsed, fallbackUsed, detailUsed: detail, responseId, maxTokensUsed: maxTokens, reasoningEffortUsed: isReasoningModel ? reasoningEffort : undefined, relationSuggestion });
       } else {
         if (client) {
           const base: any = { model, input: combined, temperature: 0.2, max_output_tokens: maxTokens };
@@ -361,7 +590,34 @@ export async function POST(req: Request) {
             if (improved) answer = improved;
           } catch {}
         }
-        return NextResponse.json({ answer, providerUsed, modelUsed, fallbackUsed, detailUsed: detail, responseId, maxTokensUsed: maxTokens, reasoningEffortUsed: isReasoningModel ? reasoningEffort : undefined });
+        if (input.suggestRelation) {
+          const aQ = String(input.relationA?.question || (input.history?.[0]?.role === "user" ? input.history?.[0]?.content : "") || "");
+          const aA = String(input.relationA?.answerOrSummary || "");
+          const bQ = String(input.relationB?.question || input.prompt || "");
+          const bA = String(input.relationB?.answerOrSummary || "");
+          const rel = await suggestRelationWithAi({
+            provider,
+            openaiKey: process.env.OPENAI_API_KEY,
+            anthropicKey: process.env.ANTHROPIC_API_KEY,
+            model,
+            anthropicModel,
+            aQ,
+            aA,
+            bQ,
+            bA,
+          });
+          if (rel?.suggestion) {
+            relationSuggestion = {
+              type: rel.suggestion.type,
+              relDir: rel.suggestion.direction === "a_to_b" ? "current_to_new" : "new_to_current",
+              confidence: rel.suggestion.confidence,
+              rationale: rel.suggestion.rationale,
+              providerUsed: rel.providerUsed,
+              modelUsed: rel.modelUsed,
+            };
+          }
+        }
+        return NextResponse.json({ answer, providerUsed, modelUsed, fallbackUsed, detailUsed: detail, responseId, maxTokensUsed: maxTokens, reasoningEffortUsed: isReasoningModel ? reasoningEffort : undefined, relationSuggestion });
       }
     } catch {
       return fallback();

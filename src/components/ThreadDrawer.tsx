@@ -85,6 +85,13 @@ export default function ThreadDrawer({ qaId, open, onClose, provider: providerPr
   }, [open, qaId]);
 
   useEffect(() => {
+    setFromId(null);
+    setToId(null);
+    setRelSuggest(null);
+    setRelSuggestError(null);
+  }, [open, qaId]);
+
+  useEffect(() => {
     if (providerProp || detailProp) return;
     try {
       const saved = localStorage.getItem("ai_provider");
@@ -181,23 +188,39 @@ export default function ThreadDrawer({ qaId, open, onClose, provider: providerPr
     const s = fromId?.trim();
     const t = toId?.trim();
     const ty = relType.trim();
-    if (!s || !t || !ty || s === t) return;
+    if (!s || !t || !ty) return;
+    if (s === t) {
+      setRelSuggestError("From/To가 동일합니다.");
+      return;
+    }
     try {
       setConnecting(true);
+      setRelSuggestError(null);
       const r = await fetch("/api/qa/relation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceId: s, targetId: t, type: ty, weight: 1 }) });
-      if (!r.ok) throw new Error("Connect failed");
+      if (!r.ok) {
+        const j: unknown = await r.json().catch(() => ({}));
+        const err = (j && typeof j === "object" && "error" in j) ? (j as { error?: unknown }).error : undefined;
+        throw new Error(typeof err === "string" ? err : "Connect failed");
+      }
       setFromId(null); setToId(null);
       setRelSuggest(null);
       setRelSuggestError(null);
       await loadMap();
-    } catch {}
+    } catch (e: unknown) {
+      setRelSuggestError(e instanceof Error ? e.message : "Connect failed");
+    }
     finally { setConnecting(false); }
   }
 
   async function suggestRelation() {
     const aId = fromId?.trim();
     const bId = toId?.trim();
-    if (!aId || !bId || aId === bId) return;
+    if (!aId || !bId) return;
+    if (aId === bId) {
+      setRelSuggest(null);
+      setRelSuggestError("From/To가 동일합니다.");
+      return;
+    }
     try {
       setRelSuggestBusy(true);
       setRelSuggestError(null);
@@ -206,16 +229,28 @@ export default function ThreadDrawer({ qaId, open, onClose, provider: providerPr
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ aId, bId, provider }),
       });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(String(j?.error || "Suggest failed"));
-      const sourceId = String(j?.sourceId || "");
-      const targetId = String(j?.targetId || "");
-      const type = String(j?.type || "");
-      const confidenceRaw = typeof j?.confidence === "number" ? j.confidence : typeof j?.confidence === "string" ? Number(j.confidence) : NaN;
+      const raw = await r.text().catch(() => "");
+      const j: unknown = (() => {
+        try {
+          return raw ? JSON.parse(raw) : {};
+        } catch {
+          return {};
+        }
+      })();
+      const jo: Record<string, unknown> = (j && typeof j === "object") ? (j as Record<string, unknown>) : {};
+      if (!r.ok) {
+        const err = "error" in jo ? jo.error : undefined;
+        const msg = typeof err === "string" ? err : raw.trim() ? raw.trim().slice(0, 220) : `Suggest failed (${r.status})`;
+        throw new Error(msg);
+      }
+      const sourceId = String(jo.sourceId || "");
+      const targetId = String(jo.targetId || "");
+      const type = String(jo.type || "");
+      const confidenceRaw = typeof jo.confidence === "number" ? jo.confidence : typeof jo.confidence === "string" ? Number(jo.confidence) : NaN;
       const confidence = Number.isFinite(confidenceRaw) ? Math.max(0, Math.min(1, confidenceRaw)) : 0;
-      const rationale = String(j?.rationale || "");
-      const providerUsed = (j?.providerUsed === "openai" || j?.providerUsed === "anthropic" || j?.providerUsed === "fallback") ? (j.providerUsed as "openai" | "anthropic" | "fallback") : undefined;
-      const modelUsed = typeof j?.modelUsed === "string" ? j.modelUsed : undefined;
+      const rationale = String(jo.rationale || "");
+      const providerUsed = (jo.providerUsed === "openai" || jo.providerUsed === "anthropic" || jo.providerUsed === "fallback") ? (jo.providerUsed as "openai" | "anthropic" | "fallback") : undefined;
+      const modelUsed = typeof jo.modelUsed === "string" ? jo.modelUsed : undefined;
       if (!sourceId || !targetId || !type) throw new Error("Invalid suggestion");
       setRelSuggest({ sourceId, targetId, type, confidence, rationale, providerUsed, modelUsed });
     } catch (e: unknown) {
@@ -306,8 +341,8 @@ export default function ThreadDrawer({ qaId, open, onClose, provider: providerPr
                     <option value="refutes">refutes</option>
                     <option value="alternative">alternative</option>
                   </select>
-                  <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!fromId || !toId || relSuggestBusy} onClick={() => void suggestRelation()}>{relSuggestBusy ? "추천 중…" : "AI 추천"}</button>
-                  <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!fromId || !toId || connecting} onClick={() => void connect()}>{connecting ? "Connecting..." : "Connect"}</button>
+                  <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!fromId || !toId || fromId === toId || relSuggestBusy} onClick={() => void suggestRelation()}>{relSuggestBusy ? "추천 중…" : "AI 추천"}</button>
+                  <button className="text-xs px-2 py-1 rounded border disabled:opacity-50" disabled={!fromId || !toId || fromId === toId || connecting} onClick={() => void connect()}>{connecting ? "Connecting..." : "Connect"}</button>
                   {(fromId || toId) && (
                     <button className="text-xs px-2 py-1 rounded border" onClick={() => { setFromId(null); setToId(null); setRelSuggest(null); setRelSuggestError(null); }}>Reset</button>
                   )}
