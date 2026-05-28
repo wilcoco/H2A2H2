@@ -1,7 +1,7 @@
 {
-  "sha": "9a441d63eeed34d9e30f8cf78276a755de0f0729",
-  "title": "fix: allow relations without login",
-  "message": "",
-  "branch": "main",
-  "builtAt": "2026-01-30T01:05:30.675Z"
+  "sha": "40ee744f55e9513614d2b78abff0b8893ae41526",
+  "title": "feat(graph): local graph view with hop slider",
+  "message": "Add bfsNeighborhood (lib/graphLocal.ts) for ±N hop filtering from a\nfocus node and LocalGraphControls UI with 전체/로컬 toggle + hop\nrange (1-5). RightWriter applies the BFS between its fetched\ngNodes/gEdges and the QAGraph, using gSelectedId (with fallback to\nfocusQaId) as the focus. Controls render both in the inline panel\nand the fullscreen modal; node counter shows shown/total.\n\nClient-side BFS chosen over server filter — payload is already\nfetched and slider response stays instant.\n\nhttps://claude.ai/code/session_01Q2GSrKF175UK76Mez6SvkG",
+  "branch": "claude/amazing-pascal-g7KA8",
+  "builtAt": "2026-05-28T01:30:49.712Z"
 }

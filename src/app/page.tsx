@@ -9,6 +9,7 @@ import type { GraphNode, GraphEdge, Work, LlmPatch, NodeType, EdgeType } from "@
 import AuthModal from "@/components/AuthModal";
 import PublishModal from "@/components/PublishModal";
 import ThemeToggle from "@/components/ThemeToggle";
+import CommandPalette from "@/components/CommandPalette";
 
 const initialWorks: Work[] = [
   {
@@ -212,6 +213,12 @@ export default function Home() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // Cmd/Ctrl+K — global command palette (works even while typing)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+        return;
+      }
       // Ignore when typing in fields or contenteditable
       const tgt = e.target as HTMLElement | null;
       const tag = tgt?.tagName?.toLowerCase();
@@ -470,6 +477,16 @@ export default function Home() {
           </div>
         </div>
       <ThreadDrawer qaId={selectedQaId || undefined} open={threadOpen} onClose={() => setThreadOpen(false)} provider={provider} detail={detail} />
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onSelectQA={(id) => {
+          setLastViewedQaId(id);
+          setSelectedQaId(id);
+          setCenterAiAnswer("");
+        }}
+        onAskAI={(q) => void askAiNow(q)}
+      />
       <AuthModal
         open={authOpen}
         onClose={() => setAuthOpen(false)}
