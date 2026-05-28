@@ -45,28 +45,28 @@ export default function AuthModal({ open, onClose, onSignedIn }: Props) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-[92%] max-w-sm rounded bg-white p-4 shadow-lg">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="w-[92%] max-w-sm rounded-[var(--radius-lg)] bg-[color:var(--bg-elevated)] text-[color:var(--text-normal)] p-4 shadow-2xl border border-[color:var(--border)]">
         <h3 className="text-base font-semibold">Sign in</h3>
         <div className="mt-3 space-y-2">
           <input
-            className="w-full rounded border border-gray-300 p-2 text-sm"
+            className="w-full rounded-[var(--radius-md)] border border-[color:var(--border)] bg-[color:var(--bg-primary)] p-2 text-sm focus:outline-none focus:border-[color:var(--accent)]"
             placeholder="Email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
           <input
-            className="w-full rounded border border-gray-300 p-2 text-sm"
+            className="w-full rounded-[var(--radius-md)] border border-[color:var(--border)] bg-[color:var(--bg-primary)] p-2 text-sm focus:outline-none focus:border-[color:var(--accent)]"
             placeholder="Name (optional)"
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
         </div>
-        {error && <div className="mt-2 text-xs text-red-600">{error}</div>}
+        {error && <div className="mt-2 text-xs text-[color:var(--danger)]">{error}</div>}
         <div className="mt-4 flex items-center justify-end gap-2">
-          <button onClick={onClose} className="text-sm px-3 py-1.5 rounded border">Cancel</button>
-          <button onClick={submit} disabled={loading} className="text-sm px-3 py-1.5 rounded bg-blue-600 text-white disabled:opacity-50">
+          <button onClick={onClose} className="text-sm px-3 py-1.5 rounded-[var(--radius-md)] border border-[color:var(--border)] hover:bg-[color:var(--bg-hover)]">Cancel</button>
+          <button onClick={submit} disabled={loading} className="text-sm px-3 py-1.5 rounded-[var(--radius-md)] bg-[color:var(--accent)] text-[color:var(--accent-fg)] hover:bg-[color:var(--accent-hover)] disabled:opacity-50">
             {loading ? "Signing in..." : "Sign in"}
           </button>
         </div>

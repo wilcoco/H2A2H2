@@ -17,24 +17,24 @@ export default function PublishModal({ open, onClose, onPublish }: Props) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-[92%] max-w-sm rounded bg-white p-4 shadow-lg">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="w-[92%] max-w-sm rounded-[var(--radius-lg)] bg-[color:var(--bg-elevated)] text-[color:var(--text-normal)] p-4 shadow-2xl border border-[color:var(--border)]">
         <h3 className="text-base font-semibold">Publish work</h3>
         <div className="mt-3 space-y-2">
           <input
-            className="w-full rounded border border-gray-300 p-2 text-sm"
+            className="w-full rounded-[var(--radius-md)] border border-[color:var(--border)] bg-[color:var(--bg-primary)] p-2 text-sm focus:outline-none focus:border-[color:var(--accent)]"
             placeholder="Title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
           <input
-            className="w-full rounded border border-gray-300 p-2 text-sm"
+            className="w-full rounded-[var(--radius-md)] border border-[color:var(--border)] bg-[color:var(--bg-primary)] p-2 text-sm focus:outline-none focus:border-[color:var(--accent)]"
             placeholder="Topic (e.g., keyword)"
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
           />
           <textarea
-            className="w-full rounded border border-gray-300 p-2 text-sm"
+            className="w-full rounded-[var(--radius-md)] border border-[color:var(--border)] bg-[color:var(--bg-primary)] p-2 text-sm focus:outline-none focus:border-[color:var(--accent)]"
             placeholder="Description (optional)"
             rows={4}
             value={description}
@@ -46,10 +46,10 @@ export default function PublishModal({ open, onClose, onPublish }: Props) {
           </label>
         </div>
         <div className="mt-4 flex items-center justify-end gap-2">
-          <button onClick={onClose} className="text-sm px-3 py-1.5 rounded border">Cancel</button>
+          <button onClick={onClose} className="text-sm px-3 py-1.5 rounded-[var(--radius-md)] border border-[color:var(--border)] hover:bg-[color:var(--bg-hover)]">Cancel</button>
           <button
             onClick={() => onPublish(title, description, topic, isPublic)}
-            className="text-sm px-3 py-1.5 rounded bg-blue-600 text-white"
+            className="text-sm px-3 py-1.5 rounded-[var(--radius-md)] bg-[color:var(--accent)] text-[color:var(--accent-fg)] hover:bg-[color:var(--accent-hover)]"
           >Publish</button>
         </div>
       </div>

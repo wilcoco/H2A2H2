@@ -8,6 +8,7 @@ import RightWriter from "@/components/RightWriter";
 import type { GraphNode, GraphEdge, Work, LlmPatch, NodeType, EdgeType } from "@/types/graph";
 import AuthModal from "@/components/AuthModal";
 import PublishModal from "@/components/PublishModal";
+import ThemeToggle from "@/components/ThemeToggle";
 
 const initialWorks: Work[] = [
   {
@@ -41,6 +42,7 @@ export default function Home() {
   const [user, setUser] = useState<{ email: string; name?: string } | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [selectedQaId, setSelectedQaId] = useState<string | null>(null);
   const [centerQuestion, setCenterQuestion] = useState<string>("");
   const [centerAiAnswer, setCenterAiAnswer] = useState<string>("");
@@ -293,16 +295,25 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-dvh grid grid-rows-[auto_1fr]">
-      <header className="border-b border-gray-200/60 p-3 md:p-4 flex items-center justify-between">
+    <div className="min-h-dvh grid grid-rows-[auto_1fr] bg-[color:var(--bg-primary)] text-[color:var(--text-normal)]">
+      <header className="border-b border-[color:var(--border)] p-3 md:p-4 flex items-center justify-between">
         <h1 className="text-base font-semibold">업무 지식 편집기</h1>
         <div className="flex items-center gap-3">
-          <div className="text-xs text-gray-500 hidden sm:block">MVP · 3-panels</div>
-          <a href="/me" className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100">내 페이지</a>
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            className="hidden sm:inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-[var(--radius-md)] border border-[color:var(--border)] text-[color:var(--text-muted)] hover:bg-[color:var(--bg-hover)]"
+            aria-label="명령 팔레트 열기"
+            title="Cmd/Ctrl+K"
+          >
+            <span>검색</span>
+            <kbd className="font-mono text-[10px] px-1 py-0.5 rounded bg-[color:var(--bg-secondary)] border border-[color:var(--border)] text-[color:var(--text-faint)]">⌘K</kbd>
+          </button>
+          <a href="/me" className="text-xs px-2 py-1 rounded-[var(--radius-md)] border border-[color:var(--border)] hover:bg-[color:var(--bg-hover)]">내 페이지</a>
           <div className="flex items-center gap-1 text-xs">
-            <span className="text-gray-600">Provider</span>
+            <span className="text-[color:var(--text-muted)]">Provider</span>
             <select
-              className="border rounded px-2 py-1 text-xs"
+              className="border border-[color:var(--border)] bg-[color:var(--bg-elevated)] rounded-[var(--radius-md)] px-2 py-1 text-xs"
               value={provider}
               onChange={(e) => setProvider(e.target.value === "anthropic" ? "anthropic" : "openai")}
             >
@@ -311,9 +322,9 @@ export default function Home() {
             </select>
           </div>
           <div className="flex items-center gap-1 text-xs">
-            <span className="text-gray-600">답변 레벨</span>
+            <span className="text-[color:var(--text-muted)]">답변 레벨</span>
             <select
-              className="border rounded px-2 py-1 text-xs"
+              className="border border-[color:var(--border)] bg-[color:var(--bg-elevated)] rounded-[var(--radius-md)] px-2 py-1 text-xs"
               value={detail}
               onChange={(e) => {
                 const v = e.target.value;
@@ -325,11 +336,12 @@ export default function Home() {
               <option value="long">심화</option>
             </select>
           </div>
+          <ThemeToggle />
           {user ? (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-700">{user.name || user.email}</span>
+              <span className="text-xs text-[color:var(--text-muted)]">{user.name || user.email}</span>
               <button
-                className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
+                className="text-xs px-2 py-1 rounded-[var(--radius-md)] border border-[color:var(--border)] hover:bg-[color:var(--bg-hover)]"
                 onClick={async () => {
                   await fetch("/api/auth/logout", { method: "POST" });
                   setUser(null);
@@ -338,7 +350,7 @@ export default function Home() {
             </div>
           ) : (
             <button
-              className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
+              className="text-xs px-2 py-1 rounded-[var(--radius-md)] border border-[color:var(--border)] hover:bg-[color:var(--bg-hover)]"
               onClick={() => setAuthOpen(true)}
             >Sign in</button>
           )}
@@ -347,11 +359,11 @@ export default function Home() {
       <div className="p-3 md:p-4 overflow-hidden flex flex-col gap-3 md:gap-4">
         <div className="overflow-hidden flex flex-col lg:flex-row gap-3 md:gap-4">
           <aside
-            className="rounded border border-gray-200/60 p-0 overflow-hidden flex flex-col"
+            className="rounded-[var(--radius-md)] border border-[color:var(--border)] bg-[color:var(--bg-secondary)] p-0 overflow-hidden flex flex-col"
             style={{ width: leftWidth }}
           >
-            <div className="flex items-center border-b border-gray-200/60">
-              <div className="text-xs px-3 py-2 border-b-2 border-blue-600 text-blue-700">질문/검색</div>
+            <div className="flex items-center border-b border-[color:var(--border)]">
+              <div className="text-xs px-3 py-2 border-b border-[color:var(--accent)] text-[color:var(--text-normal)] font-medium">질문/검색</div>
             </div>
             <div className="p-2 md:p-3 overflow-auto flex-1">
               <LeftAsk
@@ -375,13 +387,13 @@ export default function Home() {
             </div>
           </aside>
           <div
-            className="hidden lg:block w-1 cursor-col-resize bg-transparent hover:bg-blue-200/50"
+            className="hidden lg:block w-1 cursor-col-resize bg-transparent hover:bg-[color:var(--accent)] hover:opacity-30"
             onMouseDown={(e) => { dragRef.current = { side: "left", startX: e.clientX, startW: leftWidth }; }}
           />
 
-          <main className="rounded border border-gray-200/60 p-0 overflow-hidden flex-1 min-w-0 flex flex-col">
-            <div className="flex items-center border-b border-gray-200/60">
-              <div className="text-xs px-3 py-2 border-b-2 border-blue-600 text-blue-700">Q&A 보기</div>
+          <main className="rounded-[var(--radius-md)] border border-[color:var(--border)] bg-[color:var(--bg-elevated)] p-0 overflow-hidden flex-1 min-w-0 flex flex-col">
+            <div className="flex items-center border-b border-[color:var(--border)]">
+              <div className="text-xs px-3 py-2 border-b border-[color:var(--accent)] text-[color:var(--text-normal)] font-medium">Q&A 보기</div>
             </div>
             <div className="p-2 md:p-3 overflow-auto flex-1">
               <CenterQAViewer
@@ -431,13 +443,13 @@ export default function Home() {
             </div>
           </main>
           <div
-            className="hidden lg:block w-1 cursor-col-resize bg-transparent hover:bg-blue-200/50"
+            className="hidden lg:block w-1 cursor-col-resize bg-transparent hover:bg-[color:var(--accent)] hover:opacity-30"
             onMouseDown={(e) => { dragRef.current = { side: "right", startX: e.clientX, startW: rightWidth }; }}
           />
 
-          <aside className="rounded border border-gray-200/60 p-0 overflow-hidden flex flex-col" style={{ width: rightWidth }}>
-            <div className="flex items-center border-b border-gray-200/60">
-              <div className="text-xs px-3 py-2 border-b-2 border-blue-600 text-blue-700">문서 작성</div>
+          <aside className="rounded-[var(--radius-md)] border border-[color:var(--border)] bg-[color:var(--bg-secondary)] p-0 overflow-hidden flex flex-col" style={{ width: rightWidth }}>
+            <div className="flex items-center border-b border-[color:var(--border)]">
+              <div className="text-xs px-3 py-2 border-b border-[color:var(--accent)] text-[color:var(--text-normal)] font-medium">문서 작성</div>
             </div>
             <div className="p-2 md:p-3 overflow-auto flex-1">
               <RightWriter
