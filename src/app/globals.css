@@ -1,26 +1,74 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Light - 모노톤 (Obsidian inspired) */
+  --bg-primary:   #fafaf9;
+  --bg-secondary: #f3f3f1;
+  --bg-elevated:  #ffffff;
+  --bg-hover:     rgba(0, 0, 0, 0.04);
+  --bg-active:    rgba(0, 0, 0, 0.08);
+  --text-normal:  #1f1f1f;
+  --text-muted:   #6b6b6b;
+  --text-faint:   #9a9a9a;
+  --border:       rgba(0, 0, 0, 0.10);
+  --border-strong:rgba(0, 0, 0, 0.18);
+  --accent:       #7c6cff;
+  --accent-hover: #6a5af2;
+  --accent-fg:    #ffffff;
+  --danger:       #c0392b;
+  --danger-soft:  rgba(192, 57, 43, 0.10);
+  --success:      #2d8a5a;
+
+  /* spacing scale */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-6: 24px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+}
+
+:root.dark {
+  --bg-primary:   #1e1e1e;
+  --bg-secondary: #262626;
+  --bg-elevated:  #2a2a2a;
+  --bg-hover:     rgba(255, 255, 255, 0.05);
+  --bg-active:    rgba(255, 255, 255, 0.08);
+  --text-normal:  #dcddde;
+  --text-muted:   #999999;
+  --text-faint:   #6e6e6e;
+  --border:       rgba(255, 255, 255, 0.10);
+  --border-strong:rgba(255, 255, 255, 0.18);
+  --accent:       #8b7cff;
+  --accent-hover: #9d90ff;
+  --accent-fg:    #1a1a1a;
+  --danger:       #e57368;
+  --danger-soft:  rgba(229, 115, 104, 0.15);
+  --success:      #5cc28a;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-background: var(--bg-primary);
+  --color-foreground: var(--text-normal);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, -apple-system, "Inter", "Pretendard", system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-normal);
+  font-family: var(--font-sans);
 }
+
+/* Subtle scrollbars (Obsidian feel) */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-faint); background-clip: padding-box; border: 2px solid transparent; }
