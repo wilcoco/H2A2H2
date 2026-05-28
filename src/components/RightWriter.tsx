@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as dagre from "dagre";
 import { edgeStyleFor, EDGE_STROKE, EDGE_STROKE_EMPHASIS } from "@/lib/edgeStyle";
+import { bfsNeighborhood } from "@/lib/graphLocal";
+import LocalGraphControls from "@/components/graph/LocalGraphControls";
 
 type Props = {
   qaId?: string;
@@ -286,6 +288,17 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
   const [gNodes, setGNodes] = useState<MapNode[]>([]);
   const [gEdges, setGEdges] = useState<MapEdge[]>([]);
   const [gSelectedId, setGSelectedId] = useState<string | null>(null);
+  const [localMode, setLocalMode] = useState<boolean>(false);
+  const [hops, setHops] = useState<number>(2);
+
+  const focusForLocal = gSelectedId || focusQaId || null;
+  const localView = useMemo(() => {
+    if (!localMode || !focusForLocal) {
+      return { nodes: gNodes, edges: gEdges };
+    }
+    const res = bfsNeighborhood(gNodes, gEdges, focusForLocal, hops);
+    return { nodes: res.nodes, edges: res.edges };
+  }, [localMode, focusForLocal, hops, gNodes, gEdges]);
   function uid(p = 'blk_') { return p + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4); }
 
   // Helper to insert red text at current caret, preserving selection
@@ -634,21 +647,34 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
           <button className={`text-[11px] px-2 py-1 rounded border ${view === 'doc' ? 'bg-gray-100' : ''}`} onClick={() => setView('doc')}>Doc</button>
         </div>
         <div className="flex items-center gap-2">
-          <div className="text-[11px] text-gray-600">{focusQaId ? `Focus: ${focusQaId}` : "대상을 선택하세요."}</div>
+          <div className="text-[11px] text-[color:var(--text-muted)]">{focusQaId ? `Focus: ${focusQaId}` : "대상을 선택하세요."}</div>
           {view === 'graph' && (
-            <button className="text-[11px] px-2 py-1 rounded border disabled:opacity-50" disabled={gLoading || !!gError || gNodes.length === 0} onClick={() => setGraphFullscreen(true)}>전체화면</button>
+            <button className="text-[11px] px-2 py-1 rounded-[var(--radius-md)] border border-[color:var(--border)] hover:bg-[color:var(--bg-hover)] disabled:opacity-50" disabled={gLoading || !!gError || gNodes.length === 0} onClick={() => setGraphFullscreen(true)}>전체화면</button>
           )}
         </div>
       </div>
 
       {view === "graph" ? (
         <div className="flex flex-col gap-2">
-          {gLoading && <div className="text-xs text-gray-500">불러오는 중...</div>}
-          {gError && <div className="text-xs text-red-600">{gError}</div>}
+          {!gLoading && !gError && gNodes.length > 0 && (
+            <div className="flex items-center justify-end">
+              <LocalGraphControls
+                localMode={localMode}
+                hops={hops}
+                onToggleLocal={setLocalMode}
+                onHopsChange={setHops}
+                hasFocus={!!focusForLocal}
+                totalNodes={gNodes.length}
+                shownNodes={localView.nodes.length}
+              />
+            </div>
+          )}
+          {gLoading && <div className="text-xs text-[color:var(--text-muted)]">불러오는 중...</div>}
+          {gError && <div className="text-xs text-[color:var(--danger)]">{gError}</div>}
           {!gLoading && !gError && gNodes.length > 0 && (
             <QAGraph
-              nodes={gNodes}
-              edges={gEdges}
+              nodes={localView.nodes}
+              edges={localView.edges}
               selectedId={gSelectedId}
               onSelect={(id) => setGSelectedId(id)}
               onOpen={(id) => { onSetQaId?.(id); setView('doc'); }}
@@ -739,18 +765,31 @@ export default function RightWriter({ qaId, centerQaId, centerChainIds, currentU
       )}
 
       {graphFullscreen && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-3" onClick={(e) => { if (e.target === e.currentTarget) setGraphFullscreen(false); }}>
-          <div className="bg-white dark:bg-gray-900 rounded shadow-lg p-3 w-[1100px] max-w-[98vw] max-h-[92vh] overflow-auto">
-            <div className="flex items-center justify-between mb-2">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-3" onClick={(e) => { if (e.target === e.currentTarget) setGraphFullscreen(false); }}>
+          <div className="bg-[color:var(--bg-elevated)] border border-[color:var(--border)] rounded-[var(--radius-lg)] shadow-2xl p-3 w-[1100px] max-w-[98vw] max-h-[92vh] overflow-auto">
+            <div className="flex items-center justify-between mb-2 gap-2">
               <div className="text-xs font-semibold">Graph</div>
-              <button className="text-xs px-2 py-1 rounded border" onClick={() => setGraphFullscreen(false)}>닫기</button>
+              <div className="flex items-center gap-2">
+                {!gLoading && !gError && gNodes.length > 0 && (
+                  <LocalGraphControls
+                    localMode={localMode}
+                    hops={hops}
+                    onToggleLocal={setLocalMode}
+                    onHopsChange={setHops}
+                    hasFocus={!!focusForLocal}
+                    totalNodes={gNodes.length}
+                    shownNodes={localView.nodes.length}
+                  />
+                )}
+                <button className="text-xs px-2 py-1 rounded-[var(--radius-md)] border border-[color:var(--border)] hover:bg-[color:var(--bg-hover)]" onClick={() => setGraphFullscreen(false)}>닫기</button>
+              </div>
             </div>
-            {gLoading && <div className="text-xs text-gray-500">불러오는 중...</div>}
-            {gError && <div className="text-xs text-red-600">{gError}</div>}
+            {gLoading && <div className="text-xs text-[color:var(--text-muted)]">불러오는 중...</div>}
+            {gError && <div className="text-xs text-[color:var(--danger)]">{gError}</div>}
             {!gLoading && !gError && gNodes.length > 0 && (
               <QAGraph
-                nodes={gNodes}
-                edges={gEdges}
+                nodes={localView.nodes}
+                edges={localView.edges}
                 selectedId={gSelectedId}
                 onSelect={(id) => setGSelectedId(id)}
                 onOpen={(id) => { onSetQaId?.(id); setView('doc'); setGraphFullscreen(false); }}
