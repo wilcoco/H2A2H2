@@ -1,8 +1,10 @@
 "use client";
 
 import React, { useMemo, useRef, useState, useEffect } from "react";
-import type { GraphNode, GraphEdge, NodeType, EdgeType } from "@/types/graph";
+import type { GraphNode, GraphEdge, NodeType } from "@/types/graph";
 import * as dagre from "dagre";
+import NodeIcon from "@/components/icons/NodeIcon";
+import { edgeStyleFor, EDGE_STROKE, EDGE_STROKE_EMPHASIS } from "@/lib/edgeStyle";
 
 type Props = {
   nodes: GraphNode[];
@@ -67,15 +69,9 @@ function GraphCanvas({
     if (p) pos.set(n.id, { x: p.x, y: p.y, n });
   }
 
-  const colorFor = (t: EdgeType) => {
-    if (t === "supports") return "#16a34a";
-    if (t === "refutes") return "#dc2626";
-    if (t === "cites") return "#7c3aed";
-    if (t === "relates_to") return "#6b7280";
-    return "#2563eb";
-  };
-
-  const markerId = (t: EdgeType) => `arrow-${t}`;
+  // Color is unified (monochrome muted) — edge type is communicated via
+  // dash pattern / stroke width from edgeStyleFor().
+  const markerId = "arrow-mono";
   const isNodeDim = (id: string) => {
     if (!hoverNodeId && !hoverEdgeId) return false;
     if (hoverNodeId) {
@@ -133,11 +129,9 @@ function GraphCanvas({
   return (
     <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} className="w-full h-72 md:h-[520px]" onWheel={onWheel} style={{ touchAction: "none" }}>
       <defs>
-        {(["supports", "refutes", "relates_to", "cites", "infers"] as EdgeType[]).map((t) => (
-          <marker key={t} id={markerId(t)} viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill={colorFor(t)} />
-          </marker>
-        ))}
+        <marker id={markerId} viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill={EDGE_STROKE} />
+        </marker>
       </defs>
       <rect x={0} y={0} width={W} height={H} fill="transparent" onPointerDown={onBgPointerDown} onPointerMove={onBgPointerMove} onPointerUp={onBgPointerUp} />
       <g transform={`translate(${tx},${ty}) scale(${scale})`}>
@@ -146,11 +140,13 @@ function GraphCanvas({
         .map((e) => {
           const s = pos.get(e.sourceId)!;
           const t = pos.get(e.targetId)!;
-          const stroke = colorFor(e.type);
+          const style = edgeStyleFor(e.type);
           const midx = (s.x + t.x) / 2;
           const midy = (s.y + t.y) / 2;
           const dim = isEdgeDim(e.id);
           const isSel = selectedId === e.id;
+          const isHovered = hoverEdgeId === e.id;
+          const stroke = isSel || isHovered ? EDGE_STROKE_EMPHASIS : EDGE_STROKE;
           return (
             <g key={e.id}
                onMouseEnter={() => onHoverEdge(e.id)}
@@ -158,8 +154,10 @@ function GraphCanvas({
                onClick={() => onClickEdge(e.id)}
                style={{ cursor: "pointer" }}
                opacity={dim ? 0.25 : 1}>
-              <line x1={s.x + nodeW / 2} y1={s.y} x2={t.x - nodeW / 2} y2={t.y} stroke={stroke} strokeWidth={isSel ? 2.4 : 1.6} markerEnd={`url(#${markerId(e.type)})`} />
-              <text x={midx} y={midy - 4} fontSize={10} textAnchor="middle" fill={stroke}>{e.type}</text>
+              <line x1={s.x + nodeW / 2} y1={s.y} x2={t.x - nodeW / 2} y2={t.y} stroke={stroke} strokeWidth={isSel ? style.width + 0.8 : style.width} strokeDasharray={style.dasharray} markerEnd={`url(#${markerId})`} />
+              {(isHovered || isSel) && (
+                <text x={midx} y={midy - 4} fontSize={10} textAnchor="middle" fill={stroke}>{e.type}</text>
+              )}
             </g>
           );
         })}
@@ -173,9 +171,14 @@ function GraphCanvas({
              onClick={() => onClickNode(id)}
              style={{ cursor: "pointer" }}
              opacity={dim ? 0.3 : 1}>
-            <rect x={p.x - nodeW / 2} y={p.y - nodeH / 2} width={nodeW} height={nodeH} rx={6} ry={6} fill="#fff" stroke={isSel ? "#2563eb" : "#111827"} strokeWidth={isSel ? 2 : 1.2} />
-            <text x={p.x - nodeW / 2 + 8} y={p.y - 6} fontSize={12} className="fill-gray-900">{p.n.title}</text>
-            <text x={p.x - nodeW / 2 + 8} y={p.y + 12} fontSize={10} className="fill-gray-600 uppercase">{p.n.type}</text>
+            <rect x={p.x - nodeW / 2} y={p.y - nodeH / 2} width={nodeW} height={nodeH} rx={6} ry={6} fill="var(--bg-elevated, #fff)" stroke={isSel ? "var(--accent, #7c6cff)" : "var(--border-strong, #4b5563)"} strokeWidth={isSel ? 2 : 1} />
+            <foreignObject x={p.x - nodeW / 2 + 8} y={p.y - nodeH / 2 + 8} width={18} height={18} pointerEvents="none">
+              <div style={{ color: "var(--text-muted)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <NodeIcon type={p.n.type} size={14} />
+              </div>
+            </foreignObject>
+            <text x={p.x - nodeW / 2 + 30} y={p.y - 4} fontSize={12} fill="var(--text-normal, #111827)" fontWeight={500}>{p.n.title}</text>
+            <text x={p.x - nodeW / 2 + 30} y={p.y + 14} fontSize={9} fill="var(--text-faint, #6b7280)" className="uppercase tracking-wide">{p.n.type}</text>
           </g>
         );
       })}
@@ -264,9 +267,12 @@ export default function CenterGraph({ nodes, edges, onInvestNode, onInvestEdge, 
           <ul className="space-y-2">
             {nodes.map((n) => (
               <li key={n.id} className="rounded border border-gray-200/50 p-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">{n.title}</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800 uppercase tracking-wide">{n.type}</span>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium truncate">{n.title}</span>
+                  <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-[var(--radius-sm)] bg-[color:var(--bg-secondary)] text-[color:var(--text-muted)] uppercase tracking-wide shrink-0">
+                    <NodeIcon type={n.type} size={11} />
+                    {n.type}
+                  </span>
                 </div>
                 {n.content && (
                   <p className="text-xs text-gray-600 mt-1 line-clamp-2">{n.content}</p>

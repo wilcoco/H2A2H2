@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as dagre from "dagre";
+import { edgeStyleFor, EDGE_STROKE, EDGE_STROKE_EMPHASIS } from "@/lib/edgeStyle";
 
 type Props = {
   qaId?: string;
@@ -80,26 +81,8 @@ function QAGraph({
     setTy(cy * (1 - s));
   }, [nodes.length, edges.length, W, H]);
 
-  const edgeColor = (t: string) => {
-    const s = (t || "").toLowerCase();
-    if (s === "supports") return "#16a34a";
-    if (s === "refutes") return "#dc2626";
-    if (s === "precedes") return "#2563eb";
-    if (s === "prerequisite") return "#7c3aed";
-    if (s === "elaborates") return "#0d9488";
-    if (s === "clarifies") return "#0891b2";
-    if (s === "narrows") return "#f59e0b";
-    if (s === "alternative") return "#db2777";
-    return "#6b7280";
-  };
-
-  const markerId = (t: string) => `qa_arrow_${(t || "rel").toLowerCase().replace(/[^a-z0-9_-]/g, "_")}`;
-  const types = useMemo(() => {
-    const set = new Set<string>();
-    for (const e of edges) set.add((e.type || "rel").toLowerCase());
-    if (set.size === 0) set.add("rel");
-    return Array.from(set);
-  }, [edges]);
+  // Monochrome edge color; emphasis stroke when hovered/selected.
+  const markerId = "qa_arrow_mono";
 
   const onWheel = (e: React.WheelEvent<SVGSVGElement>) => {
     e.preventDefault();
@@ -186,11 +169,9 @@ function QAGraph({
       style={{ touchAction: "none" }}
     >
       <defs>
-        {types.map((t) => (
-          <marker key={t} id={markerId(t)} viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill={edgeColor(t)} />
-          </marker>
-        ))}
+        <marker id={markerId} viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill={EDGE_STROKE} />
+        </marker>
       </defs>
       <rect x={0} y={0} width={W} height={H} fill="transparent" />
       <g transform={`translate(${tx},${ty}) scale(${scale})`}>
@@ -199,17 +180,18 @@ function QAGraph({
           .map((e) => {
             const s = pos.get(e.sourceId)!;
             const t = pos.get(e.targetId)!;
-            const stroke = edgeColor(e.type);
+            const style = edgeStyleFor(e.type);
             const eid = `${e.sourceId}|${e.targetId}|${e.type}`;
             const focus = hoverNodeId || selectedId;
             const isConnected = !!focus && (e.sourceId === focus || e.targetId === focus);
             const isHover = hoverEdgeId === eid;
             const dim = (focus || hoverEdgeId) && !(isHover || isConnected);
-            const opacity = dim ? 0.35 : 0.95;
-            const strokeW = isHover ? 4.4 : isConnected ? 3.4 : 2.4;
+            const opacity = dim ? 0.30 : 0.9;
+            const stroke = isHover || isConnected ? EDGE_STROKE_EMPHASIS : EDGE_STROKE;
+            const strokeW = isHover ? style.width + 1.6 : isConnected ? style.width + 1.0 : style.width + 0.4;
+            const dasharray = e.synthetic ? "4 3" : style.dasharray;
             const midx = (s.x + t.x) / 2;
             const midy = (s.y + t.y) / 2;
-            const showLabel = true;
             return (
               <g
                 key={eid}
@@ -225,11 +207,11 @@ function QAGraph({
                   stroke={stroke}
                   strokeWidth={strokeW}
                   strokeLinecap="round"
-                  strokeDasharray={e.synthetic ? "4 3" : undefined}
-                  markerEnd={`url(#${markerId(e.type)})`}
+                  strokeDasharray={dasharray}
+                  markerEnd={`url(#${markerId})`}
                 />
-                {showLabel && (
-                  <text x={midx} y={midy - 8} fontSize={11} fontWeight={600} textAnchor="middle" fill={stroke} stroke="#ffffff" strokeWidth={3} strokeLinejoin="round" paintOrder="stroke">{String(e.type || "")}</text>
+                {(isHover || isConnected) && (
+                  <text x={midx} y={midy - 8} fontSize={11} fontWeight={600} textAnchor="middle" fill={stroke} stroke="var(--bg-elevated, #ffffff)" strokeWidth={3} strokeLinejoin="round" paintOrder="stroke">{String(e.type || "")}</text>
                 )}
               </g>
             );
@@ -237,9 +219,9 @@ function QAGraph({
         {Array.from(pos.entries()).map(([id, p]) => {
           const isSel = selectedId === id;
           const isHover = hoverNodeId === id;
-          const fill = p.n.hasAnswer ? "#ffffff" : "#f3f4f6";
-          const stroke = isSel ? "#2563eb" : isHover ? "#0f172a" : "#111827";
-          const strokeW = isSel ? 3 : isHover ? 2.4 : 1.6;
+          const fill = p.n.hasAnswer ? "var(--bg-elevated, #ffffff)" : "var(--bg-secondary, #f3f4f6)";
+          const stroke = isSel ? "var(--accent, #7c6cff)" : isHover ? "var(--text-normal, #0f172a)" : "var(--border-strong, #4b5563)";
+          const strokeW = isSel ? 2.4 : isHover ? 2.0 : 1.4;
           const x0 = p.x - nodeW / 2 + 12;
           const lines = titleLines(p.n.question);
           const sub = `${p.n.hasAnswer ? "A" : "No A"} · ${Number(p.n.helpful || 0)}↑ ${Number(p.n.unhelpful || 0)}↓`;
@@ -259,12 +241,12 @@ function QAGraph({
               style={{ cursor: "pointer" }}
             >
               <rect x={p.x - nodeW / 2} y={p.y - nodeH / 2} width={nodeW} height={nodeH} rx={8} ry={8} fill={fill} stroke={stroke} strokeWidth={strokeW} style={{ filter: "drop-shadow(0px 1px 1.5px rgba(0,0,0,0.12))" }} />
-              <text x={x0} y={p.y - 26} fontSize={13} fontWeight={600} className="fill-gray-900">
+              <text x={x0} y={p.y - 26} fontSize={13} fontWeight={600} fill="var(--text-normal)">
                 {lines.map((ln, i) => (
                   <tspan key={i} x={x0} dy={i === 0 ? 0 : 16}>{ln}</tspan>
                 ))}
               </text>
-              <text x={x0} y={p.y + 34} fontSize={11} fontWeight={500} className="fill-gray-700">{sub}</text>
+              <text x={x0} y={p.y + 34} fontSize={11} fontWeight={500} fill="var(--text-muted)">{sub}</text>
             </g>
           );
         })}

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { LlmPatch, NodeType, EdgeType } from "@/types/graph";
+import { edgeStyleFor } from "@/lib/edgeStyle";
 
 const REL_HEADS = {
   critical: {
@@ -1006,26 +1007,25 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
       const arr = byType.get(t) ?? [];
       arr.forEach((n, idx) => { const y = 24 + rowH * (idx + 0.5); pos.set(n.id, { x: colX(ci, W), y, t, title: n.title }); });
     });
-    const colorFor = (t: EdgeType) => t === "supports" ? "#16a34a" : t === "refutes" ? "#dc2626" : t === "cites" ? "#7c3aed" : t === "relates_to" ? "#6b7280" : "#2563eb";
+    const MINI_STROKE = "#6b6b6b";
     const radius = 8;
     return (
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-32 md:h-40">
         <defs>
-          {( ["supports","refutes","relates_to","cites","infers"] as EdgeType[] ).map((t) => (
-            <marker key={t} id={`arrow-mini-${t}`} viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-              <path d="M 0 0 L 10 5 L 0 10 z" fill={colorFor(t)} />
-            </marker>
-          ))}
+          <marker id="arrow-mini-mono" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill={MINI_STROKE} />
+          </marker>
         </defs>
         {addedEdges
           .filter((e) => pos.has(e.sourceId) && pos.has(e.targetId))
           .map((e) => {
-            const s = pos.get(e.sourceId)!; const t = pos.get(e.targetId)!; const stroke = colorFor(e.type);
+            const s = pos.get(e.sourceId)!; const t = pos.get(e.targetId)!;
+            const style = edgeStyleFor(e.type);
             const midx = (s.x + t.x) / 2; const midy = (s.y + t.y) / 2;
             return (
               <g key={e.id}>
-                <line x1={s.x} y1={s.y} x2={t.x} y2={t.y} stroke={stroke} strokeWidth={1.2} markerEnd={`url(#arrow-mini-${e.type})`} opacity={0.9} />
-                <text x={midx} y={midy - 3} fontSize={9} textAnchor="middle" fill={stroke}>{e.type}</text>
+                <line x1={s.x} y1={s.y} x2={t.x} y2={t.y} stroke={MINI_STROKE} strokeWidth={style.width} strokeDasharray={style.dasharray} markerEnd="url(#arrow-mini-mono)" opacity={0.85} />
+                <text x={midx} y={midy - 3} fontSize={9} textAnchor="middle" fill={MINI_STROKE}>{e.type}</text>
               </g>
             );
           })}
