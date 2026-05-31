@@ -18,6 +18,7 @@ import VaultExportButton from "@/components/VaultExportButton";
 import OnboardingModal from "@/components/OnboardingModal";
 import QuotaBadge from "@/components/QuotaBadge";
 import BYOKModal from "@/components/BYOKModal";
+import OntologyPanel from "@/components/OntologyPanel";
 import { useAdvancedMode } from "@/lib/useAdvancedMode";
 
 const initialWorks: Work[] = [
@@ -77,7 +78,9 @@ export default function Home() {
   const [leftWidth, setLeftWidth] = useState<number>(300);
   const [rightWidth, setRightWidth] = useState<number>(420);
   const [leftTab, setLeftTab] = useState<"search" | "vault" | "dormant">("search");
-  const [rightTab, setRightTab] = useState<"graph" | "writer">("graph");
+  const [rightTab, setRightTab] = useState<"organize" | "graph" | "writer">("organize");
+  // advanced OFF일 때 organize 외 탭이 활성이면 강제 복귀 (보이지 않는 패널 회피)
+  useEffect(() => { if (!advanced && rightTab !== "organize") setRightTab("organize"); }, [advanced, rightTab]);
   const [councilOpen, setCouncilOpen] = useState(false);
   const [advanced, setAdvanced] = useAdvancedMode();
   const [helpOpen, setHelpOpen] = useState(false);
@@ -539,13 +542,29 @@ export default function Home() {
           <aside className="rounded border border-gray-200/60 p-0 overflow-hidden flex flex-col" style={{ width: rightWidth }}>
             <div className="flex items-center border-b border-gray-200/60">
               <button
-                className={`text-xs px-3 py-2 ${rightTab === "graph" ? "border-b-2 border-blue-600 text-blue-700" : "text-gray-500 hover:text-gray-700"}`}
-                onClick={() => setRightTab("graph")}
-              >그래프</button>
-              <button
-                className={`text-xs px-3 py-2 ${rightTab === "writer" ? "border-b-2 border-blue-600 text-blue-700" : "text-gray-500 hover:text-gray-700"}`}
-                onClick={() => setRightTab("writer")}
-              >문서 작성</button>
+                className={`text-xs px-3 py-2 ${rightTab === "organize" ? "border-b-2 border-violet-600 text-violet-700" : "text-gray-500 hover:text-gray-700"}`}
+                onClick={() => setRightTab("organize")}
+                title="이 대화를 다음 사람이 찾기 좋게 정리해 공유"
+              >정리하기</button>
+              {advanced && (
+                <button
+                  className={`text-xs px-3 py-2 ${rightTab === "graph" ? "border-b-2 border-blue-600 text-blue-700" : "text-gray-500 hover:text-gray-700"}`}
+                  onClick={() => setRightTab("graph")}
+                >그래프</button>
+              )}
+              {advanced && (
+                <button
+                  className={`text-xs px-3 py-2 ${rightTab === "writer" ? "border-b-2 border-blue-600 text-blue-700" : "text-gray-500 hover:text-gray-700"}`}
+                  onClick={() => setRightTab("writer")}
+                >문서 작성</button>
+              )}
+            </div>
+            <div className="p-2 md:p-3 overflow-auto flex-1" style={{ display: rightTab === "organize" ? "block" : "none" }}>
+              <OntologyPanel
+                rootId={leftThreadRootId || selectedQaId || undefined}
+                signedIn={Boolean(user?.email)}
+                onAfterSave={() => setGraphRefreshKey((k) => k + 1)}
+              />
             </div>
             <div className="p-2 md:p-3 overflow-auto flex-1" style={{ display: rightTab === "graph" ? "block" : "none" }}>
               <CenterGraph

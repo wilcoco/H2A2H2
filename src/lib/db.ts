@@ -311,6 +311,36 @@ export async function ensureTables() {
     await c.query(`create index if not exists llm_call_log_user_idx on llm_call_log (user_email, at desc)`);
     await c.query(`create index if not exists llm_call_log_at_idx on llm_call_log (at desc)`);
 
+    // beta-5b: organized_pages — "정리된 페이지"
+    // 한 대화 가지를 사용자가 우측에서 정리해 공유. 이 페이지가 좌측 검색의 1순위 매칭 대상.
+    // 소유 = organized_by. 본인만 수정. 다른 사람은 fork만 가능.
+    await c.query(`
+      create table if not exists organized_pages (
+        id text primary key,
+        root_id text not null,
+        title text not null,
+        summary_line text not null,
+        body text,
+        keywords text[] not null default '{}',
+        category text,
+        source_qa_ids text[] not null default '{}',
+        verification_candidates jsonb,
+        organized_by text not null,
+        organized_at timestamptz not null default now(),
+        updated_at timestamptz not null default now(),
+        is_locked boolean not null default true,
+        forked_from text,
+        view_count integer not null default 0
+      );
+    `);
+    await c.query(`create index if not exists organized_pages_root_idx on organized_pages (root_id)`);
+    await c.query(`create index if not exists organized_pages_owner_idx on organized_pages (organized_by, organized_at desc)`);
+    await c.query(`create index if not exists organized_pages_kw_idx on organized_pages using gin (keywords)`);
+    // 가지 + 소유자 조합으로 본인 정리 1개만 (다른 소유자는 다른 row로 fork 가능)
+    await c.query(`create unique index if not exists organized_pages_root_owner_uniq on organized_pages (root_id, organized_by)`);
+    try { await c.query(`create index if not exists organized_pages_summary_trgm on organized_pages using gin (lower(summary_line) gin_trgm_ops)`); } catch {}
+    try { await c.query(`create index if not exists organized_pages_title_trgm on organized_pages using gin (lower(title) gin_trgm_ops)`); } catch {}
+
     // Teams and Work Logs
     await c.query(`
       create table if not exists teams (

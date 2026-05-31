@@ -187,14 +187,73 @@ export async function POST(req: NextRequest) {
       });
       rows = applyAntiMatthewQuota(rows, explore, { limit, exploreShare });
     }
-    const items = rows.map((r) => ({
+    // organized_pages 우선 매칭 — 같은 쿼리로 정리 페이지 찾고, 결과 앞쪽에 prepend
+    type OrganizedHit = { id: string; root_id: string; title: string; summary_line: string; keywords: string[]; organized_by: string };
+    let organizedHits: OrganizedHit[] = [];
+    if (q) {
+      try {
+        organizedHits = await withConn(async (c) => {
+          try {
+            const r = await c.query(
+              `select id, root_id, title, summary_line, keywords, organized_by
+                 from organized_pages
+                where (
+                  similarity(lower(title), $1) > 0.2
+                  or similarity(lower(summary_line), $1) > 0.2
+                  or lower(title) like ('%' || $1 || '%')
+                  or lower(summary_line) like ('%' || $1 || '%')
+                  or exists (select 1 from unnest(keywords) k where lower(k) like ('%' || $1 || '%'))
+                )
+                order by greatest(
+                         similarity(lower(title), $1),
+                         similarity(lower(summary_line), $1),
+                         case when lower(title) like ('%' || $1 || '%') then 0.9 else 0 end,
+                         case when lower(summary_line) like ('%' || $1 || '%') then 0.7 else 0 end
+                       ) desc,
+                       view_count desc, updated_at desc
+                limit $2`,
+              [q.toLowerCase(), limit]
+            );
+            return r.rows as OrganizedHit[];
+          } catch {
+            const r = await c.query(
+              `select id, root_id, title, summary_line, keywords, organized_by
+                 from organized_pages
+                where lower(title) like ('%' || $1 || '%')
+                   or lower(summary_line) like ('%' || $1 || '%')
+                order by updated_at desc
+                limit $2`,
+              [q.toLowerCase(), limit]
+            );
+            return r.rows as OrganizedHit[];
+          }
+        });
+      } catch {}
+    }
+
+    const organizedItems = organizedHits.map((o) => ({
+      id: o.id,
+      type: "organized" as const,
+      rootId: o.root_id,
+      title: o.title,
+      question: o.title,                // 검색 화면 호환
+      summary: o.summary_line,
+      keywords: o.keywords,
+      createdBy: o.organized_by,
+    }));
+
+    const qaItems = rows.map((r) => ({
       id: r.id,
+      type: "qa" as const,
       question: r.question,
       answer: r.answer ?? undefined,
       summary: r.summary ?? undefined,
       workId: r.work_id ?? undefined,
-      createdBy: (r as any).created_by ?? undefined,
+      createdBy: (r as { created_by?: string }).created_by ?? undefined,
     }));
+
+    // organized가 우선 노출되도록 앞쪽 prepend. 중복 root 정밀 제거는 후속 라운드.
+    const items = [...organizedItems, ...qaItems].slice(0, limit);
     // Keyword caching on first search
     const ids = items.map((i) => i.id);
     let keywords: Record<string, string[]> = {};
