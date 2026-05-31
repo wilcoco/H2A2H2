@@ -91,7 +91,7 @@ export async function GET(req: NextRequest) {
             helpful: '0',
             unhelpful: '0',
             my_vote: 0,
-          } as any);
+          });
         }
       }
       crossRels = direct.map((e) => ({ ...e, synthetic: false }));
@@ -139,7 +139,7 @@ export async function GET(req: NextRequest) {
               helpful: '0',
               unhelpful: '0',
               my_vote: 0,
-            } as any);
+            });
           }
         }
       }

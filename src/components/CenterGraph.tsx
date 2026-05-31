@@ -51,7 +51,7 @@ function GraphCanvas({
       const attr: { width: number; height: number; rank?: "min" | "max" } = { width: nodeW, height: nodeH };
       if (n.type === "qa") attr.rank = "min";
       if (n.type === "conclusion") attr.rank = "max";
-      graph.setNode(n.id, attr as any);
+      graph.setNode(n.id, attr as unknown as { [key: string]: unknown });
     }
     for (const e of edges) graph.setEdge(e.sourceId, e.targetId, { id: e.id });
     dagre.layout(graph);

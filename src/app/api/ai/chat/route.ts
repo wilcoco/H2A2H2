@@ -6,6 +6,26 @@ import { ensureTables, withConn } from "@/lib/db";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// OpenAI Responses API 응답에서 안전하게 텍스트/id 추출.
+type OpenAIResp = { output_text?: string; id?: string };
+function respText(r: unknown): string {
+  return (r as OpenAIResp)?.output_text?.trim() ?? "";
+}
+function respId(r: unknown): string | undefined {
+  return (r as OpenAIResp)?.id;
+}
+
+// OpenAI responses.create 파라미터 — 우리가 채우는 필드만 선언.
+type OAICreateBody = {
+  model: string;
+  input: string;
+  temperature?: number;
+  max_output_tokens?: number;
+  reasoning?: { effort: "low" | "medium" | "high" };
+  previous_response_id?: string;
+};
+type AnthropicResp = { content?: Array<{ type: string; text?: string }> };
+
 const ChatMsg = z.object({
   role: z.enum(["user", "assistant"]),
   content: z.string(),
@@ -232,8 +252,9 @@ export async function POST(req: Request) {
   try {
     const json = await req.json();
     const input = Body.parse(json);
-    const explicitProvider = Boolean((json as any)?.provider);
-    const detail = (input.detail ?? (process.env.ANSWER_LENGTH as any) ?? "normal") as "short" | "normal" | "long";
+    const explicitProvider = Boolean((json as { provider?: unknown })?.provider);
+    const envDetail = process.env.ANSWER_LENGTH as "short" | "normal" | "long" | undefined;
+    const detail: "short" | "normal" | "long" = input.detail ?? envDetail ?? "normal";
 
     const fallback = () => {
       const answer = input.prompt
@@ -242,7 +263,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ answer });
     };
 
-    const provider = input.provider ?? (process.env.AI_PROVIDER as any) ?? "openai";
+    const envProvider = process.env.AI_PROVIDER as "openai" | "anthropic" | undefined;
+    const provider: "openai" | "anthropic" = input.provider ?? envProvider ?? "openai";
     const openaiKey = process.env.OPENAI_API_KEY;
     const anthropicKey = process.env.ANTHROPIC_API_KEY;
     const client = openaiKey ? new OpenAI({ apiKey: openaiKey }) : null;
@@ -273,7 +295,8 @@ export async function POST(req: Request) {
       const q = promptText.trim().toLowerCase();
       // Selected context by explicit IDs
       try {
-        const ids = Array.isArray((input as any)?.contextIds) ? (input as any).contextIds.filter((x: any) => typeof x === "string") as string[] : [];
+        const ctxIds = (input as { contextIds?: unknown[] }).contextIds;
+        const ids: string[] = Array.isArray(ctxIds) ? ctxIds.filter((x): x is string => typeof x === "string") : [];
         if (ids.length) {
           const rows = await withConn(async (c) => {
             const r = await c.query(
@@ -413,26 +436,26 @@ export async function POST(req: Request) {
                 ],
               }),
             });
-            const j = await resp.json().catch(() => ({} as any));
+            const j = await resp.json().catch(() => ({} as AnthropicResp));
             const parts: Array<{ type: string; text?: string }> = Array.isArray(j?.content) ? j.content : [];
             answer = parts.filter((p) => p?.type === "text").map((p) => String(p.text || "")).join("\n").trim();
           } catch {}
         }
         if (!answer && client && !explicitProvider) {
-          const base: any = { model, input: combined, temperature: 0.2, max_output_tokens: maxTokens };
+          const base: OAICreateBody = { model, input: combined, temperature: 0.2, max_output_tokens: maxTokens };
           if (isReasoningModel) base.reasoning = { effort: reasoningEffort };
           try {
             if (input.previousResponseId) base.previous_response_id = input.previousResponseId;
             else if (anchorPrevId) base.previous_response_id = anchorPrevId;
-            const res = await client.responses.create(base);
-            answer = (res as any).output_text?.trim() ?? "";
-            responseId = (res as any)?.id;
+            const res = await client.responses.create(base as Parameters<typeof client.responses.create>[0]);
+            answer = respText(res);
+            responseId = respId(res);
           } catch {
             if (model !== "gpt-4o") {
               try {
-                const res2 = await client.responses.create({ ...base, model: "gpt-4o", reasoning: undefined });
-                answer = (res2 as any).output_text?.trim() ?? "";
-                responseId = (res2 as any)?.id;
+                const res2 = await client.responses.create({ ...base, model: "gpt-4o", reasoning: undefined } as Parameters<typeof client.responses.create>[0]);
+                answer = respText(res2);
+                responseId = respId(res2);
               } catch {}
             }
           }
@@ -464,26 +487,26 @@ export async function POST(req: Request) {
                     ],
                   }),
                 });
-                const jj = await resp2.json().catch(() => ({} as any));
+                const jj = await resp2.json().catch(() => ({} as AnthropicResp));
                 const parts2: Array<{ type: string; text?: string }> = Array.isArray(jj?.content) ? jj.content : [];
                 const improved = parts2.filter((p) => p?.type === "text").map((p) => String(p.text || "")).join("\n").trim();
                 if (improved) answer = improved;
               } catch {}
             } else if (client) {
-              const refineBody: any = { model, input: refineInput, temperature: 0.2, max_output_tokens: refineTokens };
+              const refineBody: OAICreateBody = { model, input: refineInput, temperature: 0.2, max_output_tokens: refineTokens };
               if (isReasoningModel) refineBody.reasoning = { effort: reasoningEffort };
               if (responseId) refineBody.previous_response_id = responseId;
               let improved = "";
               try {
-                const r1 = await client.responses.create(refineBody);
-                improved = (r1 as any).output_text?.trim() ?? "";
-                responseId = (r1 as any)?.id ?? responseId;
+                const r1 = await client.responses.create(refineBody as Parameters<typeof client.responses.create>[0]);
+                improved = respText(r1);
+                responseId = respId(r1) ?? responseId;
               } catch {
                 if (model !== "gpt-4o") {
                   try {
-                    const r2 = await client.responses.create({ ...refineBody, model: "gpt-4o", reasoning: undefined });
-                    improved = (r2 as any).output_text?.trim() ?? "";
-                    responseId = (r2 as any)?.id ?? responseId;
+                    const r2 = await client.responses.create({ ...refineBody, model: "gpt-4o", reasoning: undefined } as Parameters<typeof client.responses.create>[0]);
+                    improved = respText(r2);
+                    responseId = respId(r2) ?? responseId;
                   } catch {}
                 }
               }
@@ -521,20 +544,20 @@ export async function POST(req: Request) {
         return NextResponse.json({ answer, providerUsed, modelUsed, fallbackUsed, detailUsed: detail, responseId, maxTokensUsed: maxTokens, reasoningEffortUsed: isReasoningModel ? reasoningEffort : undefined, relationSuggestion });
       } else {
         if (client) {
-          const base: any = { model, input: combined, temperature: 0.2, max_output_tokens: maxTokens };
+          const base: OAICreateBody = { model, input: combined, temperature: 0.2, max_output_tokens: maxTokens };
           if (isReasoningModel) base.reasoning = { effort: reasoningEffort };
           try {
             if (input.previousResponseId) base.previous_response_id = input.previousResponseId;
             else if (anchorPrevId) base.previous_response_id = anchorPrevId;
-            const res = await client.responses.create(base);
-            answer = (res as any).output_text?.trim() ?? "";
-            responseId = (res as any)?.id;
+            const res = await client.responses.create(base as Parameters<typeof client.responses.create>[0]);
+            answer = respText(res);
+            responseId = respId(res);
           } catch {
             if (model !== "gpt-4o") {
               try {
-                const res2 = await client.responses.create({ ...base, model: "gpt-4o", reasoning: undefined });
-                answer = (res2 as any).output_text?.trim() ?? "";
-                responseId = (res2 as any)?.id;
+                const res2 = await client.responses.create({ ...base, model: "gpt-4o", reasoning: undefined } as Parameters<typeof client.responses.create>[0]);
+                answer = respText(res2);
+                responseId = respId(res2);
               } catch {}
             }
           }
@@ -558,7 +581,7 @@ export async function POST(req: Request) {
                 ],
               }),
             });
-            const j = await resp.json().catch(() => ({} as any));
+            const j = await resp.json().catch(() => ({} as AnthropicResp));
             const parts: Array<{ type: string; text?: string }> = Array.isArray(j?.content) ? j.content : [];
             answer = parts.filter((p) => p?.type === "text").map((p) => String(p.text || "")).join("\n").trim();
           } catch {}
@@ -570,20 +593,20 @@ export async function POST(req: Request) {
           try {
             const refineInstr = `Rewrite into a final, direct answer only. Remove any meta-analysis, review-style sections, or numbered structure. Keep the user's language and tone. Do not add follow-up questions. ${detail === "short" ? "Keep it concise (3–5 sentences)." : detail === "long" ? "Make it thorough and well-structured." : "Balance brevity and completeness."}`;
             const refineInput = `${refineInstr}\n\nQuestion: ${promptText}\n\nDraft:\n${answer}\n\n${selectedText ? `Selected context (user-picked):\n${selectedText}\n\n` : ""}${relatedText ? `Context (may be partial):\n${relatedText}\n` : ""}`;
-            const refineBody: any = { model, input: refineInput, temperature: 0.2, max_output_tokens: refineTokens };
+            const refineBody: OAICreateBody = { model, input: refineInput, temperature: 0.2, max_output_tokens: refineTokens };
             if (isReasoningModel) refineBody.reasoning = { effort: reasoningEffort };
             if (responseId) refineBody.previous_response_id = responseId;
             let improved = "";
             try {
-              const r1 = await client.responses.create(refineBody);
-              improved = (r1 as any).output_text?.trim() ?? "";
-              responseId = (r1 as any)?.id ?? responseId;
+              const r1 = await client.responses.create(refineBody as Parameters<typeof client.responses.create>[0]);
+              improved = respText(r1);
+              responseId = respId(r1) ?? responseId;
             } catch {
               if (model !== "gpt-4o") {
                 try {
-                  const r2 = await client.responses.create({ ...refineBody, model: "gpt-4o", reasoning: undefined });
-                  improved = (r2 as any).output_text?.trim() ?? "";
-                  responseId = (r2 as any)?.id ?? responseId;
+                  const r2 = await client.responses.create({ ...refineBody, model: "gpt-4o", reasoning: undefined } as Parameters<typeof client.responses.create>[0]);
+                  improved = respText(r2);
+                  responseId = respId(r2) ?? responseId;
                 } catch {}
               }
             }

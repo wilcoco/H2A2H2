@@ -10,8 +10,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
 
     const keyword: string | undefined = body?.keyword ? String(body.keyword) : undefined;
-    const keywords: string[] = Array.isArray(body?.keywords) ? body.keywords.map((s: any) => String(s)).filter(Boolean) : [];
-    const phrases: string[] = Array.isArray(body?.phrases) ? body.phrases.map((s: any) => String(s)).filter(Boolean) : [];
+    const keywords: string[] = Array.isArray(body?.keywords) ? body.keywords.map((s: unknown) => String(s)).filter(Boolean) : [];
+    const phrases: string[] = Array.isArray(body?.phrases) ? body.phrases.map((s: unknown) => String(s)).filter(Boolean) : [];
     const mode: "any" | "all" = (body?.mode === "all" ? "all" : "any");
     const limit: number = Math.min(Math.max(Number(body?.limit ?? 10), 1), 25);
 
@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
       kmap = Object.fromEntries(ids.map((id) => [id, (out.get(id) || []).slice(0, 8)]));
     }
 
-    const items = rows.map((r) => ({ id: r.id, question: r.question, answer: r.answer ?? undefined, summary: r.summary ?? undefined, workId: r.work_id ?? undefined, createdBy: (r as any).created_by ?? undefined }));
+    const items = rows.map((r) => ({ id: r.id, question: r.question, answer: r.answer ?? undefined, summary: r.summary ?? undefined, workId: r.work_id ?? undefined, createdBy: (r as { created_by?: string }).created_by ?? undefined }));
     return NextResponse.json({ items, keywords: kmap });
   } catch (e) {
     return NextResponse.json({ items: [], keywords: {} });

@@ -42,7 +42,7 @@ async function ensureRow(email: string): Promise<QuotaRow> {
       [email]
     );
     const r = await c.query(`select * from user_quota where user_email = $1`, [email]);
-    return r.rows[0] as QuotaRow;
+    return r.rows[0] as unknown as QuotaRow;
   });
 }
 

@@ -3,6 +3,18 @@
 import { useState, useEffect } from "react";
 import type { LlmPatch, GraphNode, GraphEdge, NodeType, EdgeType, Work, QAEntry } from "@/types/graph";
 
+type ThreadNode = {
+  id: string;
+  parentId?: string;
+  question: string;
+  hasAnswer: boolean;
+  lastResponseId?: string;
+  helpful: number;
+  unhelpful: number;
+  myVote: 1 | -1 | 0;
+  children: ThreadNode[];
+};
+
 type Props = {
   nodes: GraphNode[];
   edges: GraphEdge[];
@@ -46,7 +58,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
   const [extendLoading, setExtendLoading] = useState(false);
   const [prevRespId, setPrevRespId] = useState<string | null>(null);
   const [threadRootId, setThreadRootId] = useState<string | null>(null);
-  const [threadTree, setThreadTree] = useState<any | null>(null);
+  const [threadTree, setThreadTree] = useState<ThreadNode | null>(null);
   const [threadLoading, setThreadLoading] = useState(false);
   const [followupText, setFollowupText] = useState<Record<string, string>>({});
   const [noteText, setNoteText] = useState<Record<string, string>>({});
@@ -55,7 +67,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
   const [detail, setDetail] = useState<"short" | "normal" | "long">("normal");
   const [lastMeta, setLastMeta] = useState<{ providerUsed?: "openai" | "anthropic"; modelUsed?: string; fallbackUsed?: boolean; maxTokensUsed?: number; reasoningEffortUsed?: "low" | "medium" | "high" } | null>(null);
 
-  async function useQA(id: string) {
+  async function applyQA(id: string) {
     try {
       const res = await fetch(`/api/qa/${encodeURIComponent(id)}`);
       if (!res.ok) {
@@ -185,7 +197,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
   async function shareQA() {
     try {
       const question = pendingQuestion || history.filter(h => h.role === "user").slice(-1)[0]?.content || prompt.trim();
-      const payload: any = { question };
+      const payload: Record<string, unknown> = { question };
       if (lastAnswer) payload.answer = lastAnswer;
       if (proposedPatch) payload.patch = proposedPatch;
       if (prevRespId) payload.responseId = prevRespId;
@@ -380,7 +392,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
     };
   }
 
-  async function useWork(id: string, title: string) {
+  async function applyWork(id: string, title: string) {
     try {
       setError(null);
       const res = await fetch(`/api/works/${encodeURIComponent(id)}`);
@@ -548,8 +560,8 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
     );
   }
 
-  function renderThread(node: any, depth: number) {
-    const qaId = node.id as string;
+  function renderThread(node: ThreadNode, depth: number) {
+    const qaId = node.id;
     const follow = followupText[qaId] || "";
     const note = noteText[qaId] || "";
     return (
@@ -587,7 +599,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
         </div>
         {Array.isArray(node.children) && node.children.length > 0 && (
           <div className="mt-2">
-            {node.children.map((ch: any) => (
+            {node.children.map((ch: ThreadNode) => (
               <div key={ch.id}>{renderThread(ch, depth + 1)}</div>
             ))}
           </div>
@@ -626,7 +638,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
       }
       if (e.key === "ai_detail") {
         const v = e.newValue || "";
-        if (v === "short" || v === "normal" || v === "long") setDetail(v as any);
+        if (v === "short" || v === "normal" || v === "long") setDetail(v as "short" | "normal" | "long");
       }
     }
     window.addEventListener("storage", onStorage);
@@ -672,7 +684,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
                     <div className="text-sm font-medium">{w.title}</div>
                     {w.description && <div className="text-xs text-gray-600 mt-0.5 line-clamp-2">{w.description}</div>}
                   </div>
-                  <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white" onClick={() => void useWork(w.id, w.title)}>Use</button>
+                  <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white" onClick={() => void applyWork(w.id, w.title)}>Use</button>
                 </div>
                 <div className="mt-1 text-[11px] text-gray-500">{w.nodeCount} nodes · score {w.investmentScore}</div>
               </li>
@@ -691,7 +703,7 @@ export default function RightChat({ nodes, edges, onProposePatch, user, onRequir
                     )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white" onClick={() => void useQA(q.id)}>Use</button>
+                    <button className="text-xs px-2 py-1 rounded bg-emerald-600 text-white" onClick={() => void applyQA(q.id)}>Use</button>
                     <button className="text-xs px-2 py-1 rounded border" onClick={() => void openFollowupsFor(q.id)}>Follow-ups</button>
                     <button className="text-xs px-2 py-1 rounded border" onClick={() => { setExtendId(extendId === q.id ? null : q.id); if (extendId !== q.id) setExtendText(""); }}>Extend</button>
                   </div>

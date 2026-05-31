@@ -32,7 +32,18 @@ export async function GET(req: NextRequest) {
       return r.rows as Array<{ id: string; parent_id: string | null; root_id: string | null; question: string; answer: string | null; created_at: string; last_response_id?: string | null; helpful: string; unhelpful: string; my_vote: number | null }>;
     });
 
-    const byId = new Map<string, any>();
+    type ThreadNode = {
+      id: string;
+      parentId?: string;
+      question: string;
+      hasAnswer: boolean;
+      lastResponseId?: string;
+      helpful: number;
+      unhelpful: number;
+      myVote: 1 | -1 | 0;
+      children: ThreadNode[];
+    };
+    const byId = new Map<string, ThreadNode>();
     rows.forEach((r) => {
       byId.set(r.id, {
         id: r.id,
@@ -43,7 +54,7 @@ export async function GET(req: NextRequest) {
         helpful: Number(r.helpful || 0),
         unhelpful: Number(r.unhelpful || 0),
         myVote: r.my_vote === 1 ? 1 : r.my_vote === -1 ? -1 : 0,
-        children: [] as any[],
+        children: [],
       });
     });
 
@@ -59,7 +70,7 @@ export async function GET(req: NextRequest) {
     });
 
     // compute depth-pruned tree (BFS)
-    const queue: Array<{ node: any; d: number }> = [{ node: root, d: 1 }];
+    const queue: Array<{ node: ThreadNode; d: number }> = [{ node: root, d: 1 }];
     const visited = new Set<string>();
     while (queue.length) {
       const { node, d } = queue.shift()!;

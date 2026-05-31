@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     const question: string = (body?.question ?? "").toString();
     const answer: string | undefined = body?.answer ? String(body.answer) : undefined;
     let summary: string | undefined = body?.summary ? String(body.summary) : undefined;
-    const patch: any | undefined = body?.patch ?? undefined;
+    const patch: Record<string, unknown> | undefined = body?.patch ?? undefined;
     const workId: string | undefined = body?.workId ? String(body.workId) : undefined;
     const responseId: string | undefined = body?.responseId ? String(body.responseId) : undefined;
     const token = req.cookies.get("session")?.value;

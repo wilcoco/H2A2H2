@@ -67,7 +67,8 @@ export async function POST(req: NextRequest) {
     const json = await req.json().catch(() => ({}));
     const text = (json?.text ?? "").toString();
     const max = Math.max(1, Math.min(10, Number(json?.max ?? 6)));
-    const provider = (json?.provider as "openai" | "anthropic" | undefined) ?? ((process.env.AI_PROVIDER as any) ?? "openai");
+    const envProv = process.env.AI_PROVIDER as "openai" | "anthropic" | undefined;
+    const provider: "openai" | "anthropic" = (json?.provider as "openai" | "anthropic" | undefined) ?? envProv ?? "openai";
 
     const openaiKey = process.env.OPENAI_API_KEY;
     const anthropicKey = process.env.ANTHROPIC_API_KEY;
@@ -105,14 +106,14 @@ Text:\n${text}`;
               ],
             }),
           });
-          const j = await resp.json().catch(() => ({} as any));
+          const j = await resp.json().catch(() => ({} as { content?: Array<{ type: string; text?: string }> }));
           const parts: Array<{ type: string; text?: string }> = Array.isArray(j?.content) ? j.content : [];
           content = parts.filter((p) => p?.type === "text").map((p) => String(p.text || "")).join("\n");
         } catch {}
       }
       if (!content && client) {
         try {
-          const body: any = { model, input: prompt, temperature: 0.2, max_output_tokens: 800 };
+          const body: Record<string, unknown> = { model, input: prompt, temperature: 0.2, max_output_tokens: 800 };
           if (model.startsWith("o3")) body.reasoning = { effort: "high" };
           body.response_format = {
             type: "json_schema",
@@ -127,21 +128,21 @@ Text:\n${text}`;
               },
             },
           };
-          const res = await client.responses.create(body);
-          content = (res as any).output_text ?? "";
+          const res = await client.responses.create(body as Parameters<typeof client.responses.create>[0]);
+          content = (res as { output_text?: string }).output_text ?? "";
         } catch {
           if (client && model !== "gpt-4o") {
             try {
               const res2 = await client.responses.create({ model: "gpt-4o", input: prompt, temperature: 0.2, max_output_tokens: 800 });
-              content = (res2 as any).output_text ?? "";
+              content = (res2 as { output_text?: string }).output_text ?? "";
             } catch {}
           }
         }
       }
       try {
         const parsed = JSON.parse(content ?? "{}");
-        const arr: string[] = Array.isArray(parsed?.keywords) ? (parsed.keywords as any[]).map((s: unknown) => String(s)).filter(Boolean) : [];
-        const phr: string[] = Array.isArray(parsed?.phrases) ? (parsed.phrases as any[]).map((s: unknown) => String(s)).filter(Boolean) : [];
+        const arr: string[] = Array.isArray(parsed?.keywords) ? (parsed.keywords as unknown[]).map((s) => String(s)).filter(Boolean) : [];
+        const phr: string[] = Array.isArray(parsed?.phrases) ? (parsed.phrases as unknown[]).map((s) => String(s)).filter(Boolean) : [];
         // Normalize words to base forms
         const pieces: string[] = arr.flatMap((s: string) => s.split(/[\s,\/_-]+/).map((t: string) => t.trim()).filter(Boolean));
         const base: string[] = pieces.map((w: string) => w.toLowerCase());

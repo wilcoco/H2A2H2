@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
         limit ${limit}
       `;
       const r = await c.query(sql, params);
-      return r.rows as any[];
+      return r.rows as Array<Record<string, unknown>>;
     });
     const items = rows.map((r) => ({
       id: String(r.id || ""),

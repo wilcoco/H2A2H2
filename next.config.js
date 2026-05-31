@@ -2,13 +2,11 @@
 const path = require('path');
 const nextConfig = {
   eslint: {
-    // Avoid failing the build due to ESLint errors in CI/deploys.
-    // We'll address lint issues incrementally.
-    ignoreDuringBuilds: true,
+    // beta-5b 이후 lint 위반 정리 완료 — 빌드 단계에서 TDZ/any/hooks 위반 차단.
+    ignoreDuringBuilds: false,
   },
   typescript: {
-    // Avoid failing the build due to TypeScript type errors; address incrementally.
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   // Ensure Next traces/loads dependencies from this app directory (monorepo safety)
   outputFileTracingRoot: path.join(__dirname),

@@ -17,7 +17,7 @@ interface GovRow {
 async function loadState(): Promise<GovernanceState & { councilSize: number; admin: string | null }> {
   return await withConn(async (c) => {
     const g = await c.query(`select * from governance_state where id = 1`);
-    const row = g.rows[0] as GovRow | undefined;
+    const row = g.rows[0] as unknown as GovRow | undefined;
     const cc = await c.query(`select count(*)::int as n from governance_council`);
     const councilSize = Number(cc.rows[0]?.n || 0);
     const phase = (row?.phase as Phase) || "bootstrap";

@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
           order by s.created_at desc`,
         [userId]
       );
-      return r.rows as RawStakeRow[];
+      return r.rows as unknown as RawStakeRow[];
     });
     if (myRows.length === 0) return NextResponse.json({ items: [] });
 
@@ -83,8 +83,8 @@ export async function GET(req: NextRequest) {
         [rootIds]
       );
       return {
-        stakes: allStakes.rows as RawStakeRow[],
-        verified: new Map((verifs.rows as Array<{ root_id: string; branch_verified: boolean }>).map((r) => [r.root_id, r.branch_verified])),
+        stakes: allStakes.rows as unknown as RawStakeRow[],
+        verified: new Map((verifs.rows as unknown as Array<{ root_id: string; branch_verified: boolean }>).map((r) => [r.root_id, r.branch_verified])),
         contribsByRoot: ((rows: Array<{ root_id: string; contributor: string }>) => {
           const m = new Map<string, Set<string>>();
           for (const r of rows) {
@@ -92,8 +92,8 @@ export async function GET(req: NextRequest) {
             m.get(r.root_id)!.add(r.contributor);
           }
           return m;
-        })(contribs.rows as Array<{ root_id: string; contributor: string }>),
-        lastUpdate: new Map((qrows.rows as Array<{ root_id: string; last_update: string }>).map((r) => [r.root_id, r.last_update])),
+        })(contribs.rows as unknown as Array<{ root_id: string; contributor: string }>),
+        lastUpdate: new Map((qrows.rows as unknown as Array<{ root_id: string; last_update: string }>).map((r) => [r.root_id, r.last_update])),
       };
     });
 

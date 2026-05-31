@@ -10,7 +10,7 @@ export async function GET() {
     if (!apiKey) return NextResponse.json({ ok: false, error: "Missing OPENAI_API_KEY" });
     const client = new OpenAI({ apiKey });
     const models = await client.models.list();
-    const ids = models.data.map((m: any) => m.id).sort();
+    const ids = models.data.map((m: { id: string }) => m.id).sort();
     const chat = ids.filter((id: string) => /^(o3|o4|gpt-4o|gpt-4|gpt-3\.5)/.test(id));
     return NextResponse.json({ ok: true, chat, all: ids });
   } catch (e) {

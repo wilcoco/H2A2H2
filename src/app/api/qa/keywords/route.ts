@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
   try {
     await ensureTables();
     const body = await req.json().catch(() => ({}));
-    let qaIds: string[] = Array.isArray(body?.qaIds) ? body.qaIds.map((s: any) => String(s)).filter(Boolean) : [];
+    let qaIds: string[] = Array.isArray(body?.qaIds) ? body.qaIds.map((s: unknown) => String(s)).filter(Boolean) : [];
     const singleId = body?.qaId ? String(body.qaId) : "";
     if (!qaIds.length && singleId) qaIds = [singleId];
     const max = Math.max(1, Math.min(10, Number(body?.max ?? 8)));

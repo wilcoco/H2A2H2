@@ -60,7 +60,7 @@ export async function GET(_req: NextRequest) {
     const listUrl = `https://api.github.com/repos/${owner}/${repo}/commits?sha=${encodeURIComponent(branch)}&per_page=1`;
     res = await fetch(listUrl, { headers, cache: "no-store" });
     if (res.ok) {
-      const arr: any[] = await res.json();
+      const arr: Array<{ sha?: string; commit?: { message?: string } }> = await res.json();
       const first = Array.isArray(arr) && arr.length > 0 ? arr[0] : null;
       if (first) {
         const sha: string | undefined = first?.sha ? String(first.sha) : undefined;

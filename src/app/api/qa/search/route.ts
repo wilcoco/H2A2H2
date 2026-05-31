@@ -275,7 +275,8 @@ export async function POST(req: NextRequest) {
           for (const id of need) {
             const it = byId.get(id);
             if (!it) continue;
-            const text = String(it.summary || it.answer || it.question || "");
+            const answerText = (it as { answer?: string }).answer;
+            const text = String(it.summary || answerText || it.question || "");
             const kws = heuristic(text, 8);
             for (let i = 0; i < kws.length; i++) {
               const kw = kws[i];

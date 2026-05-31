@@ -290,7 +290,7 @@ export default function MePage() {
             <h2 className="font-medium mb-2">나의 예치 목록</h2>
             <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
               <input className="border rounded px-2 py-1" placeholder="검색(질문/루트ID)" value={q} onChange={(e) => setQ(e.target.value)} />
-              <select className="border rounded px-2 py-1" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)}>
+              <select className="border rounded px-2 py-1" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as "all" | "active" | "matured")}>
                 <option value="all">전체</option>
                 <option value="active">진행</option>
                 <option value="matured">만기</option>
@@ -300,7 +300,7 @@ export default function MePage() {
               <input type="date" className="border rounded px-2 py-1" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
               <input type="number" className="border rounded px-2 py-1 w-28" placeholder="금액 최소" value={amountMin} onChange={(e) => setAmountMin(e.target.value)} />
               <input type="number" className="border rounded px-2 py-1 w-28" placeholder="금액 최대" value={amountMax} onChange={(e) => setAmountMax(e.target.value)} />
-              <select className="border rounded px-2 py-1" value={sortKey} onChange={(e) => setSortKey(e.target.value as any)}>
+              <select className="border rounded px-2 py-1" value={sortKey} onChange={(e) => setSortKey(e.target.value as typeof sortKey)}>
                 <option value="maturity_asc">가까운 만기</option>
                 <option value="created_desc">최신 생성</option>
                 <option value="created_asc">오래된 생성</option>

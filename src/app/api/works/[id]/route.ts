@@ -3,10 +3,10 @@ import { ensureTables, withConn } from "@/lib/db";
 
 export const runtime = "nodejs";
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
     await ensureTables();
-    const id = params?.id;
+    const { id } = await ctx.params;
     if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
     const row = await withConn(async (c) => {
       const q = await c.query(
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       return q.rows?.[0] ?? null;
     });
     if (!row) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    const graph = (row.graph as any) ?? { nodes: [], edges: [] };
+    const graph = (row.graph as { nodes?: unknown[]; edges?: unknown[] } | null) ?? { nodes: [], edges: [] };
     return NextResponse.json({
       work: {
         id: row.id,

@@ -1096,15 +1096,15 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                 onClick={() => setBoostOpen((v) => !v)}
               >{boostBusy ? "처리 중…" : (boostOpen ? "예치 닫기" : "예치(Boost)")}</button>
               <button
-                className={`text-xs px-2 py-1 rounded border disabled:opacity-50 ${((data as any)?.myVote === 1) ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : ''}`}
+                className={`text-xs px-2 py-1 rounded border disabled:opacity-50 ${((data as { myVote?: number })?.myVote === 1) ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : ''}`}
                 disabled={voteBusy || !qaId}
                 onClick={() => void vote(1)}
-              >도움됨 ({Number((data as any)?.helpful || 0)})</button>
+              >도움됨 ({Number((data as { helpful?: number })?.helpful || 0)})</button>
               <button
-                className={`text-xs px-2 py-1 rounded border disabled:opacity-50 ${((data as any)?.myVote === -1) ? 'bg-red-50 border-red-200 text-red-700' : ''}`}
+                className={`text-xs px-2 py-1 rounded border disabled:opacity-50 ${((data as { myVote?: number })?.myVote === -1) ? 'bg-red-50 border-red-200 text-red-700' : ''}`}
                 disabled={voteBusy || !qaId}
                 onClick={() => void vote(-1)}
-              >도움 안됨 ({Number((data as any)?.unhelpful || 0)})</button>
+              >도움 안됨 ({Number((data as { unhelpful?: number })?.unhelpful || 0)})</button>
             </div>
             {boostOpen && (
               <div className="mt-2 p-2 border rounded bg-white/60 dark:bg-gray-900/40">
@@ -1241,7 +1241,7 @@ export default function CenterQAViewer({ qaId, question, aiAnswer, aiProvider, a
                                   setBoostBusy(true);
                                   setBoostError(null);
                                   setBoostMsg(null);
-                                  const payload: any = { amount: boostAmount, lockDays: boostLock };
+                                  const payload: Record<string, unknown> = { amount: boostAmount, lockDays: boostLock };
                                   if (rootId) payload.rootId = rootId; else payload.qaId = it.savedId;
                                   const r = await fetch("/api/qa/stake", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
                                   const j = await r.json().catch(() => ({}));

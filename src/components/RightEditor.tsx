@@ -36,7 +36,7 @@ export default function RightEditor({ qaId, question, aiAnswer, user, onRequireL
       } else if (!e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === "e") {
         const target = e.target as HTMLElement | null;
         const tag = target?.tagName?.toLowerCase();
-        const isTyping = tag === "input" || tag === "textarea" || tag === "select" || (!!target && (target as any).isContentEditable);
+        const isTyping = tag === "input" || tag === "textarea" || tag === "select" || (!!target && target.isContentEditable);
         if (isTyping) return; // don't steal focus while user is typing elsewhere
         summaryRef.current?.focus();
       }
@@ -63,8 +63,8 @@ export default function RightEditor({ qaId, question, aiAnswer, user, onRequireL
       const j = await res.json().catch(() => ({ items: [] }));
       const its: QAEntry[] = Array.isArray(j?.items) ? (j.items as QAEntry[]) : [];
       setRelResults(its);
-    } catch (e: any) {
-      if (e?.name === "AbortError") return;
+    } catch (e: unknown) {
+      if ((e as { name?: string })?.name === "AbortError") return;
     }
   }
 

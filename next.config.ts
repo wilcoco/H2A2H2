@@ -5,8 +5,8 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: __dirname,
   },
-  eslint: { ignoreDuringBuilds: true },
-  typescript: { ignoreBuildErrors: true },
+  eslint: { ignoreDuringBuilds: false },
+  typescript: { ignoreBuildErrors: false },
   outputFileTracingRoot: path.join(__dirname),
   webpack: (config) => {
     // Windows + Node 22의 webpack readlink EISDIR 버그 우회

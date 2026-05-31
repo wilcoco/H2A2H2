@@ -128,7 +128,7 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
               const j = await r.json();
               return { id, question: String(j?.question || id), summary: j?.summary ? String(j.summary) : undefined, answer: j?.answer ? String(j.answer) : undefined };
             } catch {
-              return { id, question: id } as { id: string; question: string } as any;
+              return { id, question: id, summary: undefined, answer: undefined };
             }
           })
         );
@@ -147,7 +147,7 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
       try {
         const r = await fetch(`/api/qa/${encodeURIComponent(srcOverrideId)}`, { cache: "no-store" });
         const j = await r.json();
-        if (active) setSrcOverride({ id: srcOverrideId, question: String(j?.question || ""), createdBy: j?.createdBy ? String(j.createdBy) : undefined } as any);
+        if (active) setSrcOverride({ id: srcOverrideId, question: String(j?.question || ""), createdBy: j?.createdBy ? String(j.createdBy) : undefined });
       } catch { if (active) setSrcOverride(null); }
     })();
     return () => { active = false; };
@@ -184,7 +184,7 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
               const j = await r.json();
               return { id, question: String(j?.question || id), summary: j?.summary ? String(j.summary) : undefined, answer: j?.answer ? String(j.answer) : undefined };
             } catch {
-              return { id, question: id } as { id: string; question: string } as any;
+              return { id, question: id, summary: undefined, answer: undefined };
             }
           })
         );
@@ -217,8 +217,8 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
         const arr: Array<{ id: string; question: string; summary?: string; helpful?: number; unhelpful?: number }> = Array.isArray(j?.items) ? j.items : [];
         setMyItems(arr);
       }
-    } catch (e: any) {
-      if (e?.name === "AbortError") return;
+    } catch (e: unknown) {
+      if ((e as { name?: string })?.name === "AbortError") return;
     } finally {
       if (reqId === myReqRef.current) setMyLoading(false);
     }
@@ -247,7 +247,7 @@ export default function RightRelations({ qaId, targetId, onTargetChange, connect
         </label>
         <div className="ml-auto flex items-center gap-1">
           <span className="text-[11px] text-gray-600">방향</span>
-          <select className="text-xs border rounded px-2 py-1" value={navDirection} onChange={(e) => onNavDirectionChange?.(e.target.value as any)} title="중앙 선택 이동 시 기본 연결 방향">
+          <select className="text-xs border rounded px-2 py-1" value={navDirection} onChange={(e) => onNavDirectionChange?.(e.target.value as "prev_to_current" | "current_to_prev")} title="중앙 선택 이동 시 기본 연결 방향">
             <option value="prev_to_current">이전 → 현재</option>
             <option value="current_to_prev">현재 → 이전</option>
           </select>

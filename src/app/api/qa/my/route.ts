@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
     if (!userId) return NextResponse.json({ items: [] });
 
     const rows = await withConn(async (c) => {
-      const params: any[] = [userId, limit];
+      const params: unknown[] = [userId, limit];
       let where = `created_by = $1`;
       if (q) {
         params.splice(1, 0, `%${q.toLowerCase()}%`);

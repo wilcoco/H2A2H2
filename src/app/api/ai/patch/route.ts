@@ -130,9 +130,11 @@ Constraints:
     
     try {
       const model = process.env.OPENAI_MODEL || "gpt-4o";
-      const provider = input.provider ?? (process.env.AI_PROVIDER as any) ?? "openai";
+      const envProv = process.env.AI_PROVIDER as "openai" | "anthropic" | undefined;
+      const provider: "openai" | "anthropic" = input.provider ?? envProv ?? "openai";
       const anthropicModel = process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-latest";
-      const inputText = `${system}\n\n${(user.content?.[0] as any)?.text ?? ""}`;
+      const firstContent = user.content?.[0] as { text?: string } | undefined;
+      const inputText = `${system}\n\n${firstContent?.text ?? ""}`;
       let text = "";
       if (provider === "anthropic") {
         const antKey = process.env.ANTHROPIC_API_KEY;
@@ -155,21 +157,21 @@ Constraints:
                 ],
               }),
             });
-            const j = await resp.json().catch(() => ({} as any));
+            const j = await resp.json().catch(() => ({} as { content?: Array<{ type: string; text?: string }> }));
             const parts: Array<{ type: string; text?: string }> = Array.isArray(j?.content) ? j.content : [];
             text = parts.filter((p) => p?.type === "text").map((p) => String(p.text || "")).join("\n");
           } catch {}
         }
         if (!text && client) {
-          const body: any = { model, input: inputText, temperature: 0.1, max_output_tokens: 2000 };
+          const body: Record<string, unknown> = { model, input: inputText, temperature: 0.1, max_output_tokens: 2000 };
           if (model.startsWith("o3")) body.reasoning = { effort: "high" };
           try {
-            const res = await client.responses.create(body);
-            text = (res as any).output_text ?? "";
+            const res = await client.responses.create(body as Parameters<typeof client.responses.create>[0]);
+            text = (res as { output_text?: string }).output_text ?? "";
           } catch {}
         }
       } else {
-        const body: any = { model, input: inputText, temperature: 0.1, max_output_tokens: 2000 };
+        const body: Record<string, unknown> = { model, input: inputText, temperature: 0.1, max_output_tokens: 2000 };
         if (model.startsWith("o3")) body.reasoning = { effort: "high" };
         body.response_format = {
           type: "json_schema",
@@ -233,13 +235,13 @@ Constraints:
         };
         if (client) {
           try {
-            const res = await client.responses.create(body);
-            text = (res as any).output_text ?? "";
+            const res = await client.responses.create(body as Parameters<typeof client.responses.create>[0]);
+            text = (res as { output_text?: string }).output_text ?? "";
           } catch {
             if (model !== "gpt-4o") {
               try {
-                const res2 = await client.responses.create({ ...body, model: "gpt-4o", reasoning: undefined });
-                text = (res2 as any).output_text ?? "";
+                const res2 = await client.responses.create({ ...body, model: "gpt-4o", reasoning: undefined } as Parameters<typeof client.responses.create>[0]);
+                text = (res2 as { output_text?: string }).output_text ?? "";
               } catch {}
             }
           }
@@ -264,7 +266,7 @@ Constraints:
                   ],
                 }),
               });
-              const j = await resp.json().catch(() => ({} as any));
+              const j = await resp.json().catch(() => ({} as { content?: Array<{ type: string; text?: string }> }));
               const parts: Array<{ type: string; text?: string }> = Array.isArray(j?.content) ? j.content : [];
               text = parts.filter((p) => p?.type === "text").map((p) => String(p.text || "")).join("\n");
             } catch {}

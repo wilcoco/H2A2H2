@@ -65,27 +65,27 @@ export async function GET(req: NextRequest) {
                        from works
                        where is_public = true and ( ${titleExpr} or ${descExpr} or ${topicExpr} )
                        order by created_at desc limit 100`;
-          const q = await c.query<Row>(sql, pats);
-          return q.rows;
+          const q = await c.query(sql, pats);
+          return q.rows as unknown as Row[];
         }
       }
       if (search && search.length > 0) {
-        const q = await c.query<Row>(
+        const q = await c.query(
           `select id, title, description, node_count, investment_score, created_by, created_at
            from works
            where is_public = true and (title ilike $1 or coalesce(description,'') ilike $1 or coalesce(topic,'') ilike $1)
            order by created_at desc limit 100`,
           ["%" + search + "%"]
         );
-        return q.rows;
+        return q.rows as unknown as Row[];
       }
-      const q = await c.query<Row>(
+      const q = await c.query(
         `select id, title, description, node_count, investment_score, created_by, created_at
          from works
          where is_public = true
          order by created_at desc limit 100`
       );
-      return q.rows;
+      return q.rows as unknown as Row[];
     });
     return NextResponse.json({
       works: rows.map((r: Row) => ({

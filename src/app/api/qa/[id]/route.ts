@@ -4,10 +4,10 @@ import { verifySession } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
     await ensureTables();
-    const id = params?.id;
+    const { id } = await ctx.params;
     if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
     const token = req.cookies.get("session")?.value;
     const user = token ? await verifySession(token) : null;
