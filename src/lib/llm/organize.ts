@@ -34,6 +34,19 @@ Return ONLY valid JSON with keys:
   verification_candidates (이 답이 효과 있었는지 외부로 측정할 수 있는 지표 후보, 최대 3개;
     각각 {metric, direction: higher_better|lower_better, rationale})
 
+WIKI CROSS-LINKING:
+You may be given "EXISTING PAGES" — other organized pages in the same vault.
+If your body discusses a concept that an existing page already covers in depth,
+INSERT a wikilink in the body using the form: [[org_xxxxxxxxx|surface text]]
+where org_xxxxxxxxx is the EXACT page id from the EXISTING PAGES list and
+"surface text" is the natural Korean/English phrase as it appears in your body.
+
+Rules:
+- Only link to pages whose title/summary clearly matches what you discuss.
+- Do NOT invent ids. If unsure, omit the link.
+- Maximum 5 wikilinks per body.
+- Wikilinks must be inline in the body (not in a separate "관련" section).
+
 Do NOT include analysis like "이 답을 작성한 이유" or "추가 확인 질문".
 Body는 정리 본문 자체만.`;
 
@@ -51,13 +64,46 @@ export async function organizeBranch(
         limit 50`,
       [rootId]
     );
-    return r.rows as Array<{ id: string; question: string; answer: string | null; summary: string | null; created_by: string | null; created_at: string; forked_from: string | null }>;
+    return r.rows as unknown as Array<{ id: string; question: string; answer: string | null; summary: string | null; created_by: string | null; created_at: string; forked_from: string | null }>;
   });
 
   if (branch.length === 0) throw new Error("empty_branch");
 
+  // W1: cross-link 후보 — 같은 vault(베타에서는 전체)의 기존 organized_pages 중
+  // 가지 키워드와 겹치는 것 상위 8개를 LLM에게 제공.
+  const branchText = branch.map((n) => `${n.question} ${n.summary || n.answer || ""}`).join(" ").toLowerCase();
+  const candidates = await withConn(async (c) => {
+    try {
+      const r = await c.query(
+        `select id, title, summary_line from organized_pages
+           where root_id <> $1
+           order by greatest(
+             similarity(lower(title), $2),
+             similarity(lower(summary_line), $2)
+           ) desc nulls last,
+           view_count desc, updated_at desc
+           limit 8`,
+        [rootId, branchText.slice(0, 800)]
+      );
+      return r.rows as unknown as Array<{ id: string; title: string; summary_line: string }>;
+    } catch {
+      // pg_trgm 없으면 최근 페이지 8개로 폴백
+      const r = await c.query(
+        `select id, title, summary_line from organized_pages where root_id <> $1 order by updated_at desc limit 8`,
+        [rootId]
+      );
+      return r.rows as unknown as Array<{ id: string; title: string; summary_line: string }>;
+    }
+  });
+
+  const candidatesText = candidates.length > 0
+    ? `\n\nEXISTING PAGES (use as wikilink targets if relevant):\n` +
+      candidates.map((p) => `- ${p.id}: "${p.title}" — ${p.summary_line}`).join("\n")
+    : "";
+
   const userText = `Branch root: ${rootId} (${branch.length} nodes)\n\n` +
-    branch.map((n, i) => `### Node ${i + 1} (${n.id}${n.forked_from ? `, fork of ${n.forked_from}` : ""})\nQ: ${n.question}\nA: ${(n.summary || n.answer || "").slice(0, 1800)}`).join("\n\n");
+    branch.map((n, i) => `### Node ${i + 1} (${n.id}${n.forked_from ? `, fork of ${n.forked_from}` : ""})\nQ: ${n.question}\nA: ${(n.summary || n.answer || "").slice(0, 1800)}`).join("\n\n") +
+    candidatesText;
 
   const result = await routeAndCall(
     email,

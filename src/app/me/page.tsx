@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import DecayCurve from "@/components/DecayCurve";
 
 type MyQAItem = {
@@ -249,8 +250,8 @@ export default function MePage() {
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-semibold">내 페이지</h1>
         <div className="flex items-center gap-2">
-          <a href="/" className="text-xs px-2 py-1 rounded border hover:bg-gray-100">메인으로</a>
-          <a href="/me/chains" className="text-xs px-2 py-1 rounded border hover:bg-gray-100">나의 체인</a>
+          <Link href="/" className="text-xs px-2 py-1 rounded border hover:bg-gray-100">메인으로</Link>
+          <Link href="/me/chains" className="text-xs px-2 py-1 rounded border hover:bg-gray-100">나의 체인</Link>
         </div>
       </div>
 

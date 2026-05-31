@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 
 type VerifCand = { metric: string; direction?: "higher_better" | "lower_better"; rationale?: string };
 
+type OutgoingLink = { targetPageId: string; targetTitle: string; surfaceText: string | null };
+
 type OrganizedItem = {
   id: string;
   rootId: string;
@@ -18,6 +20,16 @@ type OrganizedItem = {
   updatedAt: string;
   isMine: boolean;
   forkedFrom?: string | null;
+  outgoingLinks?: OutgoingLink[];
+};
+
+type BacklinkItem = {
+  sourceId: string;
+  sourceTitle: string;
+  sourceSummary: string;
+  sourceOwner: string;
+  surfaceText: string | null;
+  createdAt: string;
 };
 
 type DraftMeta = {
@@ -55,6 +67,7 @@ export default function OntologyPanel({ rootId, signedIn, preferByok = false, on
   const [msg, setMsg] = useState<string | null>(null);
   const [kwInput, setKwInput] = useState("");
   const [tick, setTick] = useState(0);
+  const [backlinks, setBacklinks] = useState<BacklinkItem[]>([]);
 
   useEffect(() => {
     if (!rootId) { setItems([]); setDraft(null); return; }
@@ -89,6 +102,20 @@ export default function OntologyPanel({ rootId, signedIn, preferByok = false, on
 
   const myItem = useMemo(() => items.find((it) => it.isMine) || null, [items]);
   const others = useMemo(() => items.filter((it) => !it.isMine), [items]);
+
+  // 내 페이지를 참조하는 다른 페이지들 (backlinks)
+  useEffect(() => {
+    if (!myItem) { setBacklinks([]); return; }
+    let active = true;
+    (async () => {
+      try {
+        const r = await fetch(`/api/qa/organize/backlinks?id=${encodeURIComponent(myItem.id)}`, { cache: "no-store" });
+        const j = await r.json().catch(() => ({}));
+        if (active) setBacklinks(Array.isArray(j?.items) ? j.items : []);
+      } catch {}
+    })();
+    return () => { active = false; };
+  }, [myItem?.id, tick]);
 
   async function aiDraft() {
     if (!rootId) return;
@@ -273,6 +300,44 @@ export default function OntologyPanel({ rootId, signedIn, preferByok = false, on
 
         {msg && <div className="text-[12px] text-gray-700 mt-2">{msg}</div>}
       </div>
+
+      {/* 본문 wikilink 미리보기 + backlinks (내 페이지 저장된 경우) */}
+      {myItem && (
+        <div className="border rounded p-3">
+          <div className="text-[11px] text-gray-500 mb-2">연결</div>
+          {myItem.outgoingLinks && myItem.outgoingLinks.length > 0 ? (
+            <div className="mb-2">
+              <div className="text-[10px] text-gray-500">→ 이 페이지에서 가리키는 다른 정리 ({myItem.outgoingLinks.length})</div>
+              <ul className="flex flex-col gap-0.5 mt-0.5">
+                {myItem.outgoingLinks.map((l, i) => (
+                  <li key={i} className="text-[11px] flex items-center gap-1">
+                    <span className="text-blue-700">[[</span>
+                    <span className="text-blue-700 underline cursor-pointer" title={l.targetTitle}>{l.surfaceText || l.targetTitle}</span>
+                    <span className="text-blue-700">]]</span>
+                    <span className="text-gray-400 text-[10px] ml-1">→ {l.targetTitle}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <div className="text-[11px] text-gray-400">본문에 [[다른-정리-id]] 형태로 다른 페이지를 인용하면 여기에 표시됩니다. (AI 자동 정리가 후보 페이지를 분석해서 자동 삽입)</div>
+          )}
+          {backlinks.length > 0 && (
+            <div className="mt-2 border-t pt-2">
+              <div className="text-[10px] text-gray-500">← 이 페이지를 참조하는 다른 정리 ({backlinks.length})</div>
+              <ul className="flex flex-col gap-1 mt-0.5">
+                {backlinks.map((b, i) => (
+                  <li key={i} className="text-[11px] border-l-2 border-violet-200 pl-2">
+                    <div className="font-medium text-gray-800">{b.sourceTitle}</div>
+                    <div className="text-gray-600 line-clamp-1">{b.sourceSummary}</div>
+                    <div className="text-[10px] text-gray-400">{b.sourceOwner}{b.surfaceText ? ` · "${b.surfaceText}"` : ""}</div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 다른 사람의 정리 (있으면) */}
       {others.length > 0 && (

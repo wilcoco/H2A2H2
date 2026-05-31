@@ -12,6 +12,7 @@ import { ensureTables, withConn } from "@/lib/db";
 import { verifySession } from "@/lib/auth";
 import { organizeBranch, OrganizedSchema } from "@/lib/llm/organize";
 import { QuotaExhausted } from "@/lib/llm/router";
+import { parseWikilinks } from "@/lib/nightwish/wikilink";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,6 +57,31 @@ export async function GET(req: NextRequest) {
       return r.rows;
     });
 
+    // 같은 root_id의 모든 페이지의 outgoing wikilinks (UI에서 본문 렌더에 사용)
+    const pageIds = (rows as Array<{ id: string }>).map((r) => r.id);
+    let linkRows: Array<{ source_page_id: string; target_page_id: string; surface_text: string | null; target_title: string }> = [];
+    if (pageIds.length > 0) {
+      linkRows = await withConn(async (c) => {
+        const r = await c.query(
+          `select l.source_page_id, l.target_page_id, l.surface_text, p.title as target_title
+             from organized_links l
+             join organized_pages p on p.id = l.target_page_id
+            where l.source_page_id = any($1)`,
+          [pageIds]
+        );
+        return r.rows as unknown as typeof linkRows;
+      });
+    }
+    const linksBySource = new Map<string, Array<{ targetPageId: string; targetTitle: string; surfaceText: string | null }>>();
+    for (const l of linkRows) {
+      if (!linksBySource.has(l.source_page_id)) linksBySource.set(l.source_page_id, []);
+      linksBySource.get(l.source_page_id)!.push({
+        targetPageId: l.target_page_id,
+        targetTitle: l.target_title,
+        surfaceText: l.surface_text,
+      });
+    }
+
     const items = rows.map((r: Record<string, unknown>) => ({
       id: r.id,
       rootId: r.root_id,
@@ -73,6 +99,7 @@ export async function GET(req: NextRequest) {
       forkedFrom: r.forked_from,
       viewCount: r.view_count,
       isMine: user?.email === r.organized_by,
+      outgoingLinks: linksBySource.get(String(r.id)) || [],
     }));
 
     return NextResponse.json({ items });
@@ -177,8 +204,35 @@ export async function POST(req: NextRequest) {
           user.email,
         ]
       );
-      return r.rows[0] as { id: string; inserted: boolean };
+      return r.rows[0] as unknown as { id: string; inserted: boolean };
     });
+
+    // W1: 본문 wikilink → organized_links 정규화 저장
+    try {
+      const links = parseWikilinks(data.body || "");
+      if (links.length > 0) {
+        await withConn(async (c) => {
+          // 이 페이지에서 나가는 링크 갱신 — 기존 것 삭제 후 신규 삽입 (단순)
+          await c.query(`delete from organized_links where source_page_id = $1`, [result.id]);
+          // target 페이지가 실제로 존재하는 것만 저장 (LLM hallucination 방어)
+          const targets = await c.query(
+            `select id from organized_pages where id = any($1)`,
+            [links.map((l) => l.targetPageId)]
+          );
+          const valid = new Set((targets.rows as unknown as Array<{ id: string }>).map((r) => r.id));
+          for (const l of links) {
+            if (!valid.has(l.targetPageId)) continue;
+            await c.query(
+              `insert into organized_links (source_page_id, target_page_id, surface_text)
+               values ($1, $2, $3)
+               on conflict (source_page_id, target_page_id, coalesce(anchor, '')) do update
+                 set surface_text = excluded.surface_text, created_at = now()`,
+              [result.id, l.targetPageId, l.surfaceText]
+            );
+          }
+        });
+      }
+    } catch {}
 
     return NextResponse.json({ ok: true, id: result.id, inserted: result.inserted });
   } catch (err) {

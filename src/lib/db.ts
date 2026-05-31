@@ -341,6 +341,23 @@ export async function ensureTables() {
     try { await c.query(`create index if not exists organized_pages_summary_trgm on organized_pages using gin (lower(summary_line) gin_trgm_ops)`); } catch {}
     try { await c.query(`create index if not exists organized_pages_title_trgm on organized_pages using gin (lower(title) gin_trgm_ops)`); } catch {}
 
+    // W1: LLM wiki cross-link — 정리 페이지 본문의 [[page-id]] 참조를 정규화 저장.
+    // 사용처: 검색 그래프 확장, backlinks 표시, RAG 자동 컨텍스트 주입.
+    await c.query(`
+      create table if not exists organized_links (
+        id bigserial primary key,
+        source_page_id text not null,
+        target_page_id text not null,
+        anchor text,                          -- 본문 내 닻 (예: section 헤더)
+        surface_text text,                    -- [[page|surface]]의 surface 부분
+        confidence double precision not null default 1.0,
+        created_at timestamptz not null default now()
+      );
+    `);
+    await c.query(`create index if not exists organized_links_src_idx on organized_links (source_page_id)`);
+    await c.query(`create index if not exists organized_links_tgt_idx on organized_links (target_page_id)`);
+    await c.query(`create unique index if not exists organized_links_uniq on organized_links (source_page_id, target_page_id, coalesce(anchor, ''))`);
+
     // Teams and Work Logs
     await c.query(`
       create table if not exists teams (

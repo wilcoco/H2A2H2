@@ -10,6 +10,7 @@ import { z } from "zod";
 import { ensureTables, withConn } from "@/lib/db";
 import { verifySession } from "@/lib/auth";
 import { routeAndCall, QuotaExhausted } from "@/lib/llm/router";
+import { buildRag } from "@/lib/llm/rag";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,10 +72,17 @@ export async function POST(req: NextRequest) {
 
     const maxTokens = input.detail === "long" ? 2200 : input.detail === "short" ? 700 : 1300;
 
+    // W3: LLM wiki RAG — 같은 vault의 정리된 페이지(직접 매칭 + cross-link 1-hop)를
+    // 컨텍스트로 자동 주입. 시스템이 누적된 지식을 받아쓰기 함 → LLM 비용↓ 품질↑.
+    const rag = await buildRag(input.question);
+    const userText = rag.contextText
+      ? `${rag.contextText}\n\n---\n\nUser question: ${input.question}`
+      : input.question;
+
     try {
       const result = await routeAndCall(
         email,
-        { system, user: input.question, maxTokens, temperature: 0.3 },
+        { system, user: userText, maxTokens, temperature: 0.3 },
         { preferByok: input.preferByok, preferredProvider: input.preferredProvider }
       );
       return NextResponse.json({
@@ -85,6 +93,7 @@ export async function POST(req: NextRequest) {
         providerUsed: result.providerUsed,
         responseId: result.responseId,
         quota: result.quotaAfter,
+        ragSources: rag.sources,
       });
     } catch (e) {
       if (e instanceof QuotaExhausted) {
