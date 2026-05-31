@@ -69,7 +69,7 @@ export default function GovernanceBar({ refreshKey, currentUserEmail, onOpenCoun
       title="nightwish 거버넌스 — 참여자가 임계에 도달하면 규칙 변경권이 단일 관리자에서 합의체로 자동 이전됩니다 (constitutional pre-commitment)."
     >
       <span className={`px-1.5 py-0.5 rounded ${isDecentralized ? "bg-emerald-100 text-emerald-800 border border-emerald-300" : "bg-amber-100 text-amber-800 border border-amber-300"}`}>
-        {isDecentralized ? "DECENTRALIZED" : "BOOTSTRAP"}
+        {isDecentralized ? "공동 운영" : "초기 단계"}
       </span>
       {!isDecentralized ? (
         <>
@@ -77,10 +77,10 @@ export default function GovernanceBar({ refreshKey, currentUserEmail, onOpenCoun
           <div className="flex-1 max-w-[160px] h-1.5 rounded bg-gray-200 overflow-hidden">
             <div className="h-full bg-amber-400" style={{ width: `${pct}%` }} />
           </div>
-          <span className="text-gray-500">분권까지 {s.remainingToDecentralize}명</span>
+          <span className="text-gray-500">공동 운영까지 {s.remainingToDecentralize}명</span>
         </>
       ) : (
-        <span className="text-gray-600">합의체 {s.councilSize}명 · 정족수 {s.councilQuorumPct}%</span>
+        <span className="text-gray-600">운영진 {s.councilSize}명 · 결정 정족수 {s.councilQuorumPct}%</span>
       )}
       <div className="ml-auto flex items-center gap-2">
         {isAdmin && (
@@ -95,8 +95,8 @@ export default function GovernanceBar({ refreshKey, currentUserEmail, onOpenCoun
         <button
           className="text-[10px] px-1.5 py-0.5 rounded border border-gray-300 bg-white hover:bg-gray-50"
           onClick={onOpenCouncil}
-          title="합의체 구성·관리"
-        >합의체</button>
+          title="운영진 구성·관리"
+        >운영진</button>
         {s.adminEmail && <span className="text-gray-400">admin: {s.adminEmail}</span>}
       </div>
     </div>

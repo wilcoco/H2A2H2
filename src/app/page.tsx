@@ -15,6 +15,8 @@ import DormantPanel from "@/components/DormantPanel";
 import NightwishBar from "@/components/NightwishBar";
 import VaultTree from "@/components/VaultTree";
 import VaultExportButton from "@/components/VaultExportButton";
+import OnboardingModal from "@/components/OnboardingModal";
+import { useAdvancedMode } from "@/lib/useAdvancedMode";
 
 const initialWorks: Work[] = [
   {
@@ -75,6 +77,8 @@ export default function Home() {
   const [leftTab, setLeftTab] = useState<"search" | "vault" | "dormant">("search");
   const [rightTab, setRightTab] = useState<"graph" | "writer">("graph");
   const [councilOpen, setCouncilOpen] = useState(false);
+  const [advanced, setAdvanced] = useAdvancedMode();
+  const [helpOpen, setHelpOpen] = useState(false);
   const dragRef = useRef<{ side: "left" | "right"; startX: number; startW: number } | null>(null);
 
   useEffect(() => {
@@ -308,6 +312,15 @@ export default function Home() {
         <h1 className="text-base font-semibold">업무 지식 편집기</h1>
         <div className="flex items-center gap-3">
           <div className="text-xs text-gray-500 hidden sm:block">MVP · 3-panels</div>
+          <button
+            className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100"
+            onClick={() => setHelpOpen(true)}
+            title="3단계 사용법 다시 보기"
+          >도움말</button>
+          <label className="text-xs flex items-center gap-1 px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 cursor-pointer" title="고급 컨트롤(검증/포크/거버넌스/잠복 등)을 보이거나 숨깁니다">
+            <input type="checkbox" checked={advanced} onChange={(e) => setAdvanced(e.target.checked)} className="accent-violet-600" />
+            <span>고급 모드</span>
+          </label>
           <a href="/me" className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100">내 페이지</a>
           <div className="flex items-center gap-1 text-xs">
             <span className="text-gray-600">Provider</span>
@@ -354,12 +367,15 @@ export default function Home() {
           )}
         </div>
       </header>
-      <GovernanceBar
-        refreshKey={graphRefreshKey}
-        currentUserEmail={user?.email}
-        onOpenCouncil={() => setCouncilOpen(true)}
-        onSeededP0={(id) => { setSelectedQaId(id); setLastViewedQaId(id); setCenterAiAnswer(""); setGraphRefreshKey((k) => k + 1); }}
-      />
+      {advanced && (
+        <GovernanceBar
+          refreshKey={graphRefreshKey}
+          currentUserEmail={user?.email}
+          onOpenCouncil={() => setCouncilOpen(true)}
+          onSeededP0={(id) => { setSelectedQaId(id); setLastViewedQaId(id); setCenterAiAnswer(""); setGraphRefreshKey((k) => k + 1); }}
+        />
+      )}
+      <OnboardingModal forceOpen={helpOpen} onClose={() => setHelpOpen(false)} />
       <GovernanceCouncilModal
         open={councilOpen}
         onClose={() => setCouncilOpen(false)}
@@ -381,14 +397,18 @@ export default function Home() {
               <button
                 className={`text-xs px-3 py-2 ${leftTab === "vault" ? "border-b-2 border-violet-600 text-violet-700" : "text-gray-500 hover:text-gray-700"}`}
                 onClick={() => setLeftTab("vault")}
-                title="Vault — Obsidian 스타일 가지 트리"
-              >Vault</button>
-              <button
-                className={`text-xs px-3 py-2 ${leftTab === "dormant" ? "border-b-2 border-amber-600 text-amber-700" : "text-gray-500 hover:text-gray-700"}`}
-                onClick={() => setLeftTab("dormant")}
-                title="잠복한 가지를 발견하고 부활시킬 수 있어요 (갈릴레오 가지 보존)"
-              >잠복 발견</button>
-              <div className="ml-auto pr-2"><VaultExportButton signedIn={Boolean(user?.email)} scope="mine" /></div>
+                title="둘러보기 — 가지별 답 묶음"
+              >둘러보기</button>
+              {advanced && (
+                <button
+                  className={`text-xs px-3 py-2 ${leftTab === "dormant" ? "border-b-2 border-amber-600 text-amber-700" : "text-gray-500 hover:text-gray-700"}`}
+                  onClick={() => setLeftTab("dormant")}
+                  title="오래 묻혀 있는 답을 다시 살릴 수 있어요"
+                >오래된 답</button>
+              )}
+              {advanced && (
+                <div className="ml-auto pr-2"><VaultExportButton signedIn={Boolean(user?.email)} scope="mine" /></div>
+              )}
             </div>
             <div className="p-2 md:p-3 overflow-auto flex-1" style={{ display: leftTab === "search" ? "block" : "none" }}>
               <LeftAsk
@@ -496,6 +516,7 @@ export default function Home() {
               question={centerQuestion}
               answer={centerAiAnswer}
               signedIn={Boolean(user?.email)}
+              advanced={advanced}
               refreshKey={graphRefreshKey}
               onForked={(id) => {
                 setSelectedQaId(id);

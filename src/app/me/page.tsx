@@ -375,7 +375,12 @@ export default function MePage() {
                         </span>
                       )}
                       {y.gateReason && y.gateReason !== "ok" && (
-                        <span className="text-red-600" title="배당 게이트가 닫힌 이유">게이트: {y.gateReason}</span>
+                        <span className="text-red-600" title="이 답이 지금 보상을 못 받는 이유">
+                          {y.gateReason === "branch_not_verified" && "보상 잠금: 이 답이 실측 결과로 확인되지 않음"}
+                          {y.gateReason === "self_stake" && "보상 잠금: 본인이 만든 답에는 자기 응원 안 됨"}
+                          {y.gateReason === "reclaimed" && "보상 잠금: 포인트가 공용 풀로 회수됨"}
+                          {y.gateReason === "no_contribution" && "보상 잠금: 이 답에 기여(👍·노트·검증)가 없음"}
+                        </span>
                       )}
                       {typeof y.decayFactor === "number" && (
                         <span title={`age ${y.ageDays}일, 반감기 30일`}>· decay ×{y.decayFactor}</span>

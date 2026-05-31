@@ -67,12 +67,12 @@ export default function DormantPanel({ onSelect, refreshKey }: Props) {
   return (
     <div className="flex flex-col gap-2 text-sm">
       <div className="flex items-center justify-between">
-        <div className="text-xs text-gray-600">잠복 가지 (≥{dormantDays}일 무활동)</div>
+        <div className="text-xs text-gray-600">오래된 답 ({dormantDays}일 이상 반응 없음)</div>
         <button className="text-[10px] px-2 py-0.5 rounded border" onClick={() => setBump((n) => n + 1)} disabled={loading}>{loading ? "…" : "새로고침"}</button>
       </div>
       {msg && <div className="text-[11px] text-gray-700">{msg}</div>}
       {items.length === 0 && !loading && (
-        <div className="text-[11px] text-gray-400">잠복 가지 없음. 갈릴레오 가지는 살아 있어도 잠시 잘 수 있어요.</div>
+        <div className="text-[11px] text-gray-400">묻혀 있는 답이 없어요. 시간이 지나면 반응 없는 답이 여기 모입니다.</div>
       )}
       <ul className="flex flex-col gap-1.5">
         {items.map((it) => (
@@ -91,14 +91,14 @@ export default function DormantPanel({ onSelect, refreshKey }: Props) {
                 className="text-[10px] px-2 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100 disabled:opacity-50"
                 onClick={() => act("reclaim", it.id)}
                 disabled={busy === it.id + ":reclaim" || it.liveStake <= 0}
-                title="라이브 스테이크를 유동성 풀로 환원합니다 (소각 아님)"
-              >회수</button>
+                title="이 답에 묶여 있던 포인트를 공용 풀로 돌려놓아요 (소각 아님)"
+              >포인트 회수</button>
               <button
                 className="text-[10px] px-2 py-0.5 rounded border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
                 onClick={() => act("revive", it.id)}
                 disabled={busy === it.id + ":revive"}
-                title="부활: 원 스테이커 복원 + 발견자 보너스"
-              >부활</button>
+                title="이 답을 다시 활성화합니다. 발견자에게 보너스도 지급."
+              >다시 살리기</button>
             </div>
           </li>
         ))}

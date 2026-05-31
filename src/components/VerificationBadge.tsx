@@ -50,9 +50,9 @@ export default function VerificationBadge({ qaId, rootId, refreshKey }: Props) {
     return (
       <span
         className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded border border-amber-300 bg-amber-50 text-amber-800"
-        title="이 가지에는 외부 현실 측정이 없습니다. 검증 닻이 없으면 배당이 0으로 잠깁니다 (nightwish critique §2)."
+        title="이 답이 실제로 효과가 있었는지 측정한 결과가 아직 없어요."
       >
-        ⚠ 미검증
+        📊 실측 결과 없음
       </span>
     );
   }
@@ -66,9 +66,9 @@ export default function VerificationBadge({ qaId, rootId, refreshKey }: Props) {
       {branchVerified ? (
         <span
           className="px-2 py-0.5 rounded border border-emerald-300 bg-emerald-50 text-emerald-800"
-          title={`검증된 가지 — 배당 게이트 통과. 통과 ${passed.length}건 / 실패 ${failed}건.`}
+          title={`이 답은 실측 결과로 효과가 확인되었어요 (성공 ${passed.length}건 / 미달 ${failed}건).`}
         >
-          ✓ 검증됨
+          ✓ 결과 확인됨
           {best && (
             <span className="ml-1 text-emerald-700/80">
               · {best.metric} {fmt(best.baseline, best.unit)}→{fmt(best.observed, best.unit)}
@@ -78,9 +78,9 @@ export default function VerificationBadge({ qaId, rootId, refreshKey }: Props) {
       ) : (
         <span
           className="px-2 py-0.5 rounded border border-red-300 bg-red-50 text-red-800"
-          title={`측정은 있으나 통과 없음 (${failed}건 실패).`}
+          title={`측정은 했으나 효과가 미미했어요 (${failed}건 미달).`}
         >
-          ✗ 측정 실패
+          ✗ 효과 미달
         </span>
       )}
     </span>

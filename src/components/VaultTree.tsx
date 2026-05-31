@@ -70,13 +70,13 @@ export default function VaultTree({ signedIn, onSelect, refreshKey }: Props) {
             onClick={() => setScope(s)}
             disabled={(s === "mine" || s === "stake") && !signedIn}
             title={s === "public" ? "전체 공개 가지" : s === "mine" ? "내가 만든 가지" : "내가 스테이크 건 가지"}
-          >{s === "public" ? "📂 공개" : s === "mine" ? "📁 내 것" : "🪙 스테이크"}</button>
+          >{s === "public" ? "📂 공개" : s === "mine" ? "📁 내 답" : "🪙 응원한 답"}</button>
         ))}
       </div>
       {loading ? (
         <div className="text-[11px] text-gray-400">로딩…</div>
       ) : branches.length === 0 ? (
-        <div className="text-[11px] text-gray-400">표시할 가지 없음</div>
+        <div className="text-[11px] text-gray-400">아직 답이 없어요. 가운데에서 첫 답을 만들어보세요.</div>
       ) : (
         <ul className="flex flex-col gap-0.5">
           {branches.map((b) => {
