@@ -37,6 +37,14 @@ export async function GET() {
   try {
     await ensureTables();
     const s = await loadState();
+    const members = await withConn(async (c) => {
+      const r = await c.query(`select email, seated_at from governance_council order by seated_at asc`);
+      return r.rows as Array<{ email: string; seated_at: string }>;
+    });
+    const log = await withConn(async (c) => {
+      const r = await c.query(`select at, actor, kind, detail from governance_log order by at desc limit 20`);
+      return r.rows as Array<{ at: string; actor: string | null; kind: string; detail: string | null }>;
+    });
     return NextResponse.json({
       phase: s.phase,
       adminEmail: s.adminEmail,
@@ -45,9 +53,11 @@ export async function GET() {
       participantCount: s.participantCount,
       councilSize: s.councilSize,
       remainingToDecentralize: Math.max(0, s.decentralizeAt - s.participantCount),
+      council: members,
+      log,
     });
   } catch {
-    return NextResponse.json({ phase: "bootstrap", participantCount: 0, decentralizeAt: 100, councilQuorumPct: 50, councilSize: 0, remainingToDecentralize: 100, adminEmail: null });
+    return NextResponse.json({ phase: "bootstrap", participantCount: 0, decentralizeAt: 100, councilQuorumPct: 50, councilSize: 0, remainingToDecentralize: 100, adminEmail: null, council: [], log: [] });
   }
 }
 

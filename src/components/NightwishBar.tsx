@@ -3,6 +3,7 @@
 import { useState } from "react";
 import VerificationBadge from "./VerificationBadge";
 import VerificationDialog from "./VerificationDialog";
+import BookkeepPanel from "./BookkeepPanel";
 
 type Props = {
   qaId?: string;
@@ -21,6 +22,7 @@ type Props = {
 export default function NightwishBar({ qaId, rootId, question, answer, signedIn, onForked, refreshKey }: Props) {
   const [openVerify, setOpenVerify] = useState(false);
   const [forkOpen, setForkOpen] = useState(false);
+  const [bookOpen, setBookOpen] = useState(false);
   const [forkAnswer, setForkAnswer] = useState("");
   const [forkBusy, setForkBusy] = useState(false);
   const [forkMsg, setForkMsg] = useState<string | null>(null);
@@ -67,7 +69,18 @@ export default function NightwishBar({ qaId, rootId, question, answer, signedIn,
           disabled={!signedIn}
           title="같은 질문에 다른 답을 새 가지로 만듭니다 (수렴 거부, 입증 책임 본인)"
         >⑂ 포크</button>
+        <button
+          className="text-[11px] px-2 py-1 rounded border border-violet-300 bg-white hover:bg-violet-50 disabled:opacity-50"
+          onClick={() => setBookOpen((v) => !v)}
+          disabled={!signedIn}
+          title="LLM이 가지 안 다른 노드와의 관계/모순/노트를 자동 분석 (적용은 사용자가 개별 승인)"
+        >🔍 자동 정리</button>
       </div>
+      {bookOpen && (
+        <div className="basis-full mt-1 border-t pt-2">
+          <BookkeepPanel qaId={qaId} signedIn={signedIn} onApplied={() => setSavedBump((n) => n + 1)} />
+        </div>
+      )}
 
       {forkOpen && (
         <div className="basis-full mt-1 flex flex-col gap-1 border-t pt-2">

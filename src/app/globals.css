@@ -1,8 +1,41 @@
 @import "tailwindcss";
 
+/* Obsidian-inspired tokens — 라이트/다크 모두 정의. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --ob-bg-primary: #ffffff;
+  --ob-bg-secondary: #f8f8f8;
+  --ob-bg-tertiary: #f0f0f0;
+  --ob-bg-hover: #e8e8e8;
+  --ob-text-normal: #1f1f1f;
+  --ob-text-muted: #6e6e76;
+  --ob-text-faint: #a0a0a8;
+  --ob-border: #e0e0e3;
+  --ob-border-strong: #c8c8cd;
+  --ob-accent: #7f6df2;          /* Obsidian purple */
+  --ob-accent-hover: #8875ff;
+  --ob-tag-bg: #eef0fb;
+  --ob-tag-text: #4338ca;
+
+  --background: var(--ob-bg-primary);
+  --foreground: var(--ob-text-normal);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ob-bg-primary: #1e1e1e;
+    --ob-bg-secondary: #252525;
+    --ob-bg-tertiary: #2a2a2a;
+    --ob-bg-hover: #333333;
+    --ob-text-normal: #dcddde;
+    --ob-text-muted: #b3b3b3;
+    --ob-text-faint: #6e6e6e;
+    --ob-border: #393939;
+    --ob-border-strong: #4a4a4a;
+    --ob-accent: #a394f0;
+    --ob-accent-hover: #b9aeff;
+    --ob-tag-bg: #2e2a4f;
+    --ob-tag-text: #c8bdff;
+  }
 }
 
 @theme inline {
@@ -12,15 +45,61 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+/* Obsidian 풍 vault-tree 사이드바 보더 + hover. 기존 tailwind 클래스를 덮어쓰지 않고
+   추가 유틸 클래스로 노출. */
+.ob-pane {
+  background: var(--ob-bg-primary);
+  border-color: var(--ob-border);
+}
+.ob-sidebar {
+  background: var(--ob-bg-secondary);
+  border-color: var(--ob-border);
+}
+.ob-tab-active {
+  background: var(--ob-bg-primary);
+  color: var(--ob-text-normal);
+  border-bottom-color: var(--ob-accent);
+}
+.ob-tab-inactive {
+  color: var(--ob-text-muted);
+}
+.ob-tab-inactive:hover {
+  color: var(--ob-text-normal);
+  background: var(--ob-bg-hover);
+}
+.ob-text-muted { color: var(--ob-text-muted); }
+.ob-text-faint { color: var(--ob-text-faint); }
+.ob-accent { color: var(--ob-accent); }
+.ob-tag {
+  background: var(--ob-tag-bg);
+  color: var(--ob-tag-text);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+.ob-hover:hover { background: var(--ob-bg-hover); }
+.ob-divider { background: var(--ob-border); }
+
+/* 다크 모드에서 기본 보더 회색이 너무 밝게 보이는 일부 라이브러리(텍스트 인풋 등) 보정 */
+@media (prefers-color-scheme: dark) {
+  input[type="text"], input[type="email"], input[type="password"], input[type="number"], input[type="search"], textarea, select {
+    background: var(--ob-bg-tertiary);
+    color: var(--ob-text-normal);
+    border-color: var(--ob-border-strong);
+  }
+  /* Tailwind 'border-gray-200/60' 류 — 다크에서 거의 안 보이므로 더 진한 색 */
+  .border-gray-200\/60 { border-color: var(--ob-border) !important; }
+  /* bg-gray-50/60 등 옅은 배경을 다크 톤으로 */
+  .bg-gray-50, .bg-gray-50\/60 { background-color: var(--ob-bg-secondary) !important; }
+  .text-gray-500, .text-gray-600, .text-gray-700 { color: var(--ob-text-muted) !important; }
+  .text-gray-400 { color: var(--ob-text-faint) !important; }
+  .text-gray-800, .text-gray-900 { color: var(--ob-text-normal) !important; }
+  .bg-white { background-color: var(--ob-bg-primary) !important; }
+  .hover\:bg-gray-100:hover, .hover\:bg-gray-50:hover { background-color: var(--ob-bg-hover) !important; }
 }

@@ -10,6 +10,7 @@ import type { GraphNode, GraphEdge, Work, LlmPatch, NodeType, EdgeType } from "@
 import AuthModal from "@/components/AuthModal";
 import PublishModal from "@/components/PublishModal";
 import GovernanceBar from "@/components/GovernanceBar";
+import GovernanceCouncilModal from "@/components/GovernanceCouncilModal";
 import DormantPanel from "@/components/DormantPanel";
 import NightwishBar from "@/components/NightwishBar";
 
@@ -71,6 +72,7 @@ export default function Home() {
   const [rightWidth, setRightWidth] = useState<number>(420);
   const [leftTab, setLeftTab] = useState<"search" | "dormant">("search");
   const [rightTab, setRightTab] = useState<"graph" | "writer">("graph");
+  const [councilOpen, setCouncilOpen] = useState(false);
   const dragRef = useRef<{ side: "left" | "right"; startX: number; startW: number } | null>(null);
 
   useEffect(() => {
@@ -350,7 +352,19 @@ export default function Home() {
           )}
         </div>
       </header>
-      <GovernanceBar refreshKey={graphRefreshKey} />
+      <GovernanceBar
+        refreshKey={graphRefreshKey}
+        currentUserEmail={user?.email}
+        onOpenCouncil={() => setCouncilOpen(true)}
+        onSeededP0={(id) => { setSelectedQaId(id); setLastViewedQaId(id); setCenterAiAnswer(""); setGraphRefreshKey((k) => k + 1); }}
+      />
+      <GovernanceCouncilModal
+        open={councilOpen}
+        onClose={() => setCouncilOpen(false)}
+        currentUserEmail={user?.email}
+        refreshKey={graphRefreshKey}
+        onChanged={() => setGraphRefreshKey((k) => k + 1)}
+      />
       <div className="p-3 md:p-4 overflow-hidden flex flex-col gap-3 md:gap-4">
         <div className="overflow-hidden flex flex-col lg:flex-row gap-3 md:gap-4">
           <aside
