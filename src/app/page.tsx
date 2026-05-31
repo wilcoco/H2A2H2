@@ -79,13 +79,13 @@ export default function Home() {
   const [rightWidth, setRightWidth] = useState<number>(420);
   const [leftTab, setLeftTab] = useState<"search" | "vault" | "dormant">("search");
   const [rightTab, setRightTab] = useState<"organize" | "graph" | "writer">("organize");
-  // advanced OFF일 때 organize 외 탭이 활성이면 강제 복귀 (보이지 않는 패널 회피)
-  useEffect(() => { if (!advanced && rightTab !== "organize") setRightTab("organize"); }, [advanced, rightTab]);
   const [councilOpen, setCouncilOpen] = useState(false);
   const [advanced, setAdvanced] = useAdvancedMode();
   const [helpOpen, setHelpOpen] = useState(false);
   const [byokOpen, setByokOpen] = useState(false);
   const [quotaTick, setQuotaTick] = useState(0);
+  // advanced OFF일 때 organize 외 탭이 활성이면 강제 복귀 (보이지 않는 패널 회피)
+  useEffect(() => { if (!advanced && rightTab !== "organize") setRightTab("organize"); }, [advanced, rightTab]);
   const dragRef = useRef<{ side: "left" | "right"; startX: number; startW: number } | null>(null);
 
   useEffect(() => {
