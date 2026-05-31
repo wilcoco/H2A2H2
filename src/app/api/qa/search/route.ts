@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureTables, withConn } from "@/lib/db";
+import { applyAntiMatthewQuota } from "@/lib/nightwish/routing";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,6 +44,8 @@ export async function POST(req: NextRequest) {
       ? Math.max(0, Math.min(1, minScoreRaw))
       : (strict ? 0.35 : 0.2);
     const q = query.trim();
+    const antiMatthew: boolean = body?.antiMatthew !== false; // 기본 활성
+    const exploreShare: number = Number.isFinite(Number(body?.exploreShare)) ? Math.max(0, Math.min(0.6, Number(body.exploreShare))) : 0.3;
     let rows: Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string; created_by?: string }> = [];
     if (q) {
       try {
@@ -161,6 +164,28 @@ export async function POST(req: NextRequest) {
         );
         return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string; created_by?: string }>;
       });
+    }
+    // Anti-Matthew quota: 신규/잠복/저허브 풀에서 일부 슬롯을 강제 배정.
+    // strict 모드(=정확성 우선)일 때는 우회.
+    if (antiMatthew && !strict && rows.length > 0) {
+      const explore = await withConn(async (c) => {
+        // 신규(최근 7일) + 잠복(status='dormant') + 저허브(피드백 0건) 후보를 모음
+        const r = await c.query(
+          `select e.id, e.question, e.answer, e.summary, e.work_id, e.created_by
+             from qa_entries e
+             left join (
+               select qa_id, count(*) as n from qa_feedback group by qa_id
+             ) f on f.qa_id = e.id
+            where e.published = true
+              and (e.created_at > now() - interval '7 days'
+                   or e.status = 'dormant'
+                   or coalesce(f.n, 0) = 0)
+            order by random()
+            limit 40`
+        );
+        return r.rows as Array<{ id: string; question: string; answer?: string; summary?: string; work_id?: string; created_by?: string }>;
+      });
+      rows = applyAntiMatthewQuota(rows, explore, { limit, exploreShare });
     }
     const items = rows.map((r) => ({
       id: r.id,

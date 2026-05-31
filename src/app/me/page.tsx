@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import DecayCurve from "@/components/DecayCurve";
 
 type MyQAItem = {
   id: string;
@@ -39,6 +40,13 @@ type MyYieldItem = {
   unhelpful: number;
   qualityScore: number;
   estimatedYield: number;
+  // nightwish 게이트/시간붕괴
+  ageDays?: number;
+  decayFactor?: number;
+  branchVerified?: boolean;
+  eligible?: boolean;
+  gateReason?: "ok" | "branch_not_verified" | "self_stake" | "reclaimed" | "no_contribution";
+  lastContributionAt?: string;
 };
 
 export default function MePage() {
@@ -354,11 +362,34 @@ export default function MePage() {
               <ul className="space-y-2">
                 {yields.map((y) => (
                   <li key={y.stakeId} className="p-3 rounded border">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-3">
                       <div className="font-medium truncate mr-4">{y.rootQuestion ?? y.rootId}</div>
                       <div className="text-sm">예치 {y.amount} → 추정 성과 {y.estimatedYield}</div>
                     </div>
-                    <div className="text-xs text-gray-500 mt-1">만기 {new Date(y.lockUntil).toLocaleString()} · 품질 {(y.qualityScore*100).toFixed(0)}%</div>
+                    <div className="text-xs text-gray-500 mt-1 flex flex-wrap items-center gap-2">
+                      <span>만기 {new Date(y.lockUntil).toLocaleString()}</span>
+                      <span>· 품질 {(y.qualityScore*100).toFixed(0)}%</span>
+                      {typeof y.branchVerified === "boolean" && (
+                        <span className={y.branchVerified ? "text-emerald-700" : "text-amber-700"}>
+                          {y.branchVerified ? "✓ 검증됨" : "⚠ 미검증"}
+                        </span>
+                      )}
+                      {y.gateReason && y.gateReason !== "ok" && (
+                        <span className="text-red-600" title="배당 게이트가 닫힌 이유">게이트: {y.gateReason}</span>
+                      )}
+                      {typeof y.decayFactor === "number" && (
+                        <span title={`age ${y.ageDays}일, 반감기 30일`}>· decay ×{y.decayFactor}</span>
+                      )}
+                    </div>
+                    {typeof y.ageDays === "number" && (
+                      <div className="mt-2 flex items-center gap-3">
+                        <DecayCurve ageDays={y.ageDays} halfLifeDays={30} />
+                        <div className="text-[11px] text-gray-500">
+                          기여하면 age가 리셋되어 곡선이 0으로 돌아갑니다.<br/>
+                          (피드백·노트·검증·관계 작성 시 자동 리셋)
+                        </div>
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>

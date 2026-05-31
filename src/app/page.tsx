@@ -13,6 +13,8 @@ import GovernanceBar from "@/components/GovernanceBar";
 import GovernanceCouncilModal from "@/components/GovernanceCouncilModal";
 import DormantPanel from "@/components/DormantPanel";
 import NightwishBar from "@/components/NightwishBar";
+import VaultTree from "@/components/VaultTree";
+import VaultExportButton from "@/components/VaultExportButton";
 
 const initialWorks: Work[] = [
   {
@@ -70,7 +72,7 @@ export default function Home() {
   const [writerQaId, setWriterQaId] = useState<string | null>(null);
   const [leftWidth, setLeftWidth] = useState<number>(300);
   const [rightWidth, setRightWidth] = useState<number>(420);
-  const [leftTab, setLeftTab] = useState<"search" | "dormant">("search");
+  const [leftTab, setLeftTab] = useState<"search" | "vault" | "dormant">("search");
   const [rightTab, setRightTab] = useState<"graph" | "writer">("graph");
   const [councilOpen, setCouncilOpen] = useState(false);
   const dragRef = useRef<{ side: "left" | "right"; startX: number; startW: number } | null>(null);
@@ -377,10 +379,16 @@ export default function Home() {
                 onClick={() => setLeftTab("search")}
               >질문/검색</button>
               <button
+                className={`text-xs px-3 py-2 ${leftTab === "vault" ? "border-b-2 border-violet-600 text-violet-700" : "text-gray-500 hover:text-gray-700"}`}
+                onClick={() => setLeftTab("vault")}
+                title="Vault — Obsidian 스타일 가지 트리"
+              >Vault</button>
+              <button
                 className={`text-xs px-3 py-2 ${leftTab === "dormant" ? "border-b-2 border-amber-600 text-amber-700" : "text-gray-500 hover:text-gray-700"}`}
                 onClick={() => setLeftTab("dormant")}
                 title="잠복한 가지를 발견하고 부활시킬 수 있어요 (갈릴레오 가지 보존)"
               >잠복 발견</button>
+              <div className="ml-auto pr-2"><VaultExportButton signedIn={Boolean(user?.email)} scope="mine" /></div>
             </div>
             <div className="p-2 md:p-3 overflow-auto flex-1" style={{ display: leftTab === "search" ? "block" : "none" }}>
               <LeftAsk
@@ -400,6 +408,17 @@ export default function Home() {
                 onToggleContext={(id, next) => setSelectedContextIds((prev) => next ? (prev.includes(id) ? prev : [...prev, id]) : prev.filter((x) => x !== id))}
                 threadRootId={leftThreadRootId}
                 onSelectChainPath={(path) => setLeftSelectedPath(path)}
+              />
+            </div>
+            <div className="p-2 md:p-3 overflow-auto flex-1" style={{ display: leftTab === "vault" ? "block" : "none" }}>
+              <VaultTree
+                signedIn={Boolean(user?.email)}
+                refreshKey={graphRefreshKey}
+                onSelect={(id) => {
+                  setLastViewedQaId(id);
+                  setSelectedQaId(id);
+                  setCenterAiAnswer("");
+                }}
               />
             </div>
             <div className="p-2 md:p-3 overflow-auto flex-1" style={{ display: leftTab === "dormant" ? "block" : "none" }}>

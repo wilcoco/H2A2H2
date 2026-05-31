@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import SybilFlagsPanel from "./SybilFlagsPanel";
 
 type Member = { email: string; seated_at: string };
 type LogEntry = { at: string; actor: string | null; kind: string; detail: string | null };
@@ -167,6 +168,10 @@ export default function GovernanceCouncilModal({ open, onClose, currentUserEmail
             </div>
 
             {msg && <div className="text-[12px] text-gray-700 mb-3">{msg}</div>}
+
+            <div className="mb-3 border-t pt-3">
+              <SybilFlagsPanel isAdmin={isAdmin} refreshKey={tick} />
+            </div>
 
             <div>
               <div className="text-xs font-medium mb-1">최근 거버넌스 로그</div>

@@ -262,6 +262,21 @@ export async function ensureTables() {
     `);
     await c.query(`create index if not exists liquidity_log_at_idx on liquidity_log (at desc)`);
 
+    // nightwish: 시빌/담합 탐지 (critique §2 후속)
+    await c.query(`
+      create table if not exists sybil_signals (
+        id bigserial primary key,
+        user_id text not null,
+        peer_user_id text,
+        suspicion_score double precision not null,
+        reason text not null,
+        evidence jsonb,
+        computed_at timestamptz not null default now()
+      );
+    `);
+    await c.query(`create index if not exists sybil_signals_user_idx on sybil_signals (user_id, computed_at desc)`);
+    await c.query(`create index if not exists sybil_signals_score_idx on sybil_signals (suspicion_score desc, computed_at desc)`);
+
     // Teams and Work Logs
     await c.query(`
       create table if not exists teams (
