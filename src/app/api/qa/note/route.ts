@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureTables, withConn } from "@/lib/db";
 import { verifySession } from "@/lib/auth";
+import { touchContribution } from "@/lib/nightwish/contribution";
 
 export const runtime = "nodejs";
 
@@ -48,6 +49,7 @@ export async function POST(req: NextRequest) {
         [id, qaId, userId, content.trim()]
       );
     });
+    if (userId) { try { await touchContribution(userId, qaId); } catch {} }
     return NextResponse.json({ id });
   } catch (e) {
     return NextResponse.json({ error: "Failed" }, { status: 500 });

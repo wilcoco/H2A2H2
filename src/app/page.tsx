@@ -3,11 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import LeftAsk from "@/components/LeftAsk";
 import CenterQAViewer from "@/components/CenterQAViewer";
+import CenterGraph from "@/components/CenterGraph";
 import ThreadDrawer from "@/components/ThreadDrawer";
 import RightWriter from "@/components/RightWriter";
 import type { GraphNode, GraphEdge, Work, LlmPatch, NodeType, EdgeType } from "@/types/graph";
 import AuthModal from "@/components/AuthModal";
 import PublishModal from "@/components/PublishModal";
+import GovernanceBar from "@/components/GovernanceBar";
+import DormantPanel from "@/components/DormantPanel";
+import NightwishBar from "@/components/NightwishBar";
 
 const initialWorks: Work[] = [
   {
@@ -64,7 +68,9 @@ export default function Home() {
   const [detail, setDetail] = useState<"short" | "normal" | "long">("normal");
   const [writerQaId, setWriterQaId] = useState<string | null>(null);
   const [leftWidth, setLeftWidth] = useState<number>(300);
-  const [rightWidth, setRightWidth] = useState<number>(360);
+  const [rightWidth, setRightWidth] = useState<number>(420);
+  const [leftTab, setLeftTab] = useState<"search" | "dormant">("search");
+  const [rightTab, setRightTab] = useState<"graph" | "writer">("graph");
   const dragRef = useRef<{ side: "left" | "right"; startX: number; startW: number } | null>(null);
 
   useEffect(() => {
@@ -344,6 +350,7 @@ export default function Home() {
           )}
         </div>
       </header>
+      <GovernanceBar refreshKey={graphRefreshKey} />
       <div className="p-3 md:p-4 overflow-hidden flex flex-col gap-3 md:gap-4">
         <div className="overflow-hidden flex flex-col lg:flex-row gap-3 md:gap-4">
           <aside
@@ -351,9 +358,17 @@ export default function Home() {
             style={{ width: leftWidth }}
           >
             <div className="flex items-center border-b border-gray-200/60">
-              <div className="text-xs px-3 py-2 border-b-2 border-blue-600 text-blue-700">질문/검색</div>
+              <button
+                className={`text-xs px-3 py-2 ${leftTab === "search" ? "border-b-2 border-blue-600 text-blue-700" : "text-gray-500 hover:text-gray-700"}`}
+                onClick={() => setLeftTab("search")}
+              >질문/검색</button>
+              <button
+                className={`text-xs px-3 py-2 ${leftTab === "dormant" ? "border-b-2 border-amber-600 text-amber-700" : "text-gray-500 hover:text-gray-700"}`}
+                onClick={() => setLeftTab("dormant")}
+                title="잠복한 가지를 발견하고 부활시킬 수 있어요 (갈릴레오 가지 보존)"
+              >잠복 발견</button>
             </div>
-            <div className="p-2 md:p-3 overflow-auto flex-1">
+            <div className="p-2 md:p-3 overflow-auto flex-1" style={{ display: leftTab === "search" ? "block" : "none" }}>
               <LeftAsk
                 onSelectQA={(id) => {
                   setLastViewedQaId(id);
@@ -373,6 +388,17 @@ export default function Home() {
                 onSelectChainPath={(path) => setLeftSelectedPath(path)}
               />
             </div>
+            <div className="p-2 md:p-3 overflow-auto flex-1" style={{ display: leftTab === "dormant" ? "block" : "none" }}>
+              <DormantPanel
+                refreshKey={graphRefreshKey}
+                onSelect={(id) => {
+                  setLastViewedQaId(id);
+                  setSelectedQaId(id);
+                  setCenterAiAnswer("");
+                  setLeftTab("search");
+                }}
+              />
+            </div>
           </aside>
           <div
             className="hidden lg:block w-1 cursor-col-resize bg-transparent hover:bg-blue-200/50"
@@ -381,7 +407,9 @@ export default function Home() {
 
           <main className="rounded border border-gray-200/60 p-0 overflow-hidden flex-1 min-w-0 flex flex-col">
             <div className="flex items-center border-b border-gray-200/60">
-              <div className="text-xs px-3 py-2 border-b-2 border-blue-600 text-blue-700">Q&A 보기</div>
+              <div className="text-xs px-3 py-2 border-b-2 border-blue-600 text-blue-700">
+                {selectedQaId ? "Q&A 보기" : centerAiAnswer ? "LLM 답변 (저장하기 전)" : "LLM 대화"}
+              </div>
             </div>
             <div className="p-2 md:p-3 overflow-auto flex-1">
               <CenterQAViewer
@@ -429,6 +457,19 @@ export default function Home() {
                 selectedChainPath={leftSelectedPath || undefined}
               />
             </div>
+            <NightwishBar
+              qaId={selectedQaId || undefined}
+              rootId={leftThreadRootId || undefined}
+              question={centerQuestion}
+              answer={centerAiAnswer}
+              signedIn={Boolean(user?.email)}
+              refreshKey={graphRefreshKey}
+              onForked={(id) => {
+                setSelectedQaId(id);
+                setCenterAiAnswer("");
+                setGraphRefreshKey((k) => k + 1);
+              }}
+            />
           </main>
           <div
             className="hidden lg:block w-1 cursor-col-resize bg-transparent hover:bg-blue-200/50"
@@ -437,9 +478,28 @@ export default function Home() {
 
           <aside className="rounded border border-gray-200/60 p-0 overflow-hidden flex flex-col" style={{ width: rightWidth }}>
             <div className="flex items-center border-b border-gray-200/60">
-              <div className="text-xs px-3 py-2 border-b-2 border-blue-600 text-blue-700">문서 작성</div>
+              <button
+                className={`text-xs px-3 py-2 ${rightTab === "graph" ? "border-b-2 border-blue-600 text-blue-700" : "text-gray-500 hover:text-gray-700"}`}
+                onClick={() => setRightTab("graph")}
+              >그래프</button>
+              <button
+                className={`text-xs px-3 py-2 ${rightTab === "writer" ? "border-b-2 border-blue-600 text-blue-700" : "text-gray-500 hover:text-gray-700"}`}
+                onClick={() => setRightTab("writer")}
+              >문서 작성</button>
             </div>
-            <div className="p-2 md:p-3 overflow-auto flex-1">
+            <div className="p-2 md:p-3 overflow-auto flex-1" style={{ display: rightTab === "graph" ? "block" : "none" }}>
+              <CenterGraph
+                nodes={nodes}
+                edges={edges}
+                onInvestNode={investNode}
+                onInvestEdge={investEdge}
+                onAddNode={addNode}
+                onUpdateNode={updateNode}
+                onRemoveNode={removeNode}
+                onRemoveEdge={removeEdge}
+              />
+            </div>
+            <div className="p-2 md:p-3 overflow-auto flex-1" style={{ display: rightTab === "writer" ? "block" : "none" }}>
               <RightWriter
                 qaId={writerQaId || undefined}
                 centerQaId={selectedQaId || undefined}

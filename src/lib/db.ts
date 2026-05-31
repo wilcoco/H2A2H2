@@ -172,6 +172,95 @@ export async function ensureTables() {
     await c.query(`create index if not exists stake_ledger_root_idx on stake_ledger (qa_root_id)`);
     await c.query(`create index if not exists stake_ledger_created_idx on stake_ledger (created_at)`);
     try { await c.query(`alter table stake_ledger add column if not exists is_self boolean not null default false`); } catch {}
+    // nightwish: 시간붕괴/잠복회수 메커니즘 (economy.py)
+    try { await c.query(`alter table stake_ledger add column if not exists last_contribution_at timestamptz`); } catch {}
+    try { await c.query(`update stake_ledger set last_contribution_at = created_at where last_contribution_at is null`); } catch {}
+    try { await c.query(`alter table stake_ledger add column if not exists is_reclaimed boolean not null default false`); } catch {}
+    try { await c.query(`alter table stake_ledger add column if not exists reclaimed_at timestamptz`); } catch {}
+    try { await c.query(`create index if not exists stake_ledger_contrib_idx on stake_ledger (user_id, last_contribution_at)`); } catch {}
+
+    // nightwish: 포크/잠복/부활 (tree.py)
+    try { await c.query(`alter table qa_entries add column if not exists forked_from text`); } catch {}
+    try { await c.query(`alter table qa_entries add column if not exists status text not null default 'active'`); } catch {} // active | dormant
+    try { await c.query(`alter table qa_entries add column if not exists dormant_since timestamptz`); } catch {}
+    try { await c.query(`alter table qa_entries add column if not exists revived_at timestamptz`); } catch {}
+    try { await c.query(`alter table qa_entries add column if not exists revived_by text`); } catch {}
+    try { await c.query(`create index if not exists qa_entries_forked_from_idx on qa_entries (forked_from)`); } catch {}
+    try { await c.query(`create index if not exists qa_entries_status_idx on qa_entries (status)`); } catch {}
+
+    // nightwish: 외부 현실 닻 (verification.py) — 검증 메트릭 기록
+    await c.query(`
+      create table if not exists qa_verifications (
+        id text primary key,
+        qa_id text not null,
+        metric text not null,
+        baseline double precision not null,
+        observed double precision not null,
+        unit text,
+        direction text not null default 'higher_better', -- higher_better | lower_better
+        min_rel_improvement double precision not null default 0,
+        source_url text,
+        source_note text,
+        verified_by text,
+        passes boolean not null default false,
+        created_at timestamptz not null default now()
+      );
+    `);
+    await c.query(`create index if not exists qa_verifications_qa_idx on qa_verifications (qa_id)`);
+    await c.query(`create index if not exists qa_verifications_passes_idx on qa_verifications (qa_id, passes)`);
+    await c.query(`create index if not exists qa_verifications_created_idx on qa_verifications (created_at)`);
+
+    // nightwish: 거버넌스 사전공약 (governance.py)
+    await c.query(`
+      create table if not exists governance_state (
+        id integer primary key default 1,
+        phase text not null default 'bootstrap', -- bootstrap | decentralized
+        admin_email text,
+        decentralize_at integer not null default 100,
+        council_quorum_pct integer not null default 50,
+        participant_count integer not null default 0,
+        updated_at timestamptz not null default now()
+      );
+    `);
+    await c.query(`insert into governance_state (id, admin_email) values (1, $1) on conflict (id) do nothing`, [process.env.GOVERNANCE_ADMIN || null]);
+    await c.query(`
+      create table if not exists governance_log (
+        id bigserial primary key,
+        at timestamptz not null default now(),
+        actor text,
+        kind text not null,
+        detail text
+      );
+    `);
+    await c.query(`create index if not exists governance_log_at_idx on governance_log (at desc)`);
+    await c.query(`
+      create table if not exists governance_council (
+        email text primary key,
+        seated_at timestamptz not null default now()
+      );
+    `);
+
+    // nightwish: 잠복 회수 → 유동성 풀 (economy.py reclaim_dormant/restore_on_revival)
+    await c.query(`
+      create table if not exists liquidity_pool (
+        id integer primary key default 1,
+        balance double precision not null default 0,
+        updated_at timestamptz not null default now()
+      );
+    `);
+    await c.query(`insert into liquidity_pool (id, balance) values (1, 0) on conflict (id) do nothing`);
+    await c.query(`
+      create table if not exists liquidity_log (
+        id bigserial primary key,
+        at timestamptz not null default now(),
+        kind text not null, -- reclaim | restore | bonus
+        qa_id text,
+        amount double precision not null,
+        actor text,
+        detail text
+      );
+    `);
+    await c.query(`create index if not exists liquidity_log_at_idx on liquidity_log (at desc)`);
 
     // Teams and Work Logs
     await c.query(`

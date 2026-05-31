@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureTables, withConn } from "@/lib/db";
 import { verifySession } from "@/lib/auth";
+import { touchContribution } from "@/lib/nightwish/contribution";
 
 export const runtime = "nodejs";
 
@@ -37,6 +38,9 @@ export async function POST(req: NextRequest) {
         );
       }
     });
+
+    // nightwish: 기여 이벤트 → 같은 가지의 내 stake age 리셋
+    try { await touchContribution(user.email, qaId); } catch {}
 
     const agg = await withConn(async (c) => {
       const r = await c.query(

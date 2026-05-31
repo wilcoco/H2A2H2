@@ -1,7 +1,7 @@
 {
-  "sha": "9a441d63eeed34d9e30f8cf78276a755de0f0729",
-  "title": "fix: allow relations without login",
+  "sha": "744837dc4bd1a35c3180ebbee3bc2d28877b672b",
+  "title": "feat: AI follow-up relation defaults",
   "message": "",
   "branch": "main",
-  "builtAt": "2026-01-30T01:05:30.675Z"
+  "builtAt": "2026-05-31T10:33:46.734Z"
 }
