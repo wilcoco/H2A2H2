@@ -16,6 +16,8 @@ import NightwishBar from "@/components/NightwishBar";
 import VaultTree from "@/components/VaultTree";
 import VaultExportButton from "@/components/VaultExportButton";
 import OnboardingModal from "@/components/OnboardingModal";
+import QuotaBadge from "@/components/QuotaBadge";
+import BYOKModal from "@/components/BYOKModal";
 import { useAdvancedMode } from "@/lib/useAdvancedMode";
 
 const initialWorks: Work[] = [
@@ -79,6 +81,8 @@ export default function Home() {
   const [councilOpen, setCouncilOpen] = useState(false);
   const [advanced, setAdvanced] = useAdvancedMode();
   const [helpOpen, setHelpOpen] = useState(false);
+  const [byokOpen, setByokOpen] = useState(false);
+  const [quotaTick, setQuotaTick] = useState(0);
   const dragRef = useRef<{ side: "left" | "right"; startX: number; startW: number } | null>(null);
 
   useEffect(() => {
@@ -317,6 +321,8 @@ export default function Home() {
             onClick={() => setHelpOpen(true)}
             title="3단계 사용법 다시 보기"
           >도움말</button>
+          <QuotaBadge refreshKey={quotaTick} onOpenByok={() => setByokOpen(true)} />
+          <BYOKModal open={byokOpen} onClose={() => setByokOpen(false)} onChanged={() => setQuotaTick((n) => n + 1)} />
           <label className="text-xs flex items-center gap-1 px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 cursor-pointer" title="고급 컨트롤(검증/포크/거버넌스/잠복 등)을 보이거나 숨깁니다">
             <input type="checkbox" checked={advanced} onChange={(e) => setAdvanced(e.target.checked)} className="accent-violet-600" />
             <span>고급 모드</span>

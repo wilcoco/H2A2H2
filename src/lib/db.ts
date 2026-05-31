@@ -277,6 +277,40 @@ export async function ensureTables() {
     await c.query(`create index if not exists sybil_signals_user_idx on sybil_signals (user_id, computed_at desc)`);
     await c.query(`create index if not exists sybil_signals_score_idx on sybil_signals (suspicion_score desc, computed_at desc)`);
 
+    // beta-5: LLM 사용량 quota (free + 포인트 + BYOK 3-tier)
+    await c.query(`
+      create table if not exists user_quota (
+        user_email text primary key,
+        free_used_today integer not null default 0,
+        free_quota_per_day integer not null default 10,
+        point_balance integer not null default 0,
+        byok_provider text,                      -- openai | anthropic | null
+        byok_key_encrypted text,                 -- AES-GCM(base64)
+        byok_key_iv text,                        -- base64
+        byok_label text,                         -- 사용자 메모 (예: "내 OpenAI Plus")
+        last_reset_day date not null default current_date,
+        updated_at timestamptz not null default now()
+      );
+    `);
+    await c.query(`create index if not exists user_quota_reset_idx on user_quota (last_reset_day)`);
+    // LLM 호출 로그 (분석/감사용; 키 자체는 저장 안 함)
+    await c.query(`
+      create table if not exists llm_call_log (
+        id bigserial primary key,
+        at timestamptz not null default now(),
+        user_email text,
+        tier text not null,                      -- free | point | byok
+        provider text not null,                  -- openai | anthropic | ...
+        model text,
+        prompt_tokens integer,
+        completion_tokens integer,
+        success boolean not null default true,
+        error text
+      );
+    `);
+    await c.query(`create index if not exists llm_call_log_user_idx on llm_call_log (user_email, at desc)`);
+    await c.query(`create index if not exists llm_call_log_at_idx on llm_call_log (at desc)`);
+
     // Teams and Work Logs
     await c.query(`
       create table if not exists teams (
